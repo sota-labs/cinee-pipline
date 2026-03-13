@@ -24,11 +24,10 @@ def get_execution_llm() -> LLM:
 
 
 def get_community_llm() -> LLM:
-    """Get LLM for Community layer (Llama)."""
+    """Get LLM for Community layer (Gemini)."""
     return LLM(
-        model=f"openai/{settings.llm.community_model}",
-        api_key=settings.openai_api_key,
-        base_url="https://api.llama-api.com/v1",  # Or local Llama server
+        model="gemini/gemini-2.0-flash",
+        api_key=settings.google_api_key,
         temperature=0.9,
         max_tokens=1024
     )

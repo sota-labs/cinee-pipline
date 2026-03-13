@@ -1,39 +1,49 @@
-"""Content tools - wrappers for Node.js content API endpoints."""
+"""Content tools - wrappers for Node.js content API endpoints using CrewAI tool format."""
 from typing import Any, Dict, List, Optional
+from crewai.tools import tool
 from .http_client import call_nodejs_tool
 
 
-def generate_content_ideas(topics: List[str], count: int = 5) -> Dict[str, Any]:
-    """Generate content ideas from topics."""
-    return call_nodejs_tool("/api/tools/content/ideas", data={
+@tool("Generate content ideas")
+def generate_content_ideas(topics: List[str], count: int = 5) -> str:
+    """Generate content ideas from topics. Returns JSON result string."""
+    result = call_nodejs_tool("/api/tools/content/ideas", data={
         "topics": topics,
         "count": count,
     })
+    return str(result)
 
 
-def calculate_character_count(text: str) -> Dict[str, Any]:
-    """Calculate character count for tweet."""
-    return call_nodejs_tool("/api/tools/content/char-count", data={"text": text})
+@tool("Calculate character count")
+def calculate_character_count(text: str) -> str:
+    """Calculate character count for tweet. Returns JSON result string."""
+    result = call_nodejs_tool("/api/tools/content/char-count", data={"text": text})
+    return str(result)
 
 
-def format_tweet(content: str, hashtags: Optional[List[str]] = None, mention: Optional[str] = None) -> Dict[str, Any]:
-    """Format tweet with hashtags and mentions."""
-    return call_nodejs_tool("/api/tools/content/format", data={
+@tool("Format tweet")
+def format_tweet(content: str, hashtags: Optional[List[str]] = None, mention: Optional[str] = None) -> str:
+    """Format tweet with hashtags and mentions. Returns JSON result string."""
+    result = call_nodejs_tool("/api/tools/content/format", data={
         "content": content,
         "hashtags": hashtags,
         "mention": mention,
     })
+    return str(result)
 
 
-def analyze_sentiment(text: str) -> Dict[str, Any]:
-    """Analyze sentiment of text."""
-    return call_nodejs_tool("/api/tools/content/sentiment", data={"text": text})
+@tool("Analyze sentiment")
+def analyze_sentiment(text: str) -> str:
+    """Analyze sentiment of text. Returns JSON result string."""
+    result = call_nodejs_tool("/api/tools/content/sentiment", data={"text": text})
+    return str(result)
 
 
-def optimize_posting_time(content_type: str = "post") -> Dict[str, Any]:
-    """Get optimal posting time (placeholder - returns suggested times)."""
+@tool("Optimize posting time")
+def optimize_posting_time(content_type: str = "post") -> str:
+    """Get optimal posting time. Returns JSON result string."""
     # This is a placeholder - in production would analyze engagement data
-    return {
+    result = {
         "success": True,
         "suggested_times": {
             "morning": "09:00-10:00",
@@ -43,10 +53,12 @@ def optimize_posting_time(content_type: str = "post") -> Dict[str, Any]:
         "best_time": "09:30",
         "timezone": "UTC",
     }
+    return str(result)
 
 
-def suggest_hashtags(topic: str, count: int = 3) -> Dict[str, Any]:
-    """Suggest hashtags for a topic."""
+@tool("Suggest hashtags")
+def suggest_hashtags(topic: str, count: int = 3) -> str:
+    """Suggest hashtags for a topic. Returns JSON result string."""
     # Generate relevant hashtags based on topic
     base_hashtags = {
         "AI film": ["#AIvideo", "#AIfilmmaking", "#generativeAI"],
@@ -64,13 +76,8 @@ def suggest_hashtags(topic: str, count: int = 3) -> Dict[str, Any]:
     if not hashtags:
         hashtags = ["#AIvideo", "#AIfilmmaking", "#generativeAI"]
     
-    return {
+    result = {
         "success": True,
         "hashtags": hashtags[:count],
     }
-
-
-def get_trending_topics(woeid: int = 1) -> List[Dict[str, Any]]:
-    """Get trending topics (placeholder - Twitter API v2 requires elevated access)."""
-    # Twitter API v2 doesn't have trends endpoint for free tier
-    return [{"error": "Trends API requires elevated Twitter access"}]
+    return str(result)

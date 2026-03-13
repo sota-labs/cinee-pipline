@@ -35,7 +35,6 @@ from .content_tools import (
     analyze_sentiment,
     optimize_posting_time,
     suggest_hashtags,
-    get_trending_topics as get_trending_topics_content,
 )
 from .cinee_tools import (
     find_ai_films_to_amplify,
