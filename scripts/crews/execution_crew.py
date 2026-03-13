@@ -13,12 +13,10 @@ from tasks.execution_tasks import (
     create_hottake_task,
     create_daily_briefing_task,
 )
-from tools.content_tools import (
+from tools import (
     generate_content_ideas,
     optimize_posting_time,
     suggest_hashtags,
-)
-from tools.twitter_tools import (
     get_trending_topics,
     search_tweets,
 )

@@ -12,15 +12,13 @@ from tasks.community_tasks import (
     create_reply_publishing_task,
     create_bulk_reply_task,
 )
-from tools.twitter_tools import (
+from tools import (
     post_tweet,
     reply_to_tweet,
     get_mentions,
     like_tweet,
     retweet,
     get_tweet_details,
-)
-from tools.content_tools import (
     calculate_character_count,
     format_tweet,
     suggest_hashtags,
