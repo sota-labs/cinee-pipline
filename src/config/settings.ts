@@ -1,4 +1,7 @@
-/** Configuration settings for the pipeline. */
+/** Configuration settings for the pipeline.
+ *
+ * Twitter/Reddit API configs removed — OpenClaw browser handles social media.
+ */
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -22,26 +25,9 @@ export interface RoleConfig {
   engagementKeywords: string[];
 }
 
-export interface TwitterConfig {
-  apiKey: string;
-  apiSecret: string;
-  accessToken: string;
-  accessSecret: string;
-  bearerToken: string;
-}
-
-export interface RedditConfig {
-  clientId: string;
-  clientSecret: string;
-  username: string;
-  password: string;
-}
-
 export interface Settings {
   llm: LLMConfig;
   role: RoleConfig;
-  twitter: TwitterConfig;
-  reddit: RedditConfig;
   redisUrl: string;
   sqliteDbPath: string;
   anthropicApiKey: string;
@@ -104,19 +90,6 @@ export const settings: Settings = {
       "Sora", "Kling", "Runway", "AI film", "AI video", "generative video",
       "AI filmmaker", "AI content creator",
     ],
-  },
-  twitter: {
-    apiKey: process.env.TWITTER_API_KEY || "",
-    apiSecret: process.env.TWITTER_API_SECRET || "",
-    accessToken: process.env.TWITTER_ACCESS_TOKEN || "",
-    accessSecret: process.env.TWITTER_ACCESS_SECRET || "",
-    bearerToken: process.env.TWITTER_BEARER_TOKEN || "",
-  },
-  reddit: {
-    clientId: process.env.REDDIT_CLIENT_ID || "",
-    clientSecret: process.env.REDDIT_CLIENT_SECRET || "",
-    username: process.env.REDDIT_USERNAME || "",
-    password: process.env.REDDIT_PASSWORD || "",
   },
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
   sqliteDbPath: process.env.SQLITE_DB_PATH || "pipeline.db",

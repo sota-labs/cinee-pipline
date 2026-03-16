@@ -1,3 +1,3 @@
-from .settings import settings, LLMConfig, RoleConfig, TwitterConfig
+from .settings import settings, LLMConfig, RoleConfig
 
-__all__ = ["settings", "LLMConfig", "RoleConfig", "TwitterConfig"]
+__all__ = ["settings", "LLMConfig", "RoleConfig"]

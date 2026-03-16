@@ -1,106 +1,71 @@
-"""Community Layer Tasks."""
+"""Community Layer Tasks — browser-based content creation and publishing."""
 from crewai import Task
-from typing import List, Dict, Any
+from config.settings import settings
 
 
-def create_content_writing_task(topic: str, content_type: str = "post") -> Task:
-    """Task for writing content."""
+def create_tweet_goal(topic: str, content_type: str = "post") -> Task:
+    """Goal: Write and post a tweet about a topic."""
+    persona = settings.role.founder_name
     return Task(
-        description=f"""Write a {content_type} about: {topic}
-        
-        Requirements:
-        1. Sound like it was written personally by the role
-        2. Be engaging and authentic
-        3. Keep within Twitter character limits (280 chars for posts)
-        4. Include relevant hashtags if appropriate
-        5. Maintain professional yet approachable tone
-        
-        Output the final content ready for publishing.""",
-        expected_output="Final content ready for publishing",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Write and post a {content_type} about: {topic}
+
+Requirements:
+- Sound like you personally typed this — first person, conversational
+- Stay under 280 characters
+- Be engaging and authentic, not corporate
+- Include relevant context or personal observation
+
+Use the Twitter browser tool to post the tweet.
+Report the exact text posted.""",
+        expected_output="The exact tweet text that was posted",
         agent=None,
     )
 
 
-def create_publishing_task(content: str, scheduled_time: str = None) -> Task:
-    """Task for publishing content to Twitter."""
+def create_reply_goal(mention_text: str, tweet_url: str = "") -> Task:
+    """Goal: Reply to a specific mention or tweet."""
+    persona = settings.role.founder_name
     return Task(
-        description=f"""Publish the following content to Twitter:
-        
-        Content: {content}
-        {f'Scheduled time: {scheduled_time}' if scheduled_time else 'Publish immediately'}
-        
-        Verify:
-        1. Character count is within limits
-        2. Formatting is correct
-        3. Links and media are attached properly
-        
-        Return the post URL and confirmation.""",
-        expected_output="Post URL and publication confirmation",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Reply to this mention/tweet authentically.
+
+Original message: "{mention_text}"
+{f'Tweet URL: {tweet_url}' if tweet_url else ''}
+
+Write a genuine, personal reply. Sound like a busy CEO typing on their phone.
+Keep it short, warm, and real.
+
+Use the Twitter browser tool to post the reply.
+Report what you replied.""",
+        expected_output="The reply text that was posted",
         agent=None,
     )
 
 
-def create_reply_drafting_task(comment: str, post_context: str) -> Task:
-    """Task for drafting a reply to a comment."""
+def create_thread_goal(topic: str, points: list[str] | None = None) -> Task:
+    """Goal: Write and post a Twitter thread."""
+    persona = settings.role.founder_name
+    points_text = "\n".join(f"- {p}" for p in points) if points else "Decide the key points yourself."
     return Task(
-        description=f"""Draft a reply to this comment:
-        
-        Comment: {comment}
-        Post Context: {post_context}
-        
-        Requirements:
-        1. Be authentic and personal
-        2. Address the comment appropriately
-        3. Maintain the role's voice
-        4. Be concise (Twitter reply limits apply)
-        5. Foster positive engagement
-        
-        Output the reply text ready for publishing.""",
-        expected_output="Reply text ready for publishing",
-        agent=None,
-    )
+        description=f"""You are {persona}, {settings.role.name}.
 
+YOUR GOAL: Write and post a Twitter thread about: {topic}
 
-def create_reply_publishing_task(reply_text: str, tweet_id: str) -> Task:
-    """Task for publishing a reply."""
-    return Task(
-        description=f"""Publish this reply:
-        
-        Reply: {reply_text}
-        To Tweet ID: {tweet_id}
-        
-        Return the reply URL and confirmation.""",
-        expected_output="Reply URL and publication confirmation",
-        agent=None,
-    )
+Key points to cover:
+{points_text}
 
+Thread guidelines:
+- Hook in the first tweet (make people want to read more)
+- Each tweet stands alone but flows as a narrative
+- 3-7 tweets max
+- End with a thought-provoking question or call to discussion
+- Sound personal, not like a listicle
 
-def create_engagement_task(action: str, target_id: str, context: str = None) -> Task:
-    """Task for engagement actions (like, retweet, follow)."""
-    return Task(
-        description=f"""Perform engagement action: {action}
-        Target ID: {target_id}
-        {f'Context: {context}' if context else ''}
-        
-        Return confirmation of action.""",
-        expected_output="Confirmation of engagement action",
-        agent=None,
-    )
-
-
-def create_bulk_reply_task(comments: List[Dict]) -> Task:
-    """Task for handling multiple comments."""
-    return Task(
-        description=f"""Process and reply to multiple comments:
-        
-        Comments: {comments}
-        
-        For each comment:
-        1. Assess priority and sentiment
-        2. Draft appropriate reply
-        3. Prepare for publishing
-        
-        Output a list of replies with their target tweet IDs.""",
-        expected_output="List of replies with target tweet IDs",
+Use the Twitter browser tool to post the thread.
+Report the full thread text.""",
+        expected_output="The full thread text as posted",
         agent=None,
     )

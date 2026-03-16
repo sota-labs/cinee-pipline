@@ -1,9 +1,8 @@
 """
 FastAPI server exposing CrewAI operations.
 
-The Node.js backend calls these endpoints to trigger CrewAI agent workflows.
-CrewAI agents call back to Node.js tool endpoints (http://localhost:3000/api/tools/*)
-for Twitter, Reddit, Memory, DB operations.
+Architecture: Node.js triggers these endpoints → CrewAI agents think/plan →
+OpenClaw browser tools execute on Twitter/Reddit autonomously.
 
 Start: uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
 """
@@ -16,54 +15,54 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Add scripts dir to path so we can import agents/crews/tasks
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import settings
 from crews.brain_crew import BrainCrew
 from crews.execution_crew import ExecutionCrew
-from crews.community_crew import CommunityCrew
-from crews.cinee_crew import CineeTwitterWorkflow, CineeRedditWorkflow
+from crews.cinee_crew import CineeCrew
 
 app = FastAPI(
     title="Cinee Pipeline — CrewAI Service",
-    description="Python CrewAI agent service called by the Node.js backend",
-    version="1.0.0",
+    description="CrewAI agents + OpenClaw browser automation for autonomous social media",
+    version="2.0.0",
 )
 
 
-# ── Request models ──
+# -- Request models -----------------------------------------------------------
 
 class CountRequest(BaseModel):
     count: Optional[int] = None
 
 
-class MentionRequest(BaseModel):
-    max_results: Optional[int] = 10
-    since_id: Optional[str] = None
+class StrategyRequest(BaseModel):
+    strategy_context: Optional[str] = ""
 
 
-# ── Health ──
+# -- Health -------------------------------------------------------------------
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "crewai", "timestamp": str(datetime.now())}
+    return {
+        "status": "ok",
+        "service": "crewai",
+        "version": "2.0.0",
+        "execution_mode": "openclaw_browser",
+        "timestamp": str(datetime.now()),
+    }
 
 
-# ── Pipeline Endpoints ──
+# -- Pipeline Endpoints -------------------------------------------------------
 
 @app.post("/run-strategy")
 async def run_strategy():
-    """Run Brain Layer strategy + Execution Layer content planning."""
+    """Brain Layer: daily strategy + Execution Layer: content planning."""
     try:
-        print(f"\n[{datetime.now()}] === DAILY STRATEGY (API) ===")
-        print(f"  CEO: {settings.role.founder_name} | Brand: {settings.role.brand}")
+        print(f"\n[{datetime.now()}] === DAILY STRATEGY ===")
 
-        # Layer 1: Brain — Strategy Analysis
         brain = BrainCrew()
         strategy = brain.run_daily_strategy()
 
-        # Layer 2: Execution — Content Planning
         execution = ExecutionCrew()
         plan = execution.plan_content(str(strategy))
 
@@ -79,18 +78,17 @@ async def run_strategy():
 
 @app.post("/run-amplification")
 async def run_amplification(req: CountRequest = CountRequest()):
-    """Run AI film amplification workflow."""
+    """Find and amplify great AI films via browser."""
     try:
         count = req.count or 3
-        print(f"\n[{datetime.now()}] === AMPLIFICATION (API) ===")
+        print(f"\n[{datetime.now()}] === AMPLIFICATION (browser) ===")
 
-        workflow = CineeTwitterWorkflow()
-        result = workflow.amplify_ai_films(count=count)
+        crew = CineeCrew()
+        result = crew.amplify_ai_films(count=count)
 
         return {
             "success": True,
-            "result": str(result),
-            "count": count,
+            "result": result,
             "timestamp": str(datetime.now()),
         }
     except Exception as e:
@@ -98,18 +96,17 @@ async def run_amplification(req: CountRequest = CountRequest()):
 
 
 @app.post("/run-hot-take")
-async def run_hot_take():
-    """Generate and post CEO hot take."""
+async def run_hot_take(req: StrategyRequest = StrategyRequest()):
+    """Craft and post a CEO hot take via browser."""
     try:
-        print(f"\n[{datetime.now()}] === HOT TAKE (API) ===")
-        print(f"  Founder: {settings.role.founder_name}")
+        print(f"\n[{datetime.now()}] === HOT TAKE (browser) ===")
 
-        workflow = CineeTwitterWorkflow()
-        result = workflow.share_hot_take()
+        crew = CineeCrew()
+        result = crew.post_hot_take(strategy_context=req.strategy_context)
 
         return {
             "success": True,
-            "result": str(result),
+            "result": result,
             "timestamp": str(datetime.now()),
         }
     except Exception as e:
@@ -118,18 +115,17 @@ async def run_hot_take():
 
 @app.post("/run-engagement")
 async def run_engagement(req: CountRequest = CountRequest()):
-    """Engage with AI filmmakers on Twitter."""
+    """Engage with AI filmmakers on Twitter via browser."""
     try:
         count = req.count or 10
-        print(f"\n[{datetime.now()}] === ENGAGEMENT (API) ===")
+        print(f"\n[{datetime.now()}] === ENGAGEMENT (browser) ===")
 
-        workflow = CineeTwitterWorkflow()
-        result = workflow.engage_creators(count=count)
+        crew = CineeCrew()
+        result = crew.engage_creators(count=count)
 
         return {
             "success": True,
-            "result": str(result),
-            "count": count,
+            "result": result,
             "timestamp": str(datetime.now()),
         }
     except Exception as e:
@@ -137,23 +133,17 @@ async def run_engagement(req: CountRequest = CountRequest()):
 
 
 @app.post("/run-mentions")
-async def run_mentions(req: MentionRequest = MentionRequest()):
-    """Check and reply to Twitter mentions."""
+async def run_mentions():
+    """Check and reply to Twitter mentions via browser."""
     try:
-        print(f"\n[{datetime.now()}] === MENTIONS (API) ===")
+        print(f"\n[{datetime.now()}] === MENTIONS (browser) ===")
 
-        community = CommunityCrew()
-
-        # Note: In this architecture, the Node.js layer handles fetching mentions
-        # via the Twitter tools. The Python layer only handles the CrewAI
-        # draft_reply and publish_reply logic.
-        # The Node.js pipelineService should fetch mentions first, then call
-        # this endpoint with the mention data. For now, this is a placeholder
-        # that shows the pattern.
+        crew = CineeCrew()
+        result = crew.check_mentions()
 
         return {
             "success": True,
-            "message": "Mention processing delegated to Node.js orchestrator",
+            "result": result,
             "timestamp": str(datetime.now()),
         }
     except Exception as e:
@@ -162,24 +152,17 @@ async def run_mentions(req: MentionRequest = MentionRequest()):
 
 @app.post("/run-reddit")
 async def run_reddit(req: CountRequest = CountRequest()):
-    """Participate in Reddit discussions."""
+    """Participate in Reddit discussions via browser."""
     try:
-        count = req.count or 5
-        print(f"\n[{datetime.now()}] === REDDIT (API) ===")
+        count = req.count or 3
+        print(f"\n[{datetime.now()}] === REDDIT (browser) ===")
 
-        workflow = CineeRedditWorkflow()
-
-        # Monitor communities
-        monitor_result = workflow.monitor_communities()
-
-        # Engage in discussions
-        engage_result = workflow.engage_discussions(count=count)
+        crew = CineeCrew()
+        result = crew.engage_reddit(count=count)
 
         return {
             "success": True,
-            "monitor_result": str(monitor_result),
-            "engage_result": str(engage_result),
-            "count": count,
+            "result": result,
             "timestamp": str(datetime.now()),
         }
     except Exception as e:
@@ -190,35 +173,20 @@ async def run_reddit(req: CountRequest = CountRequest()):
 async def run_full_cycle():
     """Run the complete daily pipeline cycle."""
     try:
-        print(f"\n[{datetime.now()}] === FULL DAILY CYCLE (API) ===")
+        print(f"\n[{datetime.now()}] === FULL DAILY CYCLE ===")
 
-        results = {}
-
-        # Strategy
+        # Step 1: Brain — strategy
         brain = BrainCrew()
-        results["strategy"] = str(brain.run_daily_strategy())
+        strategy = str(brain.run_daily_strategy())
 
-        # Planning
-        execution = ExecutionCrew()
-        results["plan"] = str(execution.plan_content(results["strategy"]))
-
-        # Amplification
-        twitter_wf = CineeTwitterWorkflow()
-        results["amplification"] = str(twitter_wf.amplify_ai_films(count=3))
-
-        # Hot take
-        results["hot_take"] = str(twitter_wf.share_hot_take())
-
-        # Engagement
-        results["engagement"] = str(twitter_wf.engage_creators(count=10))
-
-        # Reddit
-        reddit_wf = CineeRedditWorkflow()
-        results["reddit"] = str(reddit_wf.engage_discussions(count=5))
+        # Step 2: CineeCrew — all social media tasks
+        crew = CineeCrew()
+        results = crew.run_daily_cycle(strategy_brief=strategy)
+        results["strategy"] = strategy
 
         return {
             "success": True,
-            "results": results,
+            "results": {k: str(v) for k, v in results.items()},
             "timestamp": str(datetime.now()),
         }
     except Exception as e:

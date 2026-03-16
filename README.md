@@ -83,6 +83,8 @@ You need to run both servers concurrently.
 cd pipline-js/scripts
 # Make sure your venv is activated if you used one
 uvicorn api_server:app --port 8000 --reload
+# You might need to install crewai[google-genai]
+uv add crewai[google-genai]
 ```
 
 **Terminal 2: Node.js Backend & Orchestrator**
