@@ -1,4 +1,8 @@
-/** Pipeline service — orchestrates all pipeline operations via Python CrewAI. */
+/** Pipeline service — orchestrates all pipeline operations via Python CrewAI.
+ *
+ * All social media interaction now goes through OpenClaw browser automation.
+ * This service only triggers Python endpoints and stores results.
+ */
 import { callPythonService } from "../utils/pythonBridge.js";
 import { log } from "../utils/logger.js";
 import { initDb, getDailyStats } from "../tools/db.js";
@@ -9,12 +13,8 @@ export class PipelineService {
     initDb();
   }
 
-  /**
-   * Run daily strategy analysis (Brain Layer) + content planning (Execution Layer).
-   */
   async runDailyStrategy(): Promise<Record<string, unknown>> {
     log.info("=== DAILY STRATEGY ===");
-
     const result = await callPythonService("/run-strategy");
 
     if (result.success !== false) {
@@ -22,105 +22,75 @@ export class PipelineService {
         type: "daily_strategy",
       });
       await memoryTools.storeMemory("state:current_strategy", JSON.stringify(result));
-      log.info("✓ Strategy stored");
+      log.info("Strategy stored");
     }
-
     return result;
   }
 
-  /**
-   * Run AI film amplification (Cinee Twitter Workflow).
-   */
   async runAmplification(count = 3): Promise<Record<string, unknown>> {
-    log.info("=== AI FILM AMPLIFICATION ===");
-
+    log.info("=== AI FILM AMPLIFICATION (browser) ===");
     const result = await callPythonService("/run-amplification", { count });
 
     if (result.success !== false) {
       await memoryTools.storeContentHistory("amplification", JSON.stringify(result), null, {
         task: "ai_film_amplification",
       });
-      log.info("✓ Amplification complete");
+      log.info("Amplification complete");
     }
-
     return result;
   }
 
-  /**
-   * Generate and post CEO hot take.
-   */
   async runHotTake(): Promise<Record<string, unknown>> {
-    log.info("=== CEO HOT TAKE ===");
-
+    log.info("=== CEO HOT TAKE (browser) ===");
     const result = await callPythonService("/run-hot-take");
 
     if (result.success !== false) {
       await memoryTools.storeContentHistory("hot_take", JSON.stringify(result), null, {
         task: "ceo_hot_take",
       });
-      log.info("✓ Hot take posted");
+      log.info("Hot take posted");
     }
-
     return result;
   }
 
-  /**
-   * Engage with AI filmmakers on Twitter.
-   */
   async runEngagement(count = 10): Promise<Record<string, unknown>> {
-    log.info("=== TWITTER ENGAGEMENT ===");
-
+    log.info("=== TWITTER ENGAGEMENT (browser) ===");
     const result = await callPythonService("/run-engagement", { count });
 
     if (result.success !== false) {
       await memoryTools.storeEngagementPattern("daily_engagement", {
         task: "twitter_engagement",
       });
-      log.info("✓ Engagement round complete");
+      log.info("Engagement round complete");
     }
-
     return result;
   }
 
-  /**
-   * Check and reply to mentions.
-   */
   async runMentions(): Promise<Record<string, unknown>> {
-    log.info("=== MENTION CHECK ===");
-
+    log.info("=== MENTION CHECK (browser) ===");
     const result = await callPythonService("/run-mentions");
 
     if (result.success !== false) {
-      log.info("✓ Mentions processed");
+      log.info("Mentions processed");
     }
-
     return result;
   }
 
-  /**
-   * Participate in Reddit discussions.
-   */
-  async runReddit(count = 5): Promise<Record<string, unknown>> {
-    log.info("=== REDDIT DISCUSSION ===");
-
+  async runReddit(count = 3): Promise<Record<string, unknown>> {
+    log.info("=== REDDIT DISCUSSION (browser) ===");
     const result = await callPythonService("/run-reddit", { count });
 
     if (result.success !== false) {
       await memoryTools.storeContentHistory("reddit_engagement", JSON.stringify(result), null, {
         task: "reddit_discussion",
       });
-      log.info("✓ Reddit engagement complete");
+      log.info("Reddit engagement complete");
     }
-
     return result;
   }
 
-  /**
-   * Run the full daily pipeline cycle.
-   */
   async runFullDailyCycle(): Promise<Record<string, unknown>> {
     log.info("=== FULL DAILY CYCLE ===");
-
     const results: Record<string, unknown> = {};
 
     try {
@@ -140,9 +110,6 @@ export class PipelineService {
     return results;
   }
 
-  /**
-   * Get current pipeline status.
-   */
   getStatus(): Record<string, unknown> {
     return {
       stats: getDailyStats(),

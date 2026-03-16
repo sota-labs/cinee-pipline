@@ -1,202 +1,196 @@
-"""Cinee-specific tasks for AI filmmaker community engagement."""
+"""Goal-oriented tasks for Cinee's autonomous social media operations.
+
+Each task describes a HIGH-LEVEL GOAL. The agent + OpenClaw browser automation
+figures out the details (what to search, which posts to pick, how to interact).
+"""
 from crewai import Task
-from typing import List, Dict, Any
+from config.settings import settings
 
 
-def create_ai_film_curation_task() -> Task:
-    """Task for curating and amplifying great AI films.
-    
-    Strategy: Quote-tweet or screenshot great work with genuine commentary.
-    Creators notice when you amplify them - builds goodwill and first users.
-    """
+def create_amplification_goal(count: int = 3, strategy_context: str = "") -> Task:
+    """Goal: Find and amplify great AI films on Twitter."""
+    persona = settings.role.founder_name
     return Task(
-        description="""Find and curate the best AI films being shared on Twitter.
-        
-        Search for posts containing: Sora, Kling, Runway, AI film, AI video, generative video.
-        
-        For each great piece you find:
-        1. Evaluate the quality and creativity
-        2. Draft genuine, appreciative commentary (NOT salesy)
-        3. Suggest quote-tweet format that amplifies the creator
-        4. Never pitch Cinee directly - just celebrate the work
-        
-        Output: List of 3-5 AI films to amplify with suggested commentary.""",
-        expected_output="List of AI films to amplify with genuine commentary for quote-tweets",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Find {count} impressive AI films on Twitter and amplify them with
+genuine, personal commentary.
+
+Use the Twitter browser tool to accomplish this. The browser agent will handle
+navigation and interaction — you decide WHAT to amplify and WHAT to say.
+
+Guidelines for finding films:
+- Look for AI-generated films/videos made with Sora, Kling, Runway, or similar
+- Prioritise quality and creativity over follower count
+- Favour emerging creators over big accounts
+- Pick films posted in the last 24-48 hours
+
+Guidelines for your commentary (quote-tweet):
+- Be specific about what impresses you in the work
+- Sound like you personally typed this between meetings
+- Keep each quote-tweet under 280 characters
+- Never mention or pitch {settings.role.brand}
+
+{f'Today strategy focus: {strategy_context}' if strategy_context else ''}
+
+Before amplifying, check recent history to avoid the same creator twice in 48h.
+After completing, report exactly what you amplified and why you chose each one.""",
+        expected_output="Summary of AI films amplified: creator handles, content description, and your commentary for each",
         agent=None,
     )
 
 
-def create_hot_take_task() -> Task:
-    """Task for generating hot takes on AI film industry problems.
-    
-    Strategy: Position Cinee as the solution without being salesy.
-    Topics: YouTube algorithm, creator revenue, hosting challenges.
-    """
+def create_hot_take_goal(strategy_context: str = "") -> Task:
+    """Goal: Craft and post a hot take about the AI film industry."""
+    persona = settings.role.founder_name
     return Task(
-        description="""Generate a thought-provoking hot take on the AI film space.
-        
-        Choose from these angles (or find your own):
-        - "Why YouTube's algorithm buries AI content"
-        - "The creator revenue problem nobody talks about"
-        - "Where AI filmmakers are actually hosting their work (and why it matters)"
-        - "The monetization gap for AI-generated content"
-        - "Why AI filmmakers need their own platform"
-        
-        Requirements:
-        1. Be bold but not controversial for controversy's sake
-        2. Position the problem clearly
-        3. Hint at solutions without naming Cinee directly
-        4. Spark meaningful discussion
-        5. Stay under 280 characters
-        
-        Output: Draft hot take tweet with reasoning.""",
-        expected_output="Draft hot take tweet with supporting reasoning",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Write and post ONE bold hot take about the AI film industry.
+
+Think about problems you see firsthand as a builder in this space:
+- YouTube's algorithm burying AI content
+- Creator revenue and monetisation gaps
+- Platform limitations for AI filmmakers
+- The gap between AI generation tools and distribution
+- Why AI filmmakers need dedicated infrastructure
+
+Your take should:
+- Come from genuine founder frustration, not manufactured outrage
+- Spark meaningful discussion in the replies
+- Be bold but not clickbait
+- Stay under 280 characters
+- Hint at the problem without naming {settings.role.brand}
+
+{f'Today strategy focus: {strategy_context}' if strategy_context else ''}
+
+Check recent history to make sure you haven't posted a similar angle recently.
+Use the Twitter browser tool to post the tweet.
+Report the exact text you posted.""",
+        expected_output="The exact hot take text posted on Twitter",
         agent=None,
     )
 
 
-def create_cinee_engagement_task(keywords: List[str] = None) -> Task:
-    """Task for engaging with AI filmmakers on Twitter.
-    
-    Strategy: Find people posting AI films, comment genuinely.
-    Don't pitch - just be present. They'll check profile and join waitlist.
-    """
+def create_engagement_goal(count: int = 10, strategy_context: str = "") -> Task:
+    """Goal: Find and engage genuinely with AI filmmakers on Twitter."""
+    persona = settings.role.founder_name
+    keywords = ", ".join(settings.role.engagement_keywords)
     return Task(
-        description=f"""Find and engage with AI filmmakers posting their work.
-        
-        Search for posts with these keywords: {keywords or ['Sora', 'Kling', 'Runway', 'AI film']}
-        
-        For each creator you find:
-        1. Look at their recent AI film content
-        2. Draft genuine, appreciative comment about their work
-        3. NO pitching Cinee - just be present and authentic
-        4. Ask thoughtful questions or share observations
-        5. Build genuine connection
-        
-        Output: List of 5-10 engagement opportunities with suggested replies.""",
-        expected_output="List of engagement opportunities with authentic reply suggestions",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Find {count} AI filmmakers on Twitter and engage genuinely with
+their work. Use the Twitter browser tool — it will figure out how to search
+and navigate.
+
+What to look for: creators posting AI films or discussing AI filmmaking.
+Relevant topics include: {keywords}
+
+How to engage:
+- Reply with genuine, specific appreciation for their work
+- Ask thoughtful questions about their creative process
+- Share observations as a fellow AI film enthusiast
+- Vary your responses — never repeat the same phrases
+- Focus on emerging creators, not just big accounts
+
+IMPORTANT:
+- Do NOT pitch anything. Just be present and authentic.
+- Do NOT use generic compliments like "Great work!" — be specific.
+- Sound like a busy CEO who genuinely stopped scrolling because this was good.
+
+{f'Today strategy focus: {strategy_context}' if strategy_context else ''}
+
+Report who you engaged with, what their content was about, and what you said.""",
+        expected_output="List of creators engaged: their handle, content topic, and your reply for each",
         agent=None,
     )
 
 
-def create_reddit_discussion_task() -> Task:
-    """Task for starting discussions on Reddit.
-    
-    Strategy: Don't promote directly. Start discussions that naturally lead to Cinee.
-    """
+def create_mentions_goal() -> Task:
+    """Goal: Check and respond to Twitter mentions."""
+    persona = settings.role.founder_name
     return Task(
-        description="""Create a discussion post for AI film subreddits.
-        
-        Target subreddits: r/aivideo, r/sora, r/runwayml, r/StableDiffusion, r/filmmaking
-        
-        Choose a discussion angle:
-        - "Where are you guys actually hosting your AI films?"
-        - "How are AI filmmakers monetizing their work?"
-        - "What's the biggest challenge for AI content creators right now?"
-        - "YouTube vs dedicated platforms for AI films - thoughts?"
-        
-        Requirements:
-        1. Genuine question, not disguised promotion
-        2. Let conversation develop naturally
-        3. Can mention Cinee only if someone asks about alternatives
-        4. Be helpful and present in the discussion
-        
-        Output: Draft Reddit post with title and body.""",
-        expected_output="Draft Reddit discussion post with title and body",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Check your Twitter notifications for new mentions and respond
+authentically to each one.
+
+Use the Twitter browser tool to go to notifications and handle them.
+
+Response style by context:
+- To creators sharing work: genuine appreciation and curiosity
+- To questions about AI filmmaking: direct, helpful answers
+- To criticism: thoughtful, non-defensive, curious
+- To supporters: warm gratitude without being over-the-top
+
+Sound like a busy CEO who took 30 seconds to genuinely reply on their phone.
+Never use corporate language like "Thank you for your feedback."
+
+Report what mentions you found and how you responded to each.""",
+        expected_output="Summary of mentions handled: who mentioned you, context, and your response",
         agent=None,
     )
 
 
-def create_reddit_engagement_task() -> Task:
-    """Task for engaging in Reddit discussions.
-    
-    Strategy: Find relevant posts, participate authentically.
-    """
+def create_reddit_goal(count: int = 3, strategy_context: str = "") -> Task:
+    """Goal: Participate in Reddit discussions about AI filmmaking."""
+    persona = settings.role.founder_name
+    communities = ", ".join(settings.role.communities)
     return Task(
-        description="""Find and engage in relevant Reddit discussions.
-        
-        Look for posts asking about:
-        - Where to host AI films
-        - Monetization questions
-        - Platform comparisons
-        - Creator challenges
-        
-        For each opportunity:
-        1. Read the full post and comments
-        2. Draft helpful, authentic reply
-        3. Only mention Cinee if it naturally fits the conversation
-        4. Focus on being helpful, not promotional
-        
-        Output: List of engagement opportunities with suggested replies.""",
-        expected_output="List of Reddit engagement opportunities with suggested replies",
+        description=f"""You are {persona}, {settings.role.name}.
+
+YOUR GOAL: Find and participate in {count} relevant Reddit discussions.
+Target communities: {communities}
+
+Use the Reddit browser tool — it will navigate the subreddits for you.
+
+What to look for:
+- Posts asking about hosting or distributing AI films
+- Monetisation discussions for AI content creators
+- Platform comparison threads
+- Creator challenges and frustrations
+- General AI filmmaking community conversations
+
+How to participate:
+- Share your perspective as someone building in this space
+- Be genuinely helpful — answer questions with real substance
+- Only mention {settings.role.brand} if someone specifically asks about alternatives
+- If no good existing discussions, start one:
+  "Where are you guys actually hosting your AI films?"
+  "How are AI filmmakers monetising their work?"
+
+CRITICAL: Reddit HATES promotion. Be a community member first, always.
+
+{f'Today strategy focus: {strategy_context}' if strategy_context else ''}
+
+Report which discussions you joined and what you contributed.""",
+        expected_output="Summary of Reddit discussions: subreddit, topic, and your contribution for each",
         agent=None,
     )
 
 
-def create_daily_content_mix_task() -> Task:
-    """Task for planning daily content mix for Twitter.
-    
-    Strategy: Mix of curation, hot takes, and engagement.
-    """
+def create_daily_content_plan_goal(strategy_brief: str) -> Task:
+    """Goal: Plan today's content mix across Twitter and Reddit."""
+    persona = settings.role.founder_name
     return Task(
-        description="""Plan today's Twitter content mix for Cinee.
-        
-        Create a balanced schedule with:
-        1. AI Film Curation (2-3 posts): Amplify great work from creators
-        2. Hot Take (1 post): Industry insight or problem discussion
-        3. Engagement Replies (5-10): Genuine comments on AI filmmaker posts
-        
-        For each item:
-        - Specify the type and timing
-        - Provide draft content or search criteria
-        - Note which creators/topics to focus on
-        
-        Output: Content calendar for the day with specific posts and timing.""",
-        expected_output="Daily content calendar with post types, drafts, and timing",
-        agent=None,
-    )
+        description=f"""You are {persona}, {settings.role.name}.
 
+Based on today's strategy brief, plan the content activities for the day.
 
-def create_creator_outreach_task() -> Task:
-    """Task for identifying creators to build relationships with."""
-    return Task(
-        description="""Identify AI filmmakers to build ongoing relationships with.
-        
-        Search for creators who:
-        - Regularly post AI films (Sora, Kling, Runway)
-        - Have engaged audiences
-        - Are active in the community
-        - Could benefit from Cinee's platform
-        
-        For each creator:
-        1. Profile their content style and audience
-        2. Note their current hosting/monetization approach
-        3. Suggest authentic engagement approach
-        4. Plan ongoing relationship building
-        
-        Output: List of 10 creators with engagement strategies.""",
-        expected_output="List of target creators with engagement strategies",
-        agent=None,
-    )
+STRATEGY BRIEF:
+{strategy_brief}
 
+Create a concrete plan covering:
+1. AI Film Amplification (2-3 quote-tweets): what types of films to seek out
+2. Hot Take (1 tweet): which industry problem to address today
+3. Engagement (5-10 replies): focus areas for creator engagement
+4. Reddit (2-3 discussions): which communities and topics to engage with
 
-def create_waitlist_cta_task(context: str) -> Task:
-    """Task for crafting subtle waitlist CTAs.
-    
-    Strategy: Only use when context naturally allows - never pushy.
-    """
-    return Task(
-        description=f"""Craft a subtle Cinee waitlist mention.
-        
-        Context: {context}
-        
-        Requirements:
-        1. Only mention if it genuinely helps the conversation
-        2. Focus on the problem Cinee solves, not features
-        3. Keep it brief and natural
-        4. Link: cinee.com (in bio, or naturally in reply)
-        
-        Output: Draft response with subtle CTA.""",
-        expected_output="Draft response with subtle waitlist CTA",
+Consider:
+- What topics are trending in AI filmmaking right now
+- What you've posted recently (avoid repetition)
+- Balance between amplification, opinions, and engagement
+- Time of day and optimal posting windows""",
+        expected_output="Daily content plan with specific actions, focus areas, and timing",
         agent=None,
     )

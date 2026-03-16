@@ -1,9 +1,9 @@
-/** Tools index — re-exports all tools for convenient imports. */
+/** Tools index — re-exports remaining tools (memory, content, DB).
+ *
+ * Twitter/Reddit/Cinee API tools removed — OpenClaw browser handles social media.
+ */
 
-export * as twitterTools from "./twitterTools.js";
 export * as contentTools from "./contentTools.js";
 export * as memoryTools from "./memoryTools.js";
-export * as redditTools from "./redditTools.js";
-export * as cineeTools from "./cineeTools.js";
 export * from "./db.js";
 export { RateLimiter, rateLimiter } from "./rateLimiter.js";
