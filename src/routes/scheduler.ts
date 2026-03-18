@@ -13,6 +13,15 @@ schedulerRouter.post("/setup", (req: Request, res: Response) => {
   }
 });
 
+schedulerRouter.post("/setup-isolated", (_req: Request, res: Response) => {
+  try {
+    const results = schedulerService.registerIsolatedJobs();
+    res.json({ message: "Isolated cron jobs registered", results });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 schedulerRouter.get("/jobs", (_req: Request, res: Response) => {
   try {
     const jobs = schedulerService.listJobs();
