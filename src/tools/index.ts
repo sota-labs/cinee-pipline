@@ -1,9 +1,8 @@
-/** Tools index — re-exports remaining tools (memory, content, DB).
+/** Tools index — memory and content utilities.
  *
- * Twitter/Reddit/Cinee API tools removed — OpenClaw browser handles social media.
+ * Database operations are now in src/db/ (Mongoose models).
+ * Twitter/Reddit social tools are handled by OpenClaw browser automation.
  */
-
 export * as contentTools from "./contentTools.js";
 export * as memoryTools from "./memoryTools.js";
-export * from "./db.js";
 export { RateLimiter, rateLimiter } from "./rateLimiter.js";

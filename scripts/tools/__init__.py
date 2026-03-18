@@ -1,6 +1,6 @@
 """Python tools — OpenClaw browser automation + Node.js memory/DB utilities."""
 
-# Browser automation (replaces direct Twitter/Reddit API tools)
+# Browser automation (Twitter & Reddit via OpenClaw)
 from .openclaw_browser import (
     twitter_browser_task,
     reddit_browser_task,
@@ -27,16 +27,33 @@ from .content_tools import (
     suggest_hashtags,
 )
 
-# Database (SQLite, via Node.js)
+# Database — MongoDB via Node.js REST endpoints
 from .db_tools import (
-    get_daily_stats,
+    # Posts
+    create_draft_post,
     get_recent_posts,
-    save_post,
+    update_post,
     is_duplicate_content,
+    # Interactions
+    save_interaction,
+    get_pending_interactions,
+    mark_interaction_processed,
+    # Replies
+    save_reply,
+    get_replies_for_interaction,
+    # Curation sources
+    save_curation_source,
+    get_unused_curation_sources,
+    mark_curation_used,
+    # Persona knowledge
+    get_persona_knowledge,
+    upsert_persona_knowledge,
+    # Stats
+    get_daily_stats,
 )
 
 __all__ = [
-    # Browser automation
+    # Browser
     "twitter_browser_task",
     "reddit_browser_task",
     # Memory
@@ -54,9 +71,25 @@ __all__ = [
     "analyze_sentiment",
     "optimize_posting_time",
     "suggest_hashtags",
-    # DB
-    "get_daily_stats",
+    # DB — Posts
+    "create_draft_post",
     "get_recent_posts",
-    "save_post",
+    "update_post",
     "is_duplicate_content",
+    # DB — Interactions
+    "save_interaction",
+    "get_pending_interactions",
+    "mark_interaction_processed",
+    # DB — Replies
+    "save_reply",
+    "get_replies_for_interaction",
+    # DB — Curation
+    "save_curation_source",
+    "get_unused_curation_sources",
+    "mark_curation_used",
+    # DB — Persona
+    "get_persona_knowledge",
+    "upsert_persona_knowledge",
+    # DB — Stats
+    "get_daily_stats",
 ]

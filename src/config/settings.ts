@@ -28,8 +28,8 @@ export interface RoleConfig {
 export interface Settings {
   llm: LLMConfig;
   role: RoleConfig;
+  mongoUri: string;
   redisUrl: string;
-  sqliteDbPath: string;
   anthropicApiKey: string;
   googleApiKey: string;
   openaiApiKey: string;
@@ -91,8 +91,8 @@ export const settings: Settings = {
       "AI filmmaker", "AI content creator",
     ],
   },
+  mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/cinee_pipeline",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
-  sqliteDbPath: process.env.SQLITE_DB_PATH || "pipeline.db",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   googleApiKey: process.env.GOOGLE_API_KEY || "",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
