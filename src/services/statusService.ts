@@ -2,17 +2,17 @@
 import { checkPythonServiceHealth } from "../utils/pythonBridge.js";
 import { rateLimiter } from "../tools/rateLimiter.js";
 import { settings } from "../config/settings.js";
-import { Post, Interaction, CurationSource } from "../db/index.js";
+import { Post, Reply, CurationSource } from "../db/index.js";
 
 async function getQuickStats(): Promise<Record<string, number>> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const [posts_today, pending_interactions, curation_unused] = await Promise.all([
+  const [posts_today, replies_draft, curation_unused] = await Promise.all([
     Post.countDocuments({ created_at: { $gte: today } }),
-    Interaction.countDocuments({ processed: false }),
+    Reply.countDocuments({ status: "draft" }),
     CurationSource.countDocuments({ used: false }),
   ]);
-  return { posts_today, pending_interactions, curation_unused };
+  return { posts_today, replies_draft, curation_unused };
 }
 
 export async function getSystemStatus(): Promise<Record<string, unknown>> {

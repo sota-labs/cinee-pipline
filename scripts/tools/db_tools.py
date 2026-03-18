@@ -1,11 +1,6 @@
-"""Database tools — CrewAI wrappers for all 5 MongoDB collections.
+"""Database tools — CrewAI wrappers for MongoDB collections.
 
-Workflow:
-  1. Crawl & Curate  → save_curation_source
-  2. Generate        → create_draft_post → update_post (status=draft→posted)
-  3. Publish         → update_post (set platform_id, status=posted)
-  4. Listen          → save_interaction
-  5. React           → get_pending_interactions → save_reply
+Collections: Posts, Replies, CurationSources, PersonaKnowledge
 """
 from typing import Any, Dict, List, Optional
 from crewai.tools import tool
@@ -90,82 +85,70 @@ def is_duplicate_content(content: str, hours: int = 48) -> str:
     ))
 
 
-# ── Interactions ──────────────────────────────────────────────────────────────
-
-@tool("Save incoming interaction")
-def save_interaction(
-    platform_id: str,
-    author_handle: str,
-    content: str,
-    platform: str = "twitter",
-    category: str = "neutral",
-    context_summary: Optional[str] = None,
-) -> str:
-    """Save an incoming mention/comment for the CEO to react to. Idempotent by platform_id."""
-    data: Dict[str, Any] = {
-        "platform_id": platform_id,
-        "author_handle": author_handle,
-        "content": content,
-        "platform": platform,
-        "category": category,
-        "processed": False,
-    }
-    if context_summary:
-        data["context_summary"] = context_summary
-    return str(call_nodejs_tool("/api/tools/db/interactions", data=data))
-
-
-@tool("Get pending interactions")
-def get_pending_interactions(platform: Optional[str] = None, limit: int = 10) -> str:
-    """Get unprocessed interactions (mentions/comments) the CEO needs to reply to."""
-    params: Dict[str, Any] = {"processed": "false", "limit": limit}
-    if platform:
-        params["platform"] = platform
-    return str(call_nodejs_tool("/api/tools/db/interactions", method="GET", params=params))
-
-
-@tool("Mark interaction as processed")
-def mark_interaction_processed(interaction_id: str, context_summary: Optional[str] = None) -> str:
-    """Mark an interaction as handled after CEO has replied."""
-    data: Dict[str, Any] = {}
-    if context_summary:
-        data["context_summary"] = context_summary
-    return str(call_nodejs_tool(
-        f"/api/tools/db/interactions/{interaction_id}/processed",
-        method="PATCH",
-        data=data,
-    ))
-
-
 # ── Replies ───────────────────────────────────────────────────────────────────
 
 @tool("Save reply")
 def save_reply(
-    interaction_id: str,
     reply_content: str,
+    platform: str = "x",
     tone_used: str = "supportive",
+    status: str = "resolved",
     thread_id: Optional[str] = None,
-    platform_id: Optional[str] = None,
+    url: Optional[str] = None,
 ) -> str:
-    """Save the CEO's reply to an interaction after posting."""
+    """Save the CEO's reply. Default status is 'resolved'.
+    
+    status options: draft | rejected | resolved | replied
+    platform options: x | reddit
+    tone_used options: supportive | visionary | challenging | curious | grateful
+    """
     data: Dict[str, Any] = {
-        "interaction_id": interaction_id,
         "reply_content": reply_content,
+        "platform": platform,
         "tone_used": tone_used,
+        "status": status,
     }
     if thread_id:
         data["thread_id"] = thread_id
-    if platform_id:
-        data["platform_id"] = platform_id
+    if url:
+        data["url"] = url
     return str(call_nodejs_tool("/api/tools/db/replies", data=data))
 
 
-@tool("Get replies for interaction")
-def get_replies_for_interaction(interaction_id: str) -> str:
-    """Get all replies the CEO made to a specific interaction."""
-    return str(call_nodejs_tool(
-        f"/api/tools/db/replies/{interaction_id}", method="GET"
-    ))
+@tool("Get replies")
+def get_replies(
+    status: Optional[str] = None,
+    platform: Optional[str] = None,
+    limit: int = 20,
+) -> str:
+    """List replies. Filter by status (draft/resolved/replied/rejected) and platform."""
+    params: Dict[str, Any] = {"limit": limit}
+    if status:
+        params["status"] = status
+    if platform:
+        params["platform"] = platform
+    return str(call_nodejs_tool("/api/tools/db/replies", method="GET", params=params))
+
+
+@tool("Update reply status")
+def update_reply(
+    reply_id: str,
+    status: Optional[str] = None,
+    url: Optional[str] = None,
+) -> str:
+    """Update a reply — e.g. change status from draft to replied after posting."""
+    data: Dict[str, Any] = {}
+    if status:
+        data["status"] = status
+    if url:
+        data["url"] = url
+    return str(call_nodejs_tool(f"/api/tools/db/replies/{reply_id}", method="PATCH", data=data))
+
+
+@tool("Delete reply")
+def delete_reply(reply_id: str) -> str:
+    """Delete a reply (e.g. after rejection)."""
+    return str(call_nodejs_tool(f"/api/tools/db/replies/{reply_id}", method="DELETE", data={}))
 
 
 # ── Curation Sources ──────────────────────────────────────────────────────────

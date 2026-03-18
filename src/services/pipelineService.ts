@@ -2,19 +2,18 @@
 import { callPythonService } from "../utils/pythonBridge.js";
 import { log } from "../utils/logger.js";
 import * as memoryTools from "../tools/memoryTools.js";
-import { Post, Interaction, Reply, CurationSource } from "../db/index.js";
+import { Post, Reply, CurationSource } from "../db/index.js";
 
 async function getDailyStats(): Promise<Record<string, number>> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const [posts, posted, pending_interactions, replies, curation_unused] = await Promise.all([
+  const [posts, posted, replies, curation_unused] = await Promise.all([
     Post.countDocuments({ created_at: { $gte: today } }),
     Post.countDocuments({ status: "posted", created_at: { $gte: today } }),
-    Interaction.countDocuments({ processed: false }),
     Reply.countDocuments({ created_at: { $gte: today } }),
     CurationSource.countDocuments({ used: false }),
   ]);
-  return { posts_today: posts, posts_posted: posted, pending_interactions, replies_today: replies, curation_unused };
+  return { posts_today: posts, posts_posted: posted, replies_today: replies, curation_unused };
 }
 
 export class PipelineService {
