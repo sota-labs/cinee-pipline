@@ -133,7 +133,6 @@ toolsRouter.get("/db/posts/duplicate-check", async (req: Request, res: Response)
 
 /** Create a reply (default status: resolved) */
 toolsRouter.post("/db/replies", async (req: Request, res: Response) => {
-  console.log("POST /db/replies req.body", req.body);
   try {
     const items = (Array.isArray(req.body) ? req.body : [req.body]).map((item) => ({
       ...item,
@@ -198,7 +197,6 @@ toolsRouter.get("/db/replies/:id", async (req: Request, res: Response) => {
 
 /** Update reply — e.g. change status from resolved → replied */
 toolsRouter.patch("/db/replies/:id", async (req: Request, res: Response) => {
-  console.log("PATCH /db/replies/:id req.body", req.body);
   try {
     const reply = await Reply.findById(req.params.id as string);
     if (!reply) return res.status(404).json({ success: false, error: "Reply not found" });
