@@ -1,15 +1,6 @@
-/** Configuration settings for the pipeline.
- *
- * Twitter/Reddit API configs removed — OpenClaw browser handles social media.
- */
+/** Configuration settings. */
 import dotenv from "dotenv";
 dotenv.config();
-
-export interface LLMConfig {
-  brainModel: string;
-  executionModel: string;
-  communityModel: string;
-}
 
 export interface RoleConfig {
   name: string;
@@ -20,29 +11,19 @@ export interface RoleConfig {
   persona: string;
   tone: string;
   topics: string[];
-  personalTopics: string[];
   communities: string[];
   engagementKeywords: string[];
 }
 
 export interface Settings {
-  llm: LLMConfig;
   role: RoleConfig;
   mongoUri: string;
   redisUrl: string;
-  anthropicApiKey: string;
-  googleApiKey: string;
-  openaiApiKey: string;
-  pythonServiceUrl: string;
+  publicApiUrl: string;
   port: number;
 }
 
 export const settings: Settings = {
-  llm: {
-    brainModel: "claude-3-opus-20240229",
-    executionModel: "gemini-2.5-pro",
-    communityModel: "llama-3.1-70b-instruct",
-  },
   role: {
     name: "CEO of Cinee",
     brand: "Cinee",
@@ -76,13 +57,6 @@ export const settings: Settings = {
       "creator monetization", "platform building", "founder life",
       "AI film hosting", "YouTube algorithm challenges", "Stable Diffusion video",
     ],
-    personalTopics: [
-      "lessons from building a startup",
-      "conversations with AI filmmakers",
-      "product decisions and why we made them",
-      "the future I see for AI cinema",
-      "what I learned this week",
-    ],
     communities: [
       "r/aivideo", "r/sora", "r/runwayml", "r/StableDiffusion", "r/filmmaking",
     ],
@@ -93,9 +67,6 @@ export const settings: Settings = {
   },
   mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/cinee_pipeline",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
-  googleApiKey: process.env.GOOGLE_API_KEY || "",
-  openaiApiKey: process.env.OPENAI_API_KEY || "",
-  pythonServiceUrl: process.env.PYTHON_SERVICE_URL || "http://localhost:8000",
+  publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
 };

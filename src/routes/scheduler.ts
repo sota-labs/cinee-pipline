@@ -4,10 +4,10 @@ import * as schedulerService from "../services/schedulerService.js";
 
 export const schedulerRouter = Router();
 
-schedulerRouter.post("/setup", (req: Request, res: Response) => {
+schedulerRouter.post("/setup", (_req: Request, res: Response) => {
   try {
-    const results = schedulerService.registerAllJobs();
-    res.json({ message: "Jobs registered", results });
+    const results = schedulerService.registerIsolatedJobs();
+    res.json({ message: "Cron jobs registered", results });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
