@@ -22,27 +22,37 @@ type CronJob = SystemEventJob | IsolatedMessageJob;
 
 // ── Prompt definitions (kept as template literals for readability) ───────────
 
-const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser. \
-Find all notification items that are comments or replies from the last 24 hours. \
-For each comment, extract its URL and the comment text content. \
-Then send a single POST request to https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies \
-with a JSON body that is an array of reply objects. Each object must have: \
-reply_content (the comment text), \
-tone_used ("supportive"), \
-status ("draft"), \
-platform ("x"), \
-url (the full URL of the comment on X), \
-created_at (current ISO timestamp), \
-updated_at (current ISO timestamp). \
-Do NOT skip any comment from the last 24 hours. Scroll the notifications page to load more if needed.`;
+const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser. 
+Find all notification items that are comments or replies from the last 24 hours. 
+Scroll the notifications page as needed to ensure no items from the last 24 hours are missed.
 
-const REPLY_PROMPT = `Step 1: Call GET https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies to fetch the list of replies. \
-Step 2: For each reply in the response that has status "draft" or "resolved": \
-  a) Open the reply "url" field in the browser. \
-  b) Post a reply on X using the "reply_content" field as the reply text. \
-  c) Wait 5 seconds before processing the next reply. \
-  d) After successfully replying, call PATCH https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies \
-     with JSON body: { "_id": "<the reply _id>", "status": "replied" }. \
+For each notification found:
+1. Extract the 'reply_content' (text) and 'url'.
+2. Evaluate the content of the comment:
+   - If the comment is meaningful, constructive, or part of a genuine discussion, set status = "resolved".
+   - If the comment is spam, a bot-like promotion, irrelevant gibberish, or just "trash" content, set status = "rejected".
+3. Prepare a JSON object for each reply with:
+   - reply_content: (the comment text)
+   - tone_used: "supportive"
+   - status: (either "resolved" or "rejected" based on your evaluation)
+   - platform: "x"
+   - url: (the full URL of the comment)
+   - created_at: (current ISO timestamp)
+   - updated_at: (current ISO timestamp)
+
+After processing all items, send a single POST request to https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies with the final array of these objects.`;
+
+const REPLY_PROMPT = `Step 1: Call GET https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies to fetch the list of replies. 
+Step 2: For each reply in the response that has status "draft" or "resolved": 
+  a) Open the reply "url" field in the browser. 
+  b) Read the "reply_content". Compose a new response in the tone of a CEO (professional, visionary, and decisive).
+     - MANDATORY: The response must be strictly UNDER 300 characters.
+     - Keep it concise, high-impact, and relevant to the original content.
+     - Avoid fluff or generic "bot" phrases.
+     - Post this CEO-style response on X. 
+  c) Wait 5 seconds before processing the next reply. 
+  d) After successfully replying, call PATCH https://takako-braw-xenia.ngrok-free.dev/api/tools/db/replies 
+     with JSON body: { "_id": "<the reply _id>", "status": "replied" }. 
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
 // ── Job definitions ─────────────────────────────────────────────────────────
