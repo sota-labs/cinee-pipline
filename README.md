@@ -1,123 +1,163 @@
-# Cinee Pipeline JS (Hybrid Architecture)
+# Cinee Pipeline
 
-This is the social media automation pipeline for Cinee, migrated from Python to a hybrid Node.js/TypeScript + Python architecture. 
-
-It preserves the powerful 3-layer CrewAI architecture (Brain, Execution, Community) in Python, but moves all tool implementations, database interactions, API integrations (Twitter, Reddit), configurations, and scheduling to a robust Node.js/TypeScript backend.
+CEO automation pipeline for [cinee.com](https://cinee.com). Uses **OpenClaw** browser automation to run the founder's social media presence on X (Twitter) — researching AI filmmaking trends, posting hot takes, and replying to mentions — all autonomously.
 
 ## Architecture
 
 ```
-pipline-js/
-├── src/                              ← Node.js/TypeScript Backend
-│   ├── config/                       ← Settings, environment variables
-│   ├── tools/                        ← All external tools (Twitter, Reddit, Redis, SQLite)
-│   ├── services/                     ← Orchestration & Scheduler
-│   ├── routes/                       ← REST API routes
-│   └── app.ts / index.ts             ← Express server entry point
-│
-├── scripts/                          ← Python CrewAI Service
-│   ├── agents/                       ← CrewAI agent definitions
-│   ├── crews/                        ← Crew orchestration logic
-│   ├── tasks/                        ← Task definitions
-│   └── api_server.py                 ← FastAPI server exposing CrewAI endpoints
+┌─────────────────────────────────────────────────┐
+│               OpenClaw (Browser Agent)          │
+│  Runs isolated cron jobs: search, post, reply   │
+│  on x.com autonomously via browser automation   │
+└──────────────────────┬──────────────────────────┘
+                       │ REST calls
+┌──────────────────────▼──────────────────────────┐
+│            Node.js / Express (port 3000)        │
+│                                                 │
+│  /api/tools/db/posts       ← Post CRUD          │
+│  /api/tools/db/replies     ← Reply CRUD          │
+│  /api/tools/db/curation    ← AI film sources     │
+│  /api/tools/db/persona     ← CEO stances         │
+│  /api/tools/memory/*       ← Redis memory        │
+│  /api/scheduler/*          ← Cron management     │
+└──────────────────────┬──────────────────────────┘
+                       │
+              ┌────────▼────────┐
+              │    MongoDB      │
+              │  + Redis cache  │
+              └─────────────────┘
 ```
 
 **How it works:**
-1. The **Node.js Express Server** (`npm run dev`) runs on port `3000`. It handles all database connections (SQLite), memory cache (Redis), and external APIs (Twitter API v2, Snoowrap).
-2. The **Python FastAPI Server** (`api_server.py`) runs on port `8000`. It runs the CrewAI agents. 
-3. When the Node.js scheduler triggers a job (e.g., Daily Strategy), it calls the Python FastAPI endpoint.
-4. When Python CrewAI agents need to perform actions (e.g., Post a tweet, search memory), they use HTTP tools to call back to the Node.js API endpoints (`/api/tools/*`).
+
+1. `npx tsx src/scripts/setupCronJobs.ts` registers isolated cron jobs in OpenClaw.
+2. OpenClaw runs each job on schedule — it opens a browser, executes the prompt (search X, compose a post, click "Post", etc.), then calls back to the Node.js REST API to persist results.
+3. The Node.js server is a thin data layer: MongoDB for structured data, Redis for short-term memory. No AI logic lives here.
+
+## Project Structure
+
+```
+src/
+├── index.ts                       ← Entry point (MongoDB connect + Express)
+├── app.ts                         ← Route mounting
+├── config/settings.ts             ← Env-based configuration
+├── db/
+│   ├── connection.ts              ← Mongoose connection
+│   └── models/
+│       ├── Post.ts                ← CEO's posts (draft → posted)
+│       ├── Reply.ts               ← Replies to mentions (draft → resolved → replied)
+│       ├── CurationSource.ts      ← AI films found for amplification
+│       └── PersonaKnowledge.ts    ← CEO stances on key topics
+├── routes/
+│   ├── tools.ts                   ← CRUD for all collections + memory + content
+│   ├── scheduler.ts               ← Register/list/remove OpenClaw cron jobs
+│   └── status.ts                  ← Health check + daily stats
+├── scripts/
+│   └── setupCronJobs.ts           ← One-time: register cron jobs in OpenClaw
+├── services/
+│   ├── schedulerService.ts        ← OpenClaw cron job definitions + prompts
+│   └── statusService.ts           ← Quick stats from MongoDB
+├── tools/
+│   ├── memoryTools.ts             ← Redis key-value memory
+│   ├── contentTools.ts            ← Character count, formatting, sentiment
+│   └── rateLimiter.ts             ← Rate limiting
+└── utils/
+    └── logger.ts
+```
 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
-- Python 3.10+
-- Redis running on localhost:6379 (or configure `REDIS_URL`)
+- MongoDB running locally (or provide `MONGO_URI`)
+- Redis running locally (or provide `REDIS_URL`)
+- [OpenClaw CLI](https://docs.openclaw.ai) installed and authenticated
 
-### 1. Environment Setup
-
-```bash
-# Clone or navigate to the directory
-cd pipline-js
-
-# Copy the environment file and fill in API keys
-cp .env.example .env
-```
-
-You will need keys for:
-- LLM Providers (OpenAI, Anthropic, Google)
-- Twitter API v2 (App Key, App Secret, Access Token, Access Secret, Bearer Token)
-- Reddit API (Client ID, Client Secret, Username, Password)
-
-### 2. Node.js Setup
+### 1. Install & Configure
 
 ```bash
-# Install dependencies
 npm install
-
-# (Optional) Verify TypeScript compiles cleanly
-npm run typecheck
+cp .env.example .env
+# Edit .env with your values
 ```
 
-### 3. Python Setup
+Required environment variables:
+
+| Variable | Description |
+|---|---|
+| `MONGO_URI` | MongoDB connection string |
+| `REDIS_URL` | Redis connection string |
+| `PUBLIC_API_URL` | Public URL of this server (used in OpenClaw prompts) |
+| `FOUNDER_NAME` | CEO name for persona |
+
+### 2. Start the Server
 
 ```bash
-# Navigate to the Python service directory
-cd scripts
-
-# (Optional but recommended) Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install requirements
-pip install -r requirements.txt
-```
-
-## 🏃‍♂️ Running the Pipeline
-
-You need to run both servers concurrently.
-
-**Terminal 1: Python CrewAI Service**
-```bash
-cd pipline-js/scripts
-# Make sure your venv is activated if you used one
-uvicorn api_server:app --port 8000 --reload
-# You might need to install crewai[google-genai]
-uv add crewai[google-genai]
-```
-
-**Terminal 2: Node.js Backend & Orchestrator**
-```bash
-cd pipline-js
 npm run dev
 ```
 
-## Scheduling
+### 3. Register Cron Jobs
 
-### OpenClaw Integration
-The pipeline is designed to be fully integrated with [OpenClaw](https://docs.openclaw.ai/cli/cron). The Node.js scheduler API (`/api/scheduler/setup`) registers jobs into the OpenClaw Gateway using `openclaw cron add`. 
-
-OpenClaw's cron emits specific **system events** when a schedule triggers. To execute the typescript jobs below, you need an OpenClaw Agent configured to listen to these system events and run the corresponding `npx tsx` local commands.
-
-If you aren't using an OpenClaw Agent webhook/hook, you can execute these files via standard Linux `cron`.
-
-### Manual / Standard Cron Execution
-The pipeline uses these standalone TypeScript scripts intended to be triggered locally:
-
-- `src/scripts/runPlanning.ts` — 9:00 AM Daily
-- `src/scripts/runHotTake.ts` — 2:00 PM Daily 
-- `src/scripts/runAmplification.ts` — Every 3 hours
-- `src/scripts/runEngagement.ts` — Every 2 hours
-- `src/scripts/runReddit.ts` — Every 4 hours
-- `src/scripts/runMentions.ts` — Every 30 minutes
-
-You can run these scripts manually for testing:
 ```bash
-npx tsx src/scripts/runPlanning.ts
+npm run setup-cron
+# or: npx tsx src/scripts/setupCronJobs.ts
 ```
 
-Or you can trigger them via the REST API while the Node.js server is running:
+This registers 4 isolated cron jobs in OpenClaw:
+
+| Job | Schedule | What it does |
+|---|---|---|
+| `scrape_x_notifications` | Every hour at :00 | Scrape X notifications, save to `/db/replies` |
+| `reply_x_notifications` | Every hour at :30 | Reply to resolved mentions as CEO |
+| `research_and_post_morning` | 10 AM daily | Research AI film trends, post on X |
+| `research_and_post_evening` | 6 PM daily | Research AI film trends, post on X |
+
+### 4. Verify
+
 ```bash
-curl -X POST http://localhost:3000/api/pipeline/strategy
+openclaw cron list          # Check registered jobs
+curl localhost:3000/api/health    # Server health
+curl localhost:3000/api/status    # Daily stats
 ```
+
+## API Endpoints
+
+### Database CRUD (`/api/tools/db/`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/db/posts` | Create a post |
+| `GET` | `/db/posts` | List posts (`?status=&content_type=&limit=&skip=`) |
+| `GET` | `/db/posts/:id` | Get single post |
+| `PATCH` | `/db/posts/:id` | Update post (status, metadata) |
+| `POST` | `/db/replies` | Create replies (array or single) |
+| `GET` | `/db/replies` | List replies (`?status=draft,resolved&platform=x`) |
+| `GET` | `/db/replies/:id` | Get single reply |
+| `PATCH` | `/db/replies/:id` | Mark reply as replied (requires status=resolved) |
+| `DELETE` | `/db/replies/:id` | Delete reply |
+| `POST` | `/db/curation` | Save AI film source (idempotent by URL) |
+| `GET` | `/db/curation` | Get unused sources |
+| `PATCH` | `/db/curation/:id/used` | Mark source as used |
+| `POST` | `/db/persona` | Upsert CEO topic stance |
+| `GET` | `/db/persona` | Get all persona knowledge |
+| `GET` | `/db/stats` | Today's pipeline statistics |
+
+### Memory (`/api/tools/memory/`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/memory/store` | Store key-value in Redis |
+| `GET` | `/memory/retrieve` | Retrieve by key |
+| `POST` | `/memory/search` | Search memories |
+| `POST` | `/memory/history` | Store content history |
+| `GET` | `/memory/recent-history` | Get recent history |
+
+### Scheduler (`/api/scheduler/`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/setup` | Register all cron jobs |
+| `GET` | `/jobs` | List cron jobs |
+| `DELETE` | `/jobs` | Remove all cron jobs |
+| `GET` | `/check` | OpenClaw gateway health |

@@ -1,5 +1,4 @@
-/** Status service — pipeline health and status reporting. */
-import { checkPythonServiceHealth } from "../utils/pythonBridge.js";
+/** Status service — health and stats reporting. */
 import { rateLimiter } from "../tools/rateLimiter.js";
 import { settings } from "../config/settings.js";
 import { Post, Reply, CurationSource } from "../db/index.js";
@@ -16,22 +15,17 @@ async function getQuickStats(): Promise<Record<string, number>> {
 }
 
 export async function getSystemStatus(): Promise<Record<string, unknown>> {
-  const [pythonHealthy, stats, rateLimits] = await Promise.all([
-    checkPythonServiceHealth(),
+  const [stats, rateLimits] = await Promise.all([
     getQuickStats(),
     rateLimiter.getRateLimitStatus(),
   ]);
 
   return {
-    status: pythonHealthy ? "healthy" : "degraded",
+    status: "healthy",
     node: {
       status: "running",
       port: settings.port,
       env: process.env.NODE_ENV || "development",
-    },
-    python_service: {
-      status: pythonHealthy ? "connected" : "disconnected",
-      url: settings.pythonServiceUrl,
     },
     pipeline: { daily_stats: stats },
     rate_limits: rateLimits,
