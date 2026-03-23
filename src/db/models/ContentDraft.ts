@@ -6,8 +6,10 @@ export enum EDraftStatus {
   EDITING = "editing",
   APPROVED = "approved",
   SCHEDULED = "scheduled",
+  PROCESSING = "processing",
   POSTED = "posted",
   REJECTED = "rejected",
+  FAILED = "failed",
 }
 
 export interface IEditEntry {

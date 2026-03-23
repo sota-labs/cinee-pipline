@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "setup-cron": "tsx src/scripts/setupCronJobs.ts",
+    "scan-post": "tsx src/scripts/scanAndPostCron.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

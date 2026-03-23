@@ -31,7 +31,7 @@ export interface IPost extends Document {
   ai_stack: string[];
   is_viral_candidate: boolean;
   external_refs: string[];
-  status: "draft" | "scheduled" | "posted" | "failed";
+  status: "draft" | "scheduled" | "processing" | "posted" | "failed";
   platform_id?: string;
   metadata: IMetadata;
   scheduled_at?: Date;
@@ -92,7 +92,7 @@ const postSchema = new Schema<IPost>(
     external_refs: { type: [String], default: [] },
     status: {
       type: String,
-      enum: ["draft", "scheduled", "posted", "failed"],
+      enum: ["draft", "scheduled", "processing", "posted", "failed"],
       default: "draft",
     },
     platform_id: { type: String, index: true, sparse: true },
