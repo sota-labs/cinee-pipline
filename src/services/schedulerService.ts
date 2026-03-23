@@ -46,7 +46,7 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
      with JSON body: { "_id": "<the reply _id>", "status": "replied" }. 
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
-const RESEARCH_AND_POST_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
+const RESEARCH_AND_DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
 
 Step 1: Research & Selection
 - Open the browser and go to https://x.com/search.
@@ -60,24 +60,49 @@ Step 2: Content Creation (CEO Persona)
 - The post MUST include the source link from Step 1 as a reference.
 - Do NOT directly promote any product. Be insightful, not salesy.
 
-Step 3: Publish on X
-- Navigate to https://x.com/compose/post.
-- Wait for the compose text area to appear.
-- Type the full content you created in Step 2 into the text area.
-- Click the "Post" button (or the button with data-testid="tweetButtonInline").
-- If a login prompt appears, STOP and report it.
-
-Step 4: Save to Database
-- After posting successfully, send a POST request to ${API}/api/tools/db/posts with this JSON body:
+Step 3: Save as Draft for Review
+- Send a POST request to ${API}/api/content-review/drafts with this JSON body:
   {
     "platform": "twitter",
     "content_type": "hot_take",
-    "raw_content": "<the exact content you posted>",
+    "raw_content": "<the exact content you created in Step 2>",
     "ai_stack": ["<AI tools mentioned, e.g. Sora, Runway Gen-3, Kling>"],
-    "external_refs": ["<the source URL from Step 1>"],
-    "status": "posted"
+    "research_source": "<the source URL from Step 1>",
+    "research_summary": "<brief summary of what the source post was about>",
+    "status": "pending_review"
   }
-- Report the API response to confirm success.`;
+- Report the API response to confirm the draft was created successfully.
+- Do NOT post to X directly. The content will be reviewed via Telegram before posting.`;
+
+const POST_APPROVED_CONTENT_PROMPT = `You are an AI Agent with browser access. Your job is to publish approved content on X.
+
+Step 1: Fetch Approved Content
+- Call GET ${API}/api/content-review/drafts?status=approved,scheduled to get drafts ready to post.
+- If no drafts are found, report "No approved drafts to post" and stop.
+- For scheduled drafts, only post if the scheduled_at time has passed.
+
+Step 2: Post Each Approved Draft
+For each approved/scheduled draft:
+  a) Navigate to https://x.com/compose/post.
+  b) Wait for the compose text area to appear.
+  c) Type the draft's "raw_content" into the text area.
+  d) Click the "Post" button (or the button with data-testid="tweetButtonInline").
+  e) If a login prompt appears, STOP and report it.
+  f) After posting, send a POST request to ${API}/api/tools/db/posts with:
+     {
+       "platform": "twitter",
+       "content_type": "<the draft's content_type>",
+       "raw_content": "<the exact content you posted>",
+       "ai_stack": <the draft's ai_stack array>,
+       "external_refs": ["<the draft's research_source>"],
+       "status": "posted"
+     }
+  g) Then call PATCH ${API}/api/content-review/drafts/<draft_id> with:
+     { "status": "posted" }
+  h) Wait 10 seconds before processing the next draft.
+
+Step 3: Report
+- Report how many drafts were posted and any errors encountered.`;
 
 // ── Job definitions ─────────────────────────────────────────────────────────
 
@@ -95,16 +120,22 @@ const CRON_JOBS: CronJob[] = [
     description: "Auto-reply on X and update status (every hour at :30)",
   },
   {
-    name: "research_and_post_morning",
-    schedule: "0 10 * * *",
-    message: RESEARCH_AND_POST_PROMPT,
-    description: "Research AI filmmaking trends and post on X (10 AM daily)",
+    name: "research_and_draft_morning",
+    schedule: "0 9 * * *",
+    message: RESEARCH_AND_DRAFT_PROMPT,
+    description: "Research AI filmmaking trends and create draft for review (9 AM daily)",
   },
   {
-    name: "research_and_post_evening",
-    schedule: "0 18 * * *",
-    message: RESEARCH_AND_POST_PROMPT,
-    description: "Research AI filmmaking trends and post on X (6 PM daily)",
+    name: "research_and_draft_evening",
+    schedule: "0 17 * * *",
+    message: RESEARCH_AND_DRAFT_PROMPT,
+    description: "Research AI filmmaking trends and create draft for review (5 PM daily)",
+  },
+  {
+    name: "post_approved_content",
+    schedule: "*/15 * * * *",
+    message: POST_APPROVED_CONTENT_PROMPT,
+    description: "Check and post approved/scheduled drafts (every 15 minutes)",
   },
 ];
 

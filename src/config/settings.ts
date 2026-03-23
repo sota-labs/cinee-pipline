@@ -21,6 +21,10 @@ export interface Settings {
   redisUrl: string;
   publicApiUrl: string;
   port: number;
+  telegramBotToken: string;
+  telegramChatId: string;
+  telegramWebhookUrl: string;
+  pythonServiceUrl: string;
 }
 
 export const settings: Settings = {
@@ -69,4 +73,8 @@ export const settings: Settings = {
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
   publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
+  telegramWebhookUrl: process.env.TELEGRAM_WEBHOOK_URL || "",
+  pythonServiceUrl: process.env.PYTHON_SERVICE_URL || "http://localhost:8000",
 };
