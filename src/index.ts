@@ -9,7 +9,6 @@ async function start() {
 
   app.listen(settings.port, () => {
     log.info(`Server running on http://localhost:${settings.port}`);
-    log.info(`Python service expected at ${settings.pythonServiceUrl}`);
     log.info(`Environment: ${process.env.NODE_ENV || "development"}`);
   });
 }

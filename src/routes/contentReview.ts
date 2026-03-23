@@ -1,9 +1,11 @@
 /** Content Review routes — manage drafts through the Telegram review flow. */
 import { Router, type Request, type Response } from "express";
-import { ContentDraft, EDraftStatus, Post } from "../db/index.js";
+import { Post, EPostStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync } from "child_process";
+import * as dotenv from "dotenv";
+dotenv.config();
 
 export const contentReviewRouter = Router();
 
@@ -22,25 +24,23 @@ function runOpenClaw(message: string): string {
 /** Create a new draft (called by the research cron job). */
 contentReviewRouter.post("/drafts", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.create({
+    const draft = await Post.create({
       ...req.body,
-      status: EDraftStatus.PENDING_REVIEW,
+      status: EPostStatus.PENDING_REVIEW,
     });
 
-    // Automatically send to Telegram for review
     if (telegramService.isConfigured()) {
       try {
         const teleMsg = await telegramService.sendDraftForReview(
           draft._id.toString(),
           draft.raw_content,
-          draft.research_source
+          draft.research_source || ""
         );
         draft.telegram_message_id = teleMsg.message_id;
         draft.telegram_chat_id = process.env.TELEGRAM_CHAT_ID || "";
         await draft.save();
       } catch (teleErr: any) {
         log.error(`Failed to send draft to Telegram: ${teleErr.message}`);
-        // Draft is still saved — user can review via API
       }
     }
 
@@ -62,11 +62,11 @@ contentReviewRouter.get("/drafts", async (req: Request, res: Response) => {
     }
 
     const [drafts, total] = await Promise.all([
-      ContentDraft.find(filter)
+      Post.find(filter)
         .sort({ created_at: -1 })
         .skip(parseInt(skip as string))
         .limit(parseInt(limit as string)),
-      ContentDraft.countDocuments(filter),
+      Post.countDocuments(filter),
     ]);
 
     res.json({ success: true, drafts, total });
@@ -78,7 +78,7 @@ contentReviewRouter.get("/drafts", async (req: Request, res: Response) => {
 /** Get single draft. */
 contentReviewRouter.get("/drafts/:id", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
     res.json({ success: true, draft });
   } catch (e: any) {
@@ -89,7 +89,7 @@ contentReviewRouter.get("/drafts/:id", async (req: Request, res: Response) => {
 /** Update draft content (manual edit from user). */
 contentReviewRouter.patch("/drafts/:id", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
 
     const oldContent = draft.raw_content;
@@ -103,11 +103,10 @@ contentReviewRouter.patch("/drafts/:id", async (req: Request, res: Response) => 
       });
     }
     if (req.body.scheduled_at) draft.scheduled_at = new Date(req.body.scheduled_at);
-    draft.status = req.body.status || EDraftStatus.EDITING;
+    draft.status = req.body.status || EPostStatus.EDITING;
 
     await draft.save();
 
-    // Send updated preview to Telegram
     if (telegramService.isConfigured() && req.body.raw_content) {
       try {
         await telegramService.sendUpdatedPreview(
@@ -128,10 +127,10 @@ contentReviewRouter.patch("/drafts/:id", async (req: Request, res: Response) => 
 /** Approve a draft. */
 contentReviewRouter.patch("/drafts/:id/approve", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
 
-    draft.status = EDraftStatus.APPROVED;
+    draft.status = EPostStatus.APPROVED;
     await draft.save();
 
     if (telegramService.isConfigured()) {
@@ -152,10 +151,10 @@ contentReviewRouter.patch("/drafts/:id/approve", async (req: Request, res: Respo
 /** Reject a draft. */
 contentReviewRouter.patch("/drafts/:id/reject", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
 
-    draft.status = EDraftStatus.REJECTED;
+    draft.status = EPostStatus.REJECTED;
     await draft.save();
 
     if (telegramService.isConfigured()) {
@@ -176,14 +175,14 @@ contentReviewRouter.patch("/drafts/:id/reject", async (req: Request, res: Respon
 /** Schedule a draft for a specific time. */
 contentReviewRouter.patch("/drafts/:id/schedule", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
 
     if (!req.body.scheduled_at) {
       return res.status(400).json({ success: false, error: "scheduled_at is required" });
     }
 
-    draft.status = EDraftStatus.SCHEDULED;
+    draft.status = EPostStatus.SCHEDULED;
     draft.scheduled_at = new Date(req.body.scheduled_at);
     await draft.save();
 
@@ -207,7 +206,7 @@ contentReviewRouter.patch("/drafts/:id/schedule", async (req: Request, res: Resp
 /** AI rewrite — use OpenClaw to rewrite content with optional prompt. */
 contentReviewRouter.post("/drafts/:id/ai-rewrite", async (req: Request, res: Response) => {
   try {
-    const draft = await ContentDraft.findById(req.params.id);
+    const draft = await Post.findById(req.params.id);
     if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
 
     const userPrompt = req.body.prompt || "Rewrite this to be more punchy and engaging";
@@ -233,7 +232,6 @@ Rules:
       return res.status(500).json({ success: false, error: `AI rewrite failed: ${err.message}` });
     }
 
-    // Save old version to history
     draft.edit_history.push({
       content: draft.raw_content,
       edited_at: new Date(),
@@ -241,10 +239,9 @@ Rules:
       prompt: userPrompt,
     });
     draft.raw_content = rewritten;
-    draft.status = EDraftStatus.PENDING_REVIEW;
+    draft.status = EPostStatus.PENDING_REVIEW;
     await draft.save();
 
-    // Send updated preview to Telegram
     if (telegramService.isConfigured()) {
       try {
         await telegramService.sendUpdatedPreview(
