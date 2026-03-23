@@ -1,8 +1,10 @@
 /** Scheduler service — OpenClaw isolated cron job management. */
 import { execSync } from "child_process";
 import { log } from "../utils/logger.js";
+import * as dotenv from "dotenv";
+dotenv.config();
 
-const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
+const API = process.env.PUBLIC_API_URL || "http://localhost:4000";
 
 interface CronJob {
   name: string;
