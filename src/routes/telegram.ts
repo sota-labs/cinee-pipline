@@ -140,14 +140,20 @@ Steps:
 """
 ${draft.raw_content}
 """
-4. Click the "Post" button (or the button with data-testid="tweetButtonInline")
-5. Wait until the post is confirmed published
-6. Report "POST_SUCCESS" when done`;
+4. After navigated and pasted content, "Post" button is now available.
+5. Click the "Post" button
+6. Wait until the post is confirmed published
+7. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>)
+8. Report exactly in this format: POST_SUCCESS: <post_url>`;
 
         const result = runOpenClaw(postPrompt);
 
-        if (result.includes("POST_SUCCESS")) {
+        const postUrlMatch = result.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);
+        if (postUrlMatch || result.includes("POST_SUCCESS")) {
           draft.status = EPostStatus.POSTED;
+          if (postUrlMatch) {
+            draft.post_url = postUrlMatch[1];
+          }
           await draft.save();
 
           if (chatId && callbackMessageId) {
@@ -157,8 +163,9 @@ ${draft.raw_content}
             );
           }
 
+          const urlInfo = draft.post_url ? `\n\n🔗 ${draft.post_url}` : "";
           await telegramService.sendMessage(
-            `✅ Đã đăng bài thành công!\n\nNội dung:\n${draft.raw_content}`,
+            `✅ Đã đăng bài thành công!${urlInfo}\n\nNội dung:\n${draft.raw_content}`,
             chatId,
           );
         } else {

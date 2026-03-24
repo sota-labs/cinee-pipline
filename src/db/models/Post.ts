@@ -49,6 +49,7 @@ export interface IPost extends Document {
   telegram_message_id?: number;
   telegram_chat_id?: string;
   edit_history: IEditEntry[];
+  post_url?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -114,6 +115,7 @@ const postSchema = new Schema<IPost>(
     telegram_message_id: Number,
     telegram_chat_id: String,
     edit_history: { type: [editEntrySchema], default: [] },
+    post_url: String,
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

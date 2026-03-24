@@ -10,7 +10,7 @@ import { settings } from "../config/settings.js";
 // We use this to avoid getting stuck on the same failing items if they remain 'scheduled'
 let lastProcessedCursorId: string | null = null;
 
-function runOpenClawPost(post: any): boolean {
+function runOpenClawPost(post: any): string | null {
   const prompt = `You are an AI Agent with browser access. Your job is to publish this specific content on X immediately.
   
 Content to post:
@@ -25,24 +25,25 @@ ${post.raw_content}
 """
 4. Click the "Post" button (or the button with data-testid="tweetButtonInline").
 5. Wait until the post is confirmed published
-6. After successfully posting, finish and report success.`;
+6. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>)
+7. Report exactly in this format: POST_SUCCESS: <post_url>`;
 
   const escapedMessage = prompt.replace(/'/g, "'\\''");
 
   log.info(`Running OpenClaw to post ID: ${post._id}`);
   try {
-    execSync(
+    const output = execSync(
       `openclaw agent --agent ${settings.openClawAgent} --message '${escapedMessage}'`,
       {
         encoding: "utf-8",
-        stdio: "inherit",
         timeout: 120_000,
       },
     );
-    return true;
+    const match = output.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);
+    return match ? match[1] : "";
   } catch (error: any) {
     log.error(`OpenClaw error for post ${post._id}: ${error.message}`);
-    return false;
+    return null;
   }
 }
 
@@ -71,13 +72,13 @@ async function scanAndPost() {
         `Processing post ID: ${post._id} (scheduled_at: ${post.scheduled_at})`,
       );
 
-      // Attempt to post on X using openclaw (blocks until done)
-      const success = runOpenClawPost(post);
+      const postUrl = runOpenClawPost(post);
 
-      if (success) {
+      if (postUrl !== null) {
         post.status = EPostStatus.POSTED;
+        if (postUrl) post.post_url = postUrl;
         await post.save();
-        log.info(`Successfully processed and posted ID: ${post._id}`);
+        log.info(`Successfully posted ID: ${post._id}${postUrl ? ` → ${postUrl}` : ""}`);
       } else {
         post.status = EPostStatus.FAILED;
         await post.save();
