@@ -1,9 +1,10 @@
 /** Telegram webhook routes — handle callbacks and messages from Telegram. */
 import { Router, type Request, type Response } from "express";
-import { ContentDraft, EDraftStatus } from "../db/index.js";
+import { Post, EPostStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync } from "child_process";
+import { settings } from "../config/settings.js";
 
 export const telegramRouter = Router();
 
@@ -14,7 +15,7 @@ const pendingActions = new Map<string, { action: "edit" | "schedule" | "ai_promp
 
 function runOpenClaw(message: string): string {
   const escaped = message.replace(/'/g, "'\\''");
-  return execSync(`openclaw run --session isolated --message '${escaped}'`, {
+  return execSync(`openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`, {
     encoding: "utf-8",
     timeout: 120_000,
   }).trim();
@@ -33,11 +34,10 @@ telegramRouter.post("/webhook", async (req: Request, res: Response) => {
       await handleTextMessage(update.message);
     }
 
-    // Telegram expects 200 OK quickly
     res.sendStatus(200);
   } catch (e: any) {
     log.error(`Telegram webhook error: ${e.message}`);
-    res.sendStatus(200); // Still return 200 to prevent retries
+    res.sendStatus(200);
   }
 });
 
@@ -74,7 +74,6 @@ async function handleCallbackQuery(query: any) {
 
   log.info(`Telegram callback: ${data} from chat ${chatId}`);
 
-  // Parse action and draftId
   const parts = data.match(/^(approve|reject|edit|ai_rewrite|schedule)_(.+)$/);
   if (!parts) {
     await telegramService.answerCallback(callbackId, "❓ Unknown action");
@@ -82,7 +81,7 @@ async function handleCallbackQuery(query: any) {
   }
 
   const [, action, draftId] = parts;
-  const draft = await ContentDraft.findById(draftId);
+  const draft = await Post.findById(draftId);
 
   if (!draft) {
     await telegramService.answerCallback(callbackId, "❌ Draft not found");
@@ -91,18 +90,18 @@ async function handleCallbackQuery(query: any) {
 
   switch (action) {
     case "approve": {
-      draft.status = EDraftStatus.APPROVED;
+      draft.status = EPostStatus.APPROVED;
       await draft.save();
       await telegramService.answerCallback(callbackId, "✅ Approved!");
       await telegramService.sendMessage(
-        `✅ *Đã approve!* Bài viết sẽ được đăng sớm.\n\nNội dung:\n${draft.raw_content}`,
+        `✅ Đã approve! Bài viết sẽ được đăng sớm.\n\nNội dung:\n${draft.raw_content}`,
         chatId
       );
       break;
     }
 
     case "reject": {
-      draft.status = EDraftStatus.REJECTED;
+      draft.status = EPostStatus.REJECTED;
       await draft.save();
       await telegramService.answerCallback(callbackId, "❌ Rejected");
       await telegramService.sendMessage(`❌ Draft đã bị reject.`, chatId);
@@ -110,11 +109,10 @@ async function handleCallbackQuery(query: any) {
     }
 
     case "edit": {
-      // Set pending state — next text message from this chat will be the new content
       pendingActions.set(chatId!, { action: "edit", draftId });
       await telegramService.answerCallback(callbackId, "✏️ Gửi nội dung mới");
       await telegramService.sendMessage(
-        `✏️ Gửi nội dung mới cho draft này.\n\nHoặc dùng \`/ai <prompt>\` để nhờ AI sửa.\n\n_Ví dụ: /ai make it shorter and more punchy_`,
+        `✏️ Gửi nội dung mới cho draft này.\n\nHoặc dùng /ai <prompt> để nhờ AI sửa.\n\nVí dụ: /ai make it shorter and more punchy`,
         chatId
       );
       break;
@@ -149,7 +147,7 @@ Rules:
           prompt: "Auto rewrite via Telegram button",
         });
         draft.raw_content = rewritten;
-        draft.status = EDraftStatus.PENDING_REVIEW;
+        draft.status = EPostStatus.PENDING_REVIEW;
         await draft.save();
 
         await telegramService.sendUpdatedPreview(
@@ -168,7 +166,7 @@ Rules:
       pendingActions.set(chatId!, { action: "schedule", draftId });
       await telegramService.answerCallback(callbackId, "⏰ Nhập giờ");
       await telegramService.sendMessage(
-        `⏰ Nhập giờ đăng bài (format: \`HH:MM\` hoặc \`YYYY-MM-DD HH:MM\`)\n\nVí dụ: \`14:30\` hoặc \`2026-03-24 10:00\``,
+        `⏰ Nhập giờ đăng bài (format: HH:MM hoặc YYYY-MM-DD HH:MM)\n\nVí dụ: 14:30 hoặc 2026-03-24 10:00`,
         chatId
       );
       break;
@@ -186,17 +184,16 @@ async function handleTextMessage(message: any) {
 
   const pending = pendingActions.get(chatId);
 
-  // Handle /ai command when in edit mode
   if (text.startsWith("/ai ") && pending?.action === "edit") {
     const aiInstruction = text.slice(4).trim();
-    const draft = await ContentDraft.findById(pending.draftId);
+    const draft = await Post.findById(pending.draftId);
     if (!draft) {
       await telegramService.sendMessage("❌ Draft not found", chatId);
       pendingActions.delete(chatId);
       return;
     }
 
-    await telegramService.sendMessage(`🤖 Đang sửa theo: _${aiInstruction}_`, chatId);
+    await telegramService.sendMessage(`🤖 Đang sửa theo: ${aiInstruction}`, chatId);
 
     try {
       const aiPrompt = `You are editing a social media post for X (Twitter).
@@ -222,7 +219,7 @@ Rules:
         prompt: aiInstruction,
       });
       draft.raw_content = rewritten;
-      draft.status = EDraftStatus.PENDING_REVIEW;
+      draft.status = EPostStatus.PENDING_REVIEW;
       await draft.save();
 
       await telegramService.sendUpdatedPreview(
@@ -240,7 +237,6 @@ Rules:
   }
 
   if (!pending) {
-    // No pending action — show help
     await telegramService.sendMessage(
       `💡 Không có hành động nào đang chờ.\n\nDùng các nút bên dưới bài draft để tương tác.`,
       chatId
@@ -248,9 +244,8 @@ Rules:
     return;
   }
 
-  // Handle pending edit
   if (pending.action === "edit") {
-    const draft = await ContentDraft.findById(pending.draftId);
+    const draft = await Post.findById(pending.draftId);
     if (!draft) {
       await telegramService.sendMessage("❌ Draft not found", chatId);
       pendingActions.delete(chatId);
@@ -263,7 +258,7 @@ Rules:
       edited_by: "user",
     });
     draft.raw_content = text;
-    draft.status = EDraftStatus.PENDING_REVIEW;
+    draft.status = EPostStatus.PENDING_REVIEW;
     await draft.save();
 
     await telegramService.sendUpdatedPreview(
@@ -277,9 +272,8 @@ Rules:
     return;
   }
 
-  // Handle pending schedule
   if (pending.action === "schedule") {
-    const draft = await ContentDraft.findById(pending.draftId);
+    const draft = await Post.findById(pending.draftId);
     if (!draft) {
       await telegramService.sendMessage("❌ Draft not found", chatId);
       pendingActions.delete(chatId);
@@ -291,32 +285,29 @@ Rules:
     const fullMatch = text.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})$/);
 
     if (timeMatch) {
-      // HH:MM — schedule for today or tomorrow
       const now = new Date();
       scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
         parseInt(timeMatch[1]), parseInt(timeMatch[2]));
-      // If the time already passed today, schedule for tomorrow
       if (scheduledDate <= now) {
         scheduledDate.setDate(scheduledDate.getDate() + 1);
       }
     } else if (fullMatch) {
-      // YYYY-MM-DD HH:MM
       scheduledDate = new Date(`${fullMatch[1]}T${fullMatch[2].padStart(2, "0")}:${fullMatch[3]}:00+07:00`);
     } else {
       await telegramService.sendMessage(
-        "❌ Format không đúng. Dùng `HH:MM` hoặc `YYYY-MM-DD HH:MM`",
+        "❌ Format không đúng. Dùng HH:MM hoặc YYYY-MM-DD HH:MM",
         chatId
       );
-      return; // Keep pending action for retry
+      return;
     }
 
-    draft.status = EDraftStatus.SCHEDULED;
+    draft.status = EPostStatus.SCHEDULED;
     draft.scheduled_at = scheduledDate;
     await draft.save();
 
     const timeStr = scheduledDate.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
     await telegramService.sendMessage(
-      `⏰ Đã schedule lúc *${timeStr}*\n\nNội dung:\n${draft.raw_content}`,
+      `⏰ Đã schedule lúc ${timeStr}\n\nNội dung:\n${draft.raw_content}`,
       chatId
     );
 
