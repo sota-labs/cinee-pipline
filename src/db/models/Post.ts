@@ -34,7 +34,12 @@ export interface IEditEntry {
 
 export interface IPost extends Document {
   platform: "twitter" | "reddit" | "discord";
-  content_type: "hot_take" | "curation" | "announcement" | "engagement" | "thread";
+  content_type:
+    | "hot_take"
+    | "curation"
+    | "announcement"
+    | "engagement"
+    | "thread";
   raw_content: string;
   media: IMedia[];
   video_details?: IVideoDetails;
@@ -61,7 +66,7 @@ const mediaSchema = new Schema<IMedia>(
     thumbnail: String,
     duration: Number,
   },
-  { _id: false }
+  { _id: false },
 );
 
 const videoDetailsSchema = new Schema<IVideoDetails>(
@@ -70,7 +75,7 @@ const videoDetailsSchema = new Schema<IVideoDetails>(
     aspect_ratio: String,
     file_size: Number,
   },
-  { _id: false }
+  { _id: false },
 );
 
 const editEntrySchema = new Schema<IEditEntry>(
@@ -80,7 +85,7 @@ const editEntrySchema = new Schema<IEditEntry>(
     edited_by: { type: String, enum: ["user", "ai"], required: true },
     prompt: String,
   },
-  { _id: false }
+  { _id: false },
 );
 
 const postSchema = new Schema<IPost>(
@@ -115,11 +120,11 @@ const postSchema = new Schema<IPost>(
     telegram_message_id: Number,
     telegram_chat_id: String,
     edit_history: { type: [editEntrySchema], default: [] },
-    post_url: String,
+    post_url: { type: String, default: "" },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-  }
+  },
 );
 
 postSchema.index({ created_at: -1 });
