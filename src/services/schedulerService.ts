@@ -1,6 +1,8 @@
 /** Scheduler service — OpenClaw isolated cron job management. */
 import { execSync } from "child_process";
 import { log } from "../utils/logger.js";
+import * as dotenv from "dotenv";
+dotenv.config();
 
 const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
 
@@ -70,6 +72,16 @@ Step 3: Save as Draft for Review
     "research_source": "<the source URL from Step 1>",
     "research_summary": "<brief summary of what the source post was about>",
     "status": "pending_review"
+    "media": ["<{
+      "type": "<the media type: video, image, or gif>",
+      "url": "<the media URL>",
+      "thumbnail": "<the media thumbnail URL if the media is a video, otherwise empty>",
+      "duration": "<the media duration if the media is a video, otherwise empty>"
+    }>"],
+    "video_details": <the video details if the post is a video, otherwise empty>,
+    "is_viral_candidate": <true if the post is a viral candidate, false otherwise>,
+    "external_refs": "<the source URL from Step 1>",
+    "metadata": {},
   }
 - Report the API response to confirm the draft was created successfully.
 - Do NOT post to X directly. The content will be reviewed via Telegram before posting.`;
@@ -88,18 +100,9 @@ For each approved/scheduled draft:
   c) Type the draft's "raw_content" into the text area.
   d) Click the "Post" button (or the button with data-testid="tweetButtonInline").
   e) If a login prompt appears, STOP and report it.
-  f) After posting, send a POST request to ${API}/api/tools/db/posts with:
-     {
-       "platform": "twitter",
-       "content_type": "<the draft's content_type>",
-       "raw_content": "<the exact content you posted>",
-       "ai_stack": <the draft's ai_stack array>,
-       "external_refs": ["<the draft's research_source>"],
-       "status": "posted"
-     }
-  g) Then call PATCH ${API}/api/content-review/drafts/<draft_id> with:
+  f) After posting, call PATCH ${API}/api/content-review/drafts/<draft_id> with:
      { "status": "posted" }
-  h) Wait 10 seconds before processing the next draft.
+  g) Wait 10 seconds before processing the next draft.
 
 Step 3: Report
 - Report how many drafts were posted and any errors encountered.`;

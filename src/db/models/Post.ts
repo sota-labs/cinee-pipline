@@ -1,5 +1,16 @@
-/** Post — a piece of content authored by the CEO. */
-import { Schema, model, Document, Types } from "mongoose";
+/** Post — a piece of content authored by the CEO (includes draft/review lifecycle). */
+import { Schema, model, Document } from "mongoose";
+
+export enum EPostStatus {
+  DRAFT = "draft",
+  PENDING_REVIEW = "pending_review",
+  EDITING = "editing",
+  APPROVED = "approved",
+  SCHEDULED = "scheduled",
+  POSTED = "posted",
+  FAILED = "failed",
+  REJECTED = "rejected",
+}
 
 export interface IMedia {
   type: "video" | "image" | "gif";
@@ -14,12 +25,11 @@ export interface IVideoDetails {
   file_size?: number;
 }
 
-export interface IMetadata {
-  likes?: number;
-  retweets?: number;
-  replies?: number;
-  quotes?: number;
-  views?: number;
+export interface IEditEntry {
+  content: string;
+  edited_at: Date;
+  edited_by: "user" | "ai";
+  prompt?: string;
 }
 
 export interface IPost extends Document {
@@ -31,11 +41,14 @@ export interface IPost extends Document {
   ai_stack: string[];
   is_viral_candidate: boolean;
   external_refs: string[];
-  status: "draft" | "scheduled" | "processing" | "posted" | "failed";
-  platform_id?: string;
-  metadata: IMetadata;
+  status: EPostStatus;
   scheduled_at?: Date;
   strategy_context?: string;
+  research_source?: string;
+  research_summary?: string;
+  telegram_message_id?: number;
+  telegram_chat_id?: string;
+  edit_history: IEditEntry[];
   created_at: Date;
   updated_at: Date;
 }
@@ -59,13 +72,12 @@ const videoDetailsSchema = new Schema<IVideoDetails>(
   { _id: false }
 );
 
-const metadataSchema = new Schema<IMetadata>(
+const editEntrySchema = new Schema<IEditEntry>(
   {
-    likes: { type: Number, default: 0 },
-    retweets: { type: Number, default: 0 },
-    replies: { type: Number, default: 0 },
-    quotes: { type: Number, default: 0 },
-    views: { type: Number, default: 0 },
+    content: { type: String, required: true },
+    edited_at: { type: Date, default: Date.now },
+    edited_by: { type: String, enum: ["user", "ai"], required: true },
+    prompt: String,
   },
   { _id: false }
 );
@@ -92,13 +104,16 @@ const postSchema = new Schema<IPost>(
     external_refs: { type: [String], default: [] },
     status: {
       type: String,
-      enum: ["draft", "scheduled", "processing", "posted", "failed"],
-      default: "draft",
+      enum: Object.values(EPostStatus),
+      default: EPostStatus.DRAFT,
     },
-    platform_id: { type: String, index: true, sparse: true },
-    metadata: { type: metadataSchema, default: () => ({}) },
     scheduled_at: Date,
     strategy_context: String,
+    research_source: { type: String, default: "" },
+    research_summary: { type: String, default: "" },
+    telegram_message_id: Number,
+    telegram_chat_id: String,
+    edit_history: { type: [editEntrySchema], default: [] },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
