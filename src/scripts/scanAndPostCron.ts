@@ -4,6 +4,7 @@ import { execSync } from "child_process";
 import { Post, EPostStatus } from "../db/models/Post.js";
 import { connectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
+import { settings } from "../config/settings.js";
 
 // In-memory cursor to keep track of the last processed post across intervals
 // We use this to avoid getting stuck on the same failing items if they remain 'scheduled'
@@ -30,11 +31,14 @@ ${post.raw_content}
 
   log.info(`Running OpenClaw to post ID: ${post._id}`);
   try {
-    execSync(`openclaw agent --agent isolated --message '${escapedMessage}'`, {
-      encoding: "utf-8",
-      stdio: "inherit",
-      timeout: 120_000,
-    });
+    execSync(
+      `openclaw agent --agent ${settings.openClawAgent} --message '${escapedMessage}'`,
+      {
+        encoding: "utf-8",
+        stdio: "inherit",
+        timeout: 120_000,
+      },
+    );
     return true;
   } catch (error: any) {
     log.error(`OpenClaw error for post ${post._id}: ${error.message}`);
