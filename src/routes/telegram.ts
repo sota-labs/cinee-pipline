@@ -134,16 +134,15 @@ async function handleCallbackQuery(query: any) {
         const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter).
 
 Steps:
-1. Navigate to https://x.com/compose/post
-2. Wait for the compose text area to appear
-3. Type the following content into the text area:
+1. Navigate to https://x.com/home
+2. Wait until web page load done
+3. Type the following content into post area (where usually has placeholder text like "What's happening?"):
 """
 ${draft.raw_content}
 """
 4. Click the "Post" button (or the button with data-testid="tweetButtonInline")
-5. If a login prompt appears, STOP and report "LOGIN_REQUIRED"
-6. Wait until the post is confirmed published
-7. Report "POST_SUCCESS" when done`;
+5. Wait until the post is confirmed published
+6. Report "POST_SUCCESS" when done`;
 
         const result = runOpenClaw(postPrompt);
 
@@ -336,7 +335,7 @@ ${draft.raw_content}
 User instruction: ${aiInstruction}
 
 Rules:
-- Keep it under 300 words
+- Keep it under 300 characters
 - Maintain the CEO/visionary tone about AI filmmaking
 - Output ONLY the edited post, nothing else.`;
 

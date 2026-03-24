@@ -16,15 +16,18 @@ Content to post:
 ${post.raw_content}
 
 Steps:
-1. Navigate to https://x.com/compose/post.
-2. Wait for the compose text area to appear.
-3. Type the exact content above into the text area.
+1. Navigate to https://x.com/home.
+2. Wait until web page load done
+3. Type the following content into post area (where usually has placeholder text like "What's happening?"):
+"""
+${post.raw_content}
+"""
 4. Click the "Post" button (or the button with data-testid="tweetButtonInline").
-5. If a login prompt appears, STOP and report it.
+5. Wait until the post is confirmed published
 6. After successfully posting, finish and report success.`;
 
   const escapedMessage = prompt.replace(/'/g, "'\\''");
-  
+
   log.info(`Running OpenClaw to post ID: ${post._id}`);
   try {
     execSync(`openclaw agent --agent isolated --message '${escapedMessage}'`, {
@@ -43,7 +46,7 @@ async function scanAndPost() {
   log.info(`Started DB scan for scheduled posts (limit 100)...`);
   try {
     const cursorId = lastProcessedCursorId;
-    
+
     const query: Record<string, any> = {
       status: EPostStatus.SCHEDULED,
       scheduled_at: { $lte: new Date() },
@@ -60,7 +63,9 @@ async function scanAndPost() {
     log.info(`Found ${posts.length} posts ready to publish.`);
 
     for (const post of posts) {
-      log.info(`Processing post ID: ${post._id} (scheduled_at: ${post.scheduled_at})`);
+      log.info(
+        `Processing post ID: ${post._id} (scheduled_at: ${post.scheduled_at})`,
+      );
 
       // Attempt to post on X using openclaw (blocks until done)
       const success = runOpenClawPost(post);
@@ -78,7 +83,6 @@ async function scanAndPost() {
       // Update in-memory cursor regardless of success/fail to keep moving forward
       lastProcessedCursorId = post._id.toString();
     }
-
   } catch (err) {
     log.error(`Error during DB scan: ${err}`);
   }
@@ -86,7 +90,7 @@ async function scanAndPost() {
 
 async function startDaemon() {
   await connectDb();
-  
+
   // Scan once immediately
   await scanAndPost();
 
