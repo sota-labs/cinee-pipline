@@ -59,6 +59,24 @@ function escapeMarkdown(text: string): string {
   return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
 }
 
+function buildDraftKeyboard(draftId: string) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🚀 Post now", callback_data: `post_now_${draftId}` },
+        { text: "❌ Reject", callback_data: `reject_${draftId}` },
+      ],
+      [
+        { text: "✏️ Edit", callback_data: `edit_${draftId}` },
+        { text: "🤖 AI Rewrite", callback_data: `ai_rewrite_${draftId}` },
+      ],
+      [
+        { text: "⏰ Schedule", callback_data: `schedule_${draftId}` },
+      ],
+    ],
+  };
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function sendDraftForReview(
@@ -74,21 +92,7 @@ export async function sendDraftForReview(
     `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
   ].join("\n");
 
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: "✅ Approve", callback_data: `approve_${draftId}` },
-        { text: "❌ Reject", callback_data: `reject_${draftId}` },
-      ],
-      [
-        { text: "✏️ Edit", callback_data: `edit_${draftId}` },
-        { text: "🤖 AI Rewrite", callback_data: `ai_rewrite_${draftId}` },
-      ],
-      [
-        { text: "⏰ Schedule", callback_data: `schedule_${draftId}` },
-      ],
-    ],
-  };
+  const keyboard = buildDraftKeyboard(draftId);
 
   const result = await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -114,21 +118,7 @@ export async function sendUpdatedPreview(
     `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
   ].join("\n");
 
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: "✅ Approve", callback_data: `approve_${draftId}` },
-        { text: "❌ Reject", callback_data: `reject_${draftId}` },
-      ],
-      [
-        { text: "✏️ Edit lại", callback_data: `edit_${draftId}` },
-        { text: "🤖 AI Rewrite", callback_data: `ai_rewrite_${draftId}` },
-      ],
-      [
-        { text: "⏰ Schedule", callback_data: `schedule_${draftId}` },
-      ],
-    ],
-  };
+  const keyboard = buildDraftKeyboard(draftId);
 
   return callTelegram("sendMessage", {
     chat_id: chatId,
@@ -146,6 +136,18 @@ export async function sendMessage(
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text,
+  });
+}
+
+/** Remove all inline buttons from a message (marks it as finalized). */
+export async function removeMessageButtons(
+  chatId: string,
+  messageId: number
+): Promise<void> {
+  await callTelegram("editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: { inline_keyboard: [] },
   });
 }
 
