@@ -4,7 +4,7 @@ export { Post, EPostStatus } from "./models/Post.js";
 export { Reply } from "./models/Reply.js";
 export { CurationSource } from "./models/CurationSource.js";
 export { PersonaKnowledge } from "./models/PersonaKnowledge.js";
-export type { IPost, IMedia, IVideoDetails, IMetadata, IEditEntry } from "./models/Post.js";
+export type { IPost, IMedia, IVideoDetails, IEditEntry } from "./models/Post.js";
 export { EReplyStatus as ReplyStatus, EReplyTone as ReplyTone, EReplyPlatform as ReplyPlatform } from "./models/Reply.js";
 export type { IReply } from "./models/Reply.js";
 export type { ICurationSource } from "./models/CurationSource.js";

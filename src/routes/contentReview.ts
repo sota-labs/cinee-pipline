@@ -5,6 +5,7 @@ import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync } from "child_process";
 import * as dotenv from "dotenv";
+import { settings } from "../config/settings.js";
 dotenv.config();
 
 export const contentReviewRouter = Router();
@@ -13,7 +14,7 @@ export const contentReviewRouter = Router();
 
 function runOpenClaw(message: string): string {
   const escaped = message.replace(/'/g, "'\\''");
-  return execSync(`openclaw run --session isolated --message '${escaped}'`, {
+  return execSync(`openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`, {
     encoding: "utf-8",
     timeout: 120_000,
   }).trim();
@@ -136,7 +137,7 @@ contentReviewRouter.patch("/drafts/:id/approve", async (req: Request, res: Respo
     if (telegramService.isConfigured()) {
       try {
         await telegramService.sendMessage(
-          `✅ Draft approved! Sẽ được đăng sớm.\n\n_ID: \`${draft._id}\`_`,
+          `✅ Draft approved! Sẽ được đăng sớm.\n\nID: ${draft._id}`,
           draft.telegram_chat_id
         );
       } catch { /* non-critical */ }
@@ -160,7 +161,7 @@ contentReviewRouter.patch("/drafts/:id/reject", async (req: Request, res: Respon
     if (telegramService.isConfigured()) {
       try {
         await telegramService.sendMessage(
-          `❌ Draft đã bị reject.\n\n_ID: \`${draft._id}\`_`,
+          `❌ Draft đã bị reject.\n\nID: ${draft._id}`,
           draft.telegram_chat_id
         );
       } catch { /* non-critical */ }
@@ -191,7 +192,7 @@ contentReviewRouter.patch("/drafts/:id/schedule", async (req: Request, res: Resp
     if (telegramService.isConfigured()) {
       try {
         await telegramService.sendMessage(
-          `⏰ Draft đã được schedule lúc *${timeStr}*\n\n_ID: \`${draft._id}\`_`,
+          `⏰ Draft đã được schedule lúc ${timeStr}\n\nID: ${draft._id}`,
           draft.telegram_chat_id
         );
       } catch { /* non-critical */ }

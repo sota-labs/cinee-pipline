@@ -54,6 +54,11 @@ async function callTelegram(method: string, body: Record<string, unknown>): Prom
   });
 }
 
+/** Escape special characters for Telegram MarkdownV2. */
+function escapeMarkdown(text: string): string {
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function sendDraftForReview(
@@ -64,9 +69,9 @@ export async function sendDraftForReview(
 ): Promise<{ message_id: number }> {
   const text = [
     "📝 *Bài viết mới cần duyệt:*\n",
-    content,
-    `\n🔗 *Source:* ${researchSource}`,
-    `\n_Draft ID: \`${draftId}\`_`,
+    escapeMarkdown(content),
+    `\n🔗 *Source:* ${escapeMarkdown(researchSource)}`,
+    `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
   ].join("\n");
 
   const keyboard = {
@@ -88,7 +93,7 @@ export async function sendDraftForReview(
   const result = await callTelegram("sendMessage", {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
+    parse_mode: "MarkdownV2",
     reply_markup: keyboard,
   });
 
@@ -104,9 +109,9 @@ export async function sendUpdatedPreview(
   chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || ""
 ): Promise<{ message_id: number }> {
   const text = [
-    `📝 *Bản cập nhật #${version}:*\n`,
-    content,
-    `\n_Draft ID: \`${draftId}\`_`,
+    `📝 *Bản cập nhật \\#${version}:*\n`,
+    escapeMarkdown(content),
+    `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
   ].join("\n");
 
   const keyboard = {
@@ -128,12 +133,12 @@ export async function sendUpdatedPreview(
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
+    parse_mode: "MarkdownV2",
     reply_markup: keyboard,
   });
 }
 
-/** Send a plain text message. */
+/** Send a plain text message (no parse mode to avoid formatting issues). */
 export async function sendMessage(
   text: string,
   chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || ""
@@ -141,7 +146,6 @@ export async function sendMessage(
   return callTelegram("sendMessage", {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
   });
 }
 

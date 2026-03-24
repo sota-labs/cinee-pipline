@@ -4,6 +4,7 @@ import { Post, EPostStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync } from "child_process";
+import { settings } from "../config/settings.js";
 
 export const telegramRouter = Router();
 
@@ -14,7 +15,7 @@ const pendingActions = new Map<string, { action: "edit" | "schedule" | "ai_promp
 
 function runOpenClaw(message: string): string {
   const escaped = message.replace(/'/g, "'\\''");
-  return execSync(`openclaw run --session isolated --message '${escaped}'`, {
+  return execSync(`openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`, {
     encoding: "utf-8",
     timeout: 120_000,
   }).trim();
@@ -93,7 +94,7 @@ async function handleCallbackQuery(query: any) {
       await draft.save();
       await telegramService.answerCallback(callbackId, "✅ Approved!");
       await telegramService.sendMessage(
-        `✅ *Đã approve!* Bài viết sẽ được đăng sớm.\n\nNội dung:\n${draft.raw_content}`,
+        `✅ Đã approve! Bài viết sẽ được đăng sớm.\n\nNội dung:\n${draft.raw_content}`,
         chatId
       );
       break;
@@ -111,7 +112,7 @@ async function handleCallbackQuery(query: any) {
       pendingActions.set(chatId!, { action: "edit", draftId });
       await telegramService.answerCallback(callbackId, "✏️ Gửi nội dung mới");
       await telegramService.sendMessage(
-        `✏️ Gửi nội dung mới cho draft này.\n\nHoặc dùng \`/ai <prompt>\` để nhờ AI sửa.\n\n_Ví dụ: /ai make it shorter and more punchy_`,
+        `✏️ Gửi nội dung mới cho draft này.\n\nHoặc dùng /ai <prompt> để nhờ AI sửa.\n\nVí dụ: /ai make it shorter and more punchy`,
         chatId
       );
       break;
@@ -165,7 +166,7 @@ Rules:
       pendingActions.set(chatId!, { action: "schedule", draftId });
       await telegramService.answerCallback(callbackId, "⏰ Nhập giờ");
       await telegramService.sendMessage(
-        `⏰ Nhập giờ đăng bài (format: \`HH:MM\` hoặc \`YYYY-MM-DD HH:MM\`)\n\nVí dụ: \`14:30\` hoặc \`2026-03-24 10:00\``,
+        `⏰ Nhập giờ đăng bài (format: HH:MM hoặc YYYY-MM-DD HH:MM)\n\nVí dụ: 14:30 hoặc 2026-03-24 10:00`,
         chatId
       );
       break;
@@ -192,7 +193,7 @@ async function handleTextMessage(message: any) {
       return;
     }
 
-    await telegramService.sendMessage(`🤖 Đang sửa theo: _${aiInstruction}_`, chatId);
+    await telegramService.sendMessage(`🤖 Đang sửa theo: ${aiInstruction}`, chatId);
 
     try {
       const aiPrompt = `You are editing a social media post for X (Twitter).
@@ -294,7 +295,7 @@ Rules:
       scheduledDate = new Date(`${fullMatch[1]}T${fullMatch[2].padStart(2, "0")}:${fullMatch[3]}:00+07:00`);
     } else {
       await telegramService.sendMessage(
-        "❌ Format không đúng. Dùng `HH:MM` hoặc `YYYY-MM-DD HH:MM`",
+        "❌ Format không đúng. Dùng HH:MM hoặc YYYY-MM-DD HH:MM",
         chatId
       );
       return;
@@ -306,7 +307,7 @@ Rules:
 
     const timeStr = scheduledDate.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
     await telegramService.sendMessage(
-      `⏰ Đã schedule lúc *${timeStr}*\n\nNội dung:\n${draft.raw_content}`,
+      `⏰ Đã schedule lúc ${timeStr}\n\nNội dung:\n${draft.raw_content}`,
       chatId
     );
 

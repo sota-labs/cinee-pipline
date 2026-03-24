@@ -24,7 +24,7 @@ export interface Settings {
   telegramBotToken: string;
   telegramChatId: string;
   telegramWebhookUrl: string;
-  pythonServiceUrl: string;
+  openClawAgent: string;
 }
 
 export const settings: Settings = {
@@ -76,5 +76,5 @@ export const settings: Settings = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
   telegramWebhookUrl: process.env.TELEGRAM_WEBHOOK_URL || "",
-  pythonServiceUrl: process.env.PYTHON_SERVICE_URL || "http://localhost:8000",
+  openClawAgent: process.env.OPENCLAW_AGENT || "main",
 };
