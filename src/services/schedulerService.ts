@@ -2,6 +2,7 @@
 import { execSync } from "child_process";
 import { log } from "../utils/logger.js";
 import * as dotenv from "dotenv";
+import { settings } from "../config/settings.js";
 dotenv.config();
 
 const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
@@ -57,7 +58,7 @@ Step 1: Research & Selection
 - Select the single most outstanding post that contains a video or image. Save its URL and key content.
 
 Step 2: Content Creation (CEO Persona)
-- Write a post (under 300 words) from the perspective of a tech CEO who understands cinema deeply.
+- Write a post (under 300 characters) from the perspective of a tech CEO who understands cinema deeply.
 - Tone: Strategic, focused on how AI is transforming the production pipeline (e.g. "Sora isn't just video — it's a redefinition of Pre-visualization").
 - The post MUST include the source link from Step 1 as a reference.
 - Do NOT directly promote any product. Be insightful, not salesy.
@@ -95,11 +96,11 @@ Step 1: Fetch Approved Content
 
 Step 2: Post Each Approved Draft
 For each approved/scheduled draft:
-  a) Navigate to https://x.com/compose/post.
-  b) Wait for the compose text area to appear.
-  c) Type the draft's "raw_content" into the text area.
-  d) Click the "Post" button (or the button with data-testid="tweetButtonInline").
-  e) If a login prompt appears, STOP and report it.
+  a) Navigate to https://x.com/home.
+  b) Wait until web page load done
+  c) Wait for the compose text area to appear.
+  d) Type the draft's "raw_content" into post area (where usually has placeholder text like "What's happening?").
+  e) Click the "Post" button (or the button with data-testid="tweetButtonInline").
   f) After posting, call PATCH ${API}/api/content-review/drafts/<draft_id> with:
      { "status": "posted" }
   g) Wait 10 seconds before processing the next draft.
@@ -126,13 +127,15 @@ const CRON_JOBS: CronJob[] = [
     name: "research_and_draft_morning",
     schedule: "0 9 * * *",
     message: RESEARCH_AND_DRAFT_PROMPT,
-    description: "Research AI filmmaking trends and create draft for review (9 AM daily)",
+    description:
+      "Research AI filmmaking trends and create draft for review (9 AM daily)",
   },
   {
     name: "research_and_draft_evening",
     schedule: "0 17 * * *",
     message: RESEARCH_AND_DRAFT_PROMPT,
-    description: "Research AI filmmaking trends and create draft for review (5 PM daily)",
+    description:
+      "Research AI filmmaking trends and create draft for review (5 PM daily)",
   },
   {
     name: "post_approved_content",
@@ -158,7 +161,7 @@ function runOpenClaw(args: string): string {
 
 function buildAddCommand(job: CronJob): string {
   const escapedMessage = job.message.replace(/'/g, "'\\''");
-  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session isolated --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
+  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session ${settings.openClawAgent} --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -202,6 +205,43 @@ export function removeAllJobs(): Record<string, unknown>[] {
   }
 
   return results;
+}
+
+export function registerSingleJob(jobName: string): Record<string, unknown> {
+  const job = CRON_JOBS.find((j) => j.name === jobName);
+  if (!job) {
+    return {
+      name: jobName,
+      status: "not_found",
+      error: `Job "${jobName}" not found in definitions`,
+    };
+  }
+  try {
+    const cmd = buildAddCommand(job);
+    const output = runOpenClaw(cmd);
+    log.info(`Registered: ${job.name} (${job.schedule})`);
+    return { name: job.name, status: "registered", output };
+  } catch (error: any) {
+    log.error(`Failed to register: ${job.name}`);
+    return { name: job.name, status: "failed", error: error.message };
+  }
+}
+
+export function removeSingleJob(jobName: string): Record<string, unknown> {
+  const job = CRON_JOBS.find((j) => j.name === jobName);
+  if (!job) {
+    return {
+      name: jobName,
+      status: "not_found",
+      error: `Job "${jobName}" not found in definitions`,
+    };
+  }
+  try {
+    const output = runOpenClaw(`cron rm ${job.name}`);
+    return { name: job.name, status: "removed", output };
+  } catch (error: any) {
+    return { name: job.name, status: "failed", error: error.message };
+  }
 }
 
 export function checkGateway(): boolean {

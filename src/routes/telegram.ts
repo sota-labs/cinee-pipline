@@ -134,21 +134,26 @@ async function handleCallbackQuery(query: any) {
         const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter).
 
 Steps:
-1. Navigate to https://x.com/compose/post
-2. Wait for the compose text area to appear
-3. Type the following content into the text area:
+1. Navigate to https://x.com/home
+2. Wait until web page load done
+3. Type the following content into post area (where usually has placeholder text like "What's happening?"):
 """
 ${draft.raw_content}
 """
-4. Click the "Post" button (or the button with data-testid="tweetButtonInline")
-5. If a login prompt appears, STOP and report "LOGIN_REQUIRED"
+4. After navigated and pasted content, "Post" button is now available.
+5. Click the "Post" button
 6. Wait until the post is confirmed published
-7. Report "POST_SUCCESS" when done`;
+7. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>)
+8. Report exactly in this format: POST_SUCCESS: <post_url>`;
 
         const result = runOpenClaw(postPrompt);
 
-        if (result.includes("POST_SUCCESS")) {
+        const postUrlMatch = result.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);
+        if (postUrlMatch || result.includes("POST_SUCCESS")) {
           draft.status = EPostStatus.POSTED;
+          if (postUrlMatch) {
+            draft.post_url = postUrlMatch[1];
+          }
           await draft.save();
 
           if (chatId && callbackMessageId) {
@@ -158,8 +163,9 @@ ${draft.raw_content}
             );
           }
 
+          const urlInfo = draft.post_url ? `\n\n🔗 ${draft.post_url}` : "";
           await telegramService.sendMessage(
-            `✅ Đã đăng bài thành công!\n\nNội dung:\n${draft.raw_content}`,
+            `✅ Đã đăng bài thành công!${urlInfo}\n\nNội dung:\n${draft.raw_content}`,
             chatId,
           );
         } else {
@@ -336,7 +342,7 @@ ${draft.raw_content}
 User instruction: ${aiInstruction}
 
 Rules:
-- Keep it under 300 words
+- Keep it under 300 characters
 - Maintain the CEO/visionary tone about AI filmmaking
 - Output ONLY the edited post, nothing else.`;
 
