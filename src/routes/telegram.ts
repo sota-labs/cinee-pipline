@@ -14,7 +14,7 @@ enum EPendingAction {
 }
 
 enum EAgentAction {
-  APPROVE = "approve",
+  POST_NOW = "post_now",
   REJECT = "reject",
   EDIT = "edit",
   AI_REWRITE = "ai_rewrite",
@@ -99,13 +99,14 @@ async function handleCallbackQuery(query: any) {
 
   log.info(`Telegram callback: ${data} from chat ${chatId}`);
 
-  const parts = data.match(/^(approve|reject|edit|ai_rewrite|schedule)_(.+)$/);
+  const parts = data.match(/^(post_now|reject|edit|ai_rewrite|schedule)_(.+)$/);
   if (!parts) {
     await telegramService.answerCallback(callbackId, "❓ Unknown action");
     return;
   }
 
   const [, action, draftId] = parts;
+  const callbackMessageId: number | undefined = query.message?.message_id;
   const draft = await Post.findById(draftId);
 
   if (!draft) {
@@ -113,15 +114,72 @@ async function handleCallbackQuery(query: any) {
     return;
   }
 
+  if (draft.status === EPostStatus.POSTED) {
+    await telegramService.answerCallback(
+      callbackId,
+      "📌 Bài này đã được đăng rồi",
+    );
+    return;
+  }
+
   switch (action) {
-    case EAgentAction.APPROVE: {
-      draft.status = EPostStatus.APPROVED;
-      await draft.save();
-      await telegramService.answerCallback(callbackId, "✅ Approved!");
+    case EAgentAction.POST_NOW: {
+      await telegramService.answerCallback(callbackId, "🚀 Đang đăng bài...");
       await telegramService.sendMessage(
-        `✅ Đã approve! Bài viết sẽ được đăng sớm.\n\nNội dung:\n${draft.raw_content}`,
+        `🚀 Đang đăng bài lên X, chờ chút...`,
         chatId,
       );
+
+      try {
+        const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter).
+
+Steps:
+1. Navigate to https://x.com/compose/post
+2. Wait for the compose text area to appear
+3. Type the following content into the text area:
+"""
+${draft.raw_content}
+"""
+4. Click the "Post" button (or the button with data-testid="tweetButtonInline")
+5. If a login prompt appears, STOP and report "LOGIN_REQUIRED"
+6. Wait until the post is confirmed published
+7. Report "POST_SUCCESS" when done`;
+
+        const result = runOpenClaw(postPrompt);
+
+        if (result.includes("POST_SUCCESS")) {
+          draft.status = EPostStatus.POSTED;
+          await draft.save();
+
+          if (chatId && callbackMessageId) {
+            await telegramService.removeMessageButtons(
+              chatId,
+              callbackMessageId,
+            );
+          }
+
+          await telegramService.sendMessage(
+            `✅ Đã đăng bài thành công!\n\nNội dung:\n${draft.raw_content}`,
+            chatId,
+          );
+        } else {
+          log.error(
+            `Running OpenClaw agent for posting to X failed: ${result}`,
+          );
+          await telegramService.sendMessage(
+            `❌ Đăng bài thất bại: ${result}`,
+            chatId,
+          );
+        }
+      } catch (err: any) {
+        log.error(`Post to X failed: ${err.message}`);
+        await telegramService.sendMessage(
+          `❌ Đăng bài thất bại: ${err.message}`,
+          chatId,
+        );
+        draft.status = EPostStatus.FAILED;
+        await draft.save();
+      }
       break;
     }
 
@@ -129,6 +187,15 @@ async function handleCallbackQuery(query: any) {
       draft.status = EPostStatus.REJECTED;
       await draft.save();
       await telegramService.answerCallback(callbackId, "❌ Rejected");
+
+      if (chatId && callbackMessageId) {
+        try {
+          await telegramService.removeMessageButtons(chatId, callbackMessageId);
+        } catch {
+          /* non-critical */
+        }
+      }
+
       await telegramService.sendMessage(`❌ Draft đã bị reject.`, chatId);
       break;
     }
