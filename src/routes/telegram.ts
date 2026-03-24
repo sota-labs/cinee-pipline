@@ -188,13 +188,13 @@ async function handleTextMessage(message: any) {
 
   switch (pending.action) {
     case EPendingAction.EDIT:
-      handleEdit(pending, text, chatId);
+      await handleEdit(pending, text, chatId);
       break;
     case EPendingAction.AI_PROMPT:
-      handleAiPrompt(pending, text, chatId);
+      await handleAiPrompt(pending, text, chatId);
       break;
     case EPendingAction.SCHEDULE:
-      handleSchedule(pending, text, chatId);
+      await handleSchedule(pending, text, chatId);
       break;
   }
 }
