@@ -9,7 +9,7 @@ import { settings } from "../config/settings.js";
 // ── Low-level API helpers ────────────────────────────────────────────────────
 
 function getBotToken() {
-  return settings.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "";
+  return settings.cineeTelegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "";
 }
 
 function getTelegramApi() {

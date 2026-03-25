@@ -21,7 +21,7 @@ export interface Settings {
   redisUrl: string;
   publicApiUrl: string;
   port: number;
-  telegramBotToken: string;
+  cineeTelegramBotToken: string;
   telegramChatId: string;
   telegramWebhookUrl: string;
   openClawAgent: string;
@@ -56,24 +56,44 @@ export const settings: Settings = {
     - Engage in conversations as a peer, not as a brand.`,
     tone: "personal, visionary, authentic, builder-mindset, conversational",
     topics: [
-      "building Cinee", "AI filmmaking future", "creator economy",
-      "startup journey", "Sora", "Kling", "Runway", "AI video generation",
-      "creator monetization", "platform building", "founder life",
-      "AI film hosting", "YouTube algorithm challenges", "Stable Diffusion video",
+      "building Cinee",
+      "AI filmmaking future",
+      "creator economy",
+      "startup journey",
+      "Sora",
+      "Kling",
+      "Runway",
+      "AI video generation",
+      "creator monetization",
+      "platform building",
+      "founder life",
+      "AI film hosting",
+      "YouTube algorithm challenges",
+      "Stable Diffusion video",
     ],
     communities: [
-      "r/aivideo", "r/sora", "r/runwayml", "r/StableDiffusion", "r/filmmaking",
+      "r/aivideo",
+      "r/sora",
+      "r/runwayml",
+      "r/StableDiffusion",
+      "r/filmmaking",
     ],
     engagementKeywords: [
-      "Sora", "Kling", "Runway", "AI film", "AI video", "generative video",
-      "AI filmmaker", "AI content creator",
+      "Sora",
+      "Kling",
+      "Runway",
+      "AI film",
+      "AI video",
+      "generative video",
+      "AI filmmaker",
+      "AI content creator",
     ],
   },
   mongoUri: process.env.MONGO_URI || "mongodb://localhost:27017/cinee_pipeline",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
   publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
-  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
+  cineeTelegramBotToken: process.env.CINEE_TELEGRAM_BOT_TOKEN || "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
   telegramWebhookUrl: process.env.TELEGRAM_WEBHOOK_URL || "",
   openClawAgent: process.env.OPENCLAW_AGENT || "main",
