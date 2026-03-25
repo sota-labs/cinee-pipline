@@ -147,13 +147,10 @@ ${draft.raw_content}
 8. Report exactly in this format: POST_SUCCESS: <post_url>`;
 
         const result = runOpenClaw(postPrompt);
-
         const postUrlMatch = result.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);
-        if (postUrlMatch || result.includes("POST_SUCCESS")) {
+        if (postUrlMatch) {
           draft.status = EPostStatus.POSTED;
-          if (postUrlMatch) {
-            draft.post_url = postUrlMatch[1];
-          }
+          draft.post_url = postUrlMatch[1];
           await draft.save();
 
           if (chatId && callbackMessageId) {
@@ -163,7 +160,7 @@ ${draft.raw_content}
             );
           }
 
-          const urlInfo = draft.post_url ? `\n\n🔗 ${draft.post_url}` : "";
+          const urlInfo = `\n\n🔗 ${draft.post_url}`;
           await telegramService.sendMessage(
             `✅ Đã đăng bài thành công!${urlInfo}\n\nNội dung:\n${draft.raw_content}`,
             chatId,
