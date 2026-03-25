@@ -151,7 +151,7 @@ function runOpenClaw(args: string): string {
   try {
     return execSync(`openclaw ${args}`, {
       encoding: "utf-8",
-      timeout: 30_000,
+      timeout: 60_000,
     }).trim();
   } catch (error: any) {
     log.error(`OpenClaw error: ${error.message}`);
