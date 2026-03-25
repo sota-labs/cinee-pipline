@@ -167,9 +167,19 @@ export async function setupWebhook(webhookUrl: string): Promise<unknown> {
   return callTelegram("setWebhook", { url: webhookUrl });
 }
 
-/** Remove the webhook. */
-export async function removeWebhook(): Promise<unknown> {
-  return callTelegram("deleteWebhook", {});
+/** Remove the webhook and optionally drop pending updates. */
+export async function removeWebhook(dropPendingUpdates = false): Promise<unknown> {
+  return callTelegram("deleteWebhook", { drop_pending_updates: dropPendingUpdates });
+}
+
+/** Clear any stale webhook to avoid getUpdates conflict with OpenClaw polling. */
+export async function ensureNoWebhook(): Promise<void> {
+  try {
+    await removeWebhook(true);
+    log.info("Telegram webhook cleared (OpenClaw polling enabled)");
+  } catch (e: any) {
+    log.warn(`Failed to clear Telegram webhook: ${e.message}`);
+  }
 }
 
 /** Get current webhook info. */
