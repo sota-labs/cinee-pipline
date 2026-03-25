@@ -161,7 +161,7 @@ function runOpenClaw(args: string): string {
 
 function buildAddCommand(job: CronJob): string {
   const escapedMessage = job.message.replace(/'/g, "'\\''");
-  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session ${settings.openClawAgent} --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
+  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session isolated --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
