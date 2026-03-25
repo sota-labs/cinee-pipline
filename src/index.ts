@@ -3,11 +3,9 @@ import { app } from "./app.js";
 import { settings } from "./config/settings.js";
 import { connectDb } from "./db/index.js";
 import { log } from "./utils/logger.js";
-import { ensureNoWebhook } from "./services/telegramService.js";
 
 async function start() {
   await connectDb();
-  await ensureNoWebhook();
 
   app.listen(settings.port, () => {
     log.info(`Server running on http://localhost:${settings.port}`);

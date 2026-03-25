@@ -16,7 +16,10 @@ function getTelegramApi() {
   return `/bot${getBotToken()}`;
 }
 
-async function callTelegram(method: string, body: Record<string, unknown>): Promise<any> {
+async function callTelegram(
+  method: string,
+  body: Record<string, unknown>,
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const dataStr = JSON.stringify(body);
     const options = {
@@ -39,7 +42,9 @@ async function callTelegram(method: string, body: Record<string, unknown>): Prom
           const data = JSON.parse(responseBody);
           if (!data.ok) {
             log.error(`Telegram API error [${method}]: ${responseBody}`);
-            return reject(new Error(`Telegram ${method} failed: ${data.description}`));
+            return reject(
+              new Error(`Telegram ${method} failed: ${data.description}`),
+            );
           }
           resolve(data.result);
         } catch (e) {
@@ -70,9 +75,7 @@ function buildDraftKeyboard(draftId: string) {
         { text: "✏️ Edit", callback_data: `edit_${draftId}` },
         { text: "🤖 AI Rewrite", callback_data: `ai_rewrite_${draftId}` },
       ],
-      [
-        { text: "⏰ Schedule", callback_data: `schedule_${draftId}` },
-      ],
+      [{ text: "⏰ Schedule", callback_data: `schedule_${draftId}` }],
     ],
   };
 }
@@ -83,7 +86,7 @@ export async function sendDraftForReview(
   draftId: string,
   content: string,
   researchSource: string,
-  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || ""
+  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
 ): Promise<{ message_id: number }> {
   const text = [
     "📝 *Bài viết mới cần duyệt:*\n",
@@ -101,7 +104,9 @@ export async function sendDraftForReview(
     reply_markup: keyboard,
   });
 
-  log.info(`Sent draft ${draftId} to Telegram chat ${chatId} (msg_id: ${result.message_id})`);
+  log.info(
+    `Sent draft ${draftId} to Telegram chat ${chatId} (msg_id: ${result.message_id})`,
+  );
   return result;
 }
 
@@ -110,7 +115,7 @@ export async function sendUpdatedPreview(
   draftId: string,
   content: string,
   version: number,
-  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || ""
+  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
 ): Promise<{ message_id: number }> {
   const text = [
     `📝 *Bản cập nhật \\#${version}:*\n`,
@@ -131,7 +136,7 @@ export async function sendUpdatedPreview(
 /** Send a plain text message (no parse mode to avoid formatting issues). */
 export async function sendMessage(
   text: string,
-  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || ""
+  chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
 ): Promise<{ message_id: number }> {
   return callTelegram("sendMessage", {
     chat_id: chatId,
@@ -142,7 +147,7 @@ export async function sendMessage(
 /** Remove all inline buttons from a message (marks it as finalized). */
 export async function removeMessageButtons(
   chatId: string,
-  messageId: number
+  messageId: number,
 ): Promise<void> {
   await callTelegram("editMessageReplyMarkup", {
     chat_id: chatId,
@@ -154,7 +159,7 @@ export async function removeMessageButtons(
 /** Answer a callback query (dismiss the "loading" spinner on buttons). */
 export async function answerCallback(
   callbackQueryId: string,
-  text?: string
+  text?: string,
 ): Promise<void> {
   await callTelegram("answerCallbackQuery", {
     callback_query_id: callbackQueryId,
@@ -168,18 +173,12 @@ export async function setupWebhook(webhookUrl: string): Promise<unknown> {
 }
 
 /** Remove the webhook and optionally drop pending updates. */
-export async function removeWebhook(dropPendingUpdates = false): Promise<unknown> {
-  return callTelegram("deleteWebhook", { drop_pending_updates: dropPendingUpdates });
-}
-
-/** Clear any stale webhook to avoid getUpdates conflict with OpenClaw polling. */
-export async function ensureNoWebhook(): Promise<void> {
-  try {
-    await removeWebhook(true);
-    log.info("Telegram webhook cleared (OpenClaw polling enabled)");
-  } catch (e: any) {
-    log.warn(`Failed to clear Telegram webhook: ${e.message}`);
-  }
+export async function removeWebhook(
+  dropPendingUpdates = false,
+): Promise<unknown> {
+  return callTelegram("deleteWebhook", {
+    drop_pending_updates: dropPendingUpdates,
+  });
 }
 
 /** Get current webhook info. */
@@ -189,5 +188,8 @@ export async function getWebhookInfo(): Promise<unknown> {
 
 /** Check if the bot token is configured. */
 export function isConfigured(): boolean {
-  return getBotToken().length > 0 && (settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "").length > 0;
+  return (
+    getBotToken().length > 0 &&
+    (settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "").length > 0
+  );
 }
