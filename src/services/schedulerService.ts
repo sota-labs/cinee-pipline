@@ -94,15 +94,15 @@ Step 3: Save as Draft for Review
 const CRON_JOBS: CronJob[] = [
   {
     name: "scrape_x_notifications",
-    schedule: "0 0,3,6,9,12,15,18,21 * * *|30 1,4,7,10,13,16,19,22 * * *",
+    schedule: "20 * * * *",
     message: SCRAPE_PROMPT,
-    description: "Scrape X notifications and store replies (every 1.5 hours)",
+    description: "Scrape X notifications and store replies (every hour at :20)",
   },
   {
     name: "reply_x_notifications",
-    schedule: "15 0,3,6,9,12,15,18,21 * * *|45 1,4,7,10,13,16,19,22 * * *",
+    schedule: "40 * * * *",
     message: REPLY_PROMPT,
-    description: "Auto-reply on X and update status (15 mins after scrape)",
+    description: "Auto-reply on X and update status (every hour at :40)",
   },
   {
     name: "research_and_draft_morning",
@@ -113,10 +113,10 @@ const CRON_JOBS: CronJob[] = [
   },
   {
     name: "research_and_draft_evening",
-    schedule: "0 17 * * *",
+    schedule: "0 21 * * *",
     message: RESEARCH_AND_DRAFT_PROMPT,
     description:
-      "Research AI filmmaking trends and create draft for review (5 PM daily)",
+      "Research AI filmmaking trends and create draft for review (9 PM daily)",
   },
 ];
 
@@ -145,19 +145,14 @@ export function registerIsolatedJobs(): Record<string, unknown>[] {
   const results: Record<string, unknown>[] = [];
 
   for (const job of CRON_JOBS) {
-    const schedules = job.schedule.split("|");
-    for (let i = 0; i < schedules.length; i++) {
-      const sch = schedules[i];
-      const actualName = schedules.length > 1 ? `${job.name}_p${i + 1}` : job.name;
-      try {
-        const cmd = buildAddCommand({ ...job, name: actualName, schedule: sch });
-        const output = runOpenClaw(cmd);
-        log.info(`Registered: ${actualName} (${sch})`);
-        results.push({ name: actualName, status: "registered", output });
-      } catch (error: any) {
-        log.error(`Failed to register: ${actualName}`);
-        results.push({ name: actualName, status: "failed", error: error.message });
-      }
+    try {
+      const cmd = buildAddCommand(job);
+      const output = runOpenClaw(cmd);
+      log.info(`Registered: ${job.name} (${job.schedule})`);
+      results.push({ name: job.name, status: "registered", output });
+    } catch (error: any) {
+      log.error(`Failed to register: ${job.name}`);
+      results.push({ name: job.name, status: "failed", error: error.message });
     }
   }
 
@@ -176,15 +171,11 @@ export function removeAllJobs(): Record<string, unknown>[] {
   const results: Record<string, unknown>[] = [];
 
   for (const job of CRON_JOBS) {
-    const schedules = job.schedule.split("|");
-    for (let i = 0; i < schedules.length; i++) {
-      const actualName = schedules.length > 1 ? `${job.name}_p${i + 1}` : job.name;
-      try {
-        const output = runOpenClaw(`cron rm ${actualName}`);
-        results.push({ name: actualName, status: "removed", output });
-      } catch (error: any) {
-        results.push({ name: actualName, status: "failed", error: error.message });
-      }
+    try {
+      const output = runOpenClaw(`cron rm ${job.name}`);
+      results.push({ name: job.name, status: "removed", output });
+    } catch (error: any) {
+      results.push({ name: job.name, status: "failed", error: error.message });
     }
   }
 
@@ -194,43 +185,38 @@ export function removeAllJobs(): Record<string, unknown>[] {
 export function registerSingleJob(jobName: string): Record<string, unknown> {
   const job = CRON_JOBS.find((j) => j.name === jobName);
   if (!job) {
-    return { name: jobName, status: "not_found", error: `Job not found` };
+    return {
+      name: jobName,
+      status: "not_found",
+      error: `Job "${jobName}" not found in definitions`,
+    };
   }
-  const results: Record<string, unknown>[] = [];
-  const schedules = job.schedule.split("|");
-  for (let i = 0; i < schedules.length; i++) {
-    const sch = schedules[i];
-    const actualName = schedules.length > 1 ? `${job.name}_p${i + 1}` : job.name;
-    try {
-      const cmd = buildAddCommand({ ...job, name: actualName, schedule: sch });
-      const output = runOpenClaw(cmd);
-      log.info(`Registered: ${actualName} (${sch})`);
-      results.push({ name: actualName, status: "registered", output });
-    } catch (error: any) {
-      log.error(`Failed to register: ${actualName}`);
-      results.push({ name: actualName, status: "failed", error: error.message });
-    }
+  try {
+    const cmd = buildAddCommand(job);
+    const output = runOpenClaw(cmd);
+    log.info(`Registered: ${job.name} (${job.schedule})`);
+    return { name: job.name, status: "registered", output };
+  } catch (error: any) {
+    log.error(`Failed to register: ${job.name}`);
+    return { name: job.name, status: "failed", error: error.message };
   }
-  return { name: job.name, status: "processed", details: results };
 }
 
 export function removeSingleJob(jobName: string): Record<string, unknown> {
   const job = CRON_JOBS.find((j) => j.name === jobName);
   if (!job) {
-    return { name: jobName, status: "not_found", error: `Job not found` };
+    return {
+      name: jobName,
+      status: "not_found",
+      error: `Job "${jobName}" not found in definitions`,
+    };
   }
-  const results: Record<string, unknown>[] = [];
-  const schedules = job.schedule.split("|");
-  for (let i = 0; i < schedules.length; i++) {
-    const actualName = schedules.length > 1 ? `${job.name}_p${i + 1}` : job.name;
-    try {
-      const output = runOpenClaw(`cron rm ${actualName}`);
-      results.push({ name: actualName, status: "removed", output });
-    } catch (error: any) {
-      results.push({ name: actualName, status: "failed", error: error.message });
-    }
+  try {
+    const output = runOpenClaw(`cron rm ${job.name}`);
+    return { name: job.name, status: "removed", output };
+  } catch (error: any) {
+    return { name: job.name, status: "failed", error: error.message };
   }
-  return { name: job.name, status: "processed", details: results };
 }
 
 export function checkGateway(): boolean {
