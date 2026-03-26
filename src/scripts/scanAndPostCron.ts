@@ -36,7 +36,7 @@ ${post.raw_content}
       `openclaw agent --agent ${settings.openClawAgent} --message '${escapedMessage}'`,
       {
         encoding: "utf-8",
-        timeout: 120_000,
+        timeout: 300_000,
       },
     );
     const match = output.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);

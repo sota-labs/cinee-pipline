@@ -35,7 +35,7 @@ function runOpenClaw(message: string): string {
     `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`,
     {
       encoding: "utf-8",
-      timeout: 120_000,
+      timeout: 300_000,
     },
   ).trim();
 }
