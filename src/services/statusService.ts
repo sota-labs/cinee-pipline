@@ -1,23 +1,20 @@
 /** Status service — health and stats reporting. */
-import { rateLimiter } from "../tools/rateLimiter.js";
 import { settings } from "../config/settings.js";
-import { Post, Reply, CurationSource } from "../db/index.js";
+import { Post, Reply } from "../db/index.js";
 
 async function getQuickStats(): Promise<Record<string, number>> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const [posts_today, replies_draft, curation_unused] = await Promise.all([
+  const [posts_today, replies_draft] = await Promise.all([
     Post.countDocuments({ created_at: { $gte: today } }),
     Reply.countDocuments({ status: "draft" }),
-    CurationSource.countDocuments({ used: false }),
   ]);
-  return { posts_today, replies_draft, curation_unused };
+  return { posts_today, replies_draft };
 }
 
 export async function getSystemStatus(): Promise<Record<string, unknown>> {
-  const [stats, rateLimits] = await Promise.all([
+  const [stats] = await Promise.all([
     getQuickStats(),
-    rateLimiter.getRateLimitStatus(),
   ]);
 
   return {
@@ -28,7 +25,6 @@ export async function getSystemStatus(): Promise<Record<string, unknown>> {
       env: process.env.NODE_ENV || "development",
     },
     pipeline: { daily_stats: stats },
-    rate_limits: rateLimits,
     timestamp: new Date().toISOString(),
   };
 }

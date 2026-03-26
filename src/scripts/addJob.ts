@@ -8,7 +8,6 @@
  *   - reply_x_notifications
  *   - research_and_draft_morning
  *   - research_and_draft_evening
- *   - post_approved_content
  */
 import { registerSingleJob, listJobs, getJobDefinitions } from "../services/schedulerService.js";
 

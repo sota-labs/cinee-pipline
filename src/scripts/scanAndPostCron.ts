@@ -99,13 +99,13 @@ async function startDaemon() {
   // Scan once immediately
   await scanAndPost();
 
-  // Run every 10 seconds
-  const INTERVAL_MS = 10 * 1000;
+  // Run every 1.5 hours (90 minutes)
+  const INTERVAL_MS = 90 * 60 * 1000;
   setInterval(async () => {
     await scanAndPost();
   }, INTERVAL_MS);
 
-  log.info("Cron daemon initialized: DB scan will run every 10 seconds.");
+  log.info("Cron daemon initialized: DB scan will run every 1.5 hours.");
 }
 
 startDaemon().catch((err) => {

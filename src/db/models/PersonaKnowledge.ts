@@ -1,28 +1,24 @@
-/** PersonaKnowledge — the CEO's stances and opinions on key topics. */
 import { Schema, model, Document } from "mongoose";
 
 export interface IPersonaKnowledge extends Document {
   topic: string;
   stance: string;
-  keywords: string[];
+  notes?: string;
+  confidence?: number;
   created_at: Date;
   updated_at: Date;
 }
 
-const personaKnowledgeSchema = new Schema<IPersonaKnowledge>(
+const personaSchema = new Schema<IPersonaKnowledge>(
   {
     topic: { type: String, required: true, unique: true },
     stance: { type: String, required: true },
-    keywords: { type: [String], default: [] },
+    notes: String,
+    confidence: Number,
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
   }
 );
 
-personaKnowledgeSchema.index({ keywords: 1 });
-
-export const PersonaKnowledge = model<IPersonaKnowledge>(
-  "PersonaKnowledge",
-  personaKnowledgeSchema
-);
+export const PersonaKnowledge = model<IPersonaKnowledge>("PersonaKnowledge", personaSchema);

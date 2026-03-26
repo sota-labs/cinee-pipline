@@ -3,66 +3,12 @@
  * Collections:
  *   /db/posts    — CEO's own posts
  *   /db/replies  — CEO's replies (status: draft | rejected | resolved | replied)
- *   /db/curation — AI films found to amplify
- *   /db/persona  — CEO's stances on key topics
  */
 import { Router, type Request, type Response } from "express";
-import * as memoryTools from "../tools/memoryTools.js";
-import * as contentTools from "../tools/contentTools.js";
-import { Post, Reply, CurationSource, PersonaKnowledge } from "../db/index.js";
+import { Post, Reply, PersonaKnowledge } from "../db/index.js";
 import { EReplyStatus } from "../db/models/Reply.js";
 
 export const toolsRouter = Router();
-
-// ── Memory Tools ──────────────────────────────────────────────────────────────
-
-toolsRouter.post("/memory/store", async (req: Request, res: Response) => {
-  const { key, content, metadata, ttl } = req.body;
-  res.json(await memoryTools.storeMemory(key, content, metadata, ttl));
-});
-
-toolsRouter.get("/memory/retrieve", async (req: Request, res: Response) => {
-  res.json(await memoryTools.retrieveMemory(req.query.key as string));
-});
-
-toolsRouter.post("/memory/search", async (req: Request, res: Response) => {
-  const { query, limit } = req.body;
-  res.json(await memoryTools.searchMemories(query, limit || 10));
-});
-
-toolsRouter.post("/memory/history", async (req: Request, res: Response) => {
-  const { content_type, content, tweet_id, metrics } = req.body;
-  res.json(await memoryTools.storeContentHistory(content_type, content, tweet_id, metrics));
-});
-
-toolsRouter.get("/memory/recent-history", async (req: Request, res: Response) => {
-  const count = parseInt(req.query.count as string) || 10;
-  res.json(await memoryTools.getRecentHistory(count));
-});
-
-toolsRouter.post("/memory/engagement-pattern", async (req: Request, res: Response) => {
-  const { pattern_type, data } = req.body;
-  res.json(await memoryTools.storeEngagementPattern(pattern_type, data));
-});
-
-// ── Content Tools ─────────────────────────────────────────────────────────────
-
-toolsRouter.post("/content/ideas", (req: Request, res: Response) => {
-  res.json(contentTools.generateContentIdeas(req.body.topics, req.body.count));
-});
-
-toolsRouter.post("/content/char-count", (req: Request, res: Response) => {
-  res.json(contentTools.calculateCharacterCount(req.body.text));
-});
-
-toolsRouter.post("/content/format", (req: Request, res: Response) => {
-  const { content, hashtags, mention } = req.body;
-  res.json({ formatted: contentTools.formatTweet(content, hashtags, mention) });
-});
-
-toolsRouter.post("/content/sentiment", (req: Request, res: Response) => {
-  res.json(contentTools.analyzeSentiment(req.body.text));
-});
 
 // ── DB: Posts ─────────────────────────────────────────────────────────────────
 
@@ -228,51 +174,6 @@ toolsRouter.delete("/db/replies/:id", async (req: Request, res: Response) => {
   }
 });
 
-// ── DB: Curation Sources ──────────────────────────────────────────────────────
-
-toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
-  try {
-    const source = await CurationSource.findOneAndUpdate(
-      { source_url: req.body.source_url },
-      { $setOnInsert: req.body },
-      { upsert: true, new: true }
-    );
-    res.json({ success: true, id: source._id, source });
-  } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message });
-  }
-});
-
-toolsRouter.get("/db/curation", async (req: Request, res: Response) => {
-  try {
-    const { used, limit = "10" } = req.query;
-    const filter: Record<string, unknown> = {};
-    filter.used = used === "true";
-
-    const sources = await CurationSource.find(filter)
-      .sort({ engagement_score: -1, created_at: -1 })
-      .limit(parseInt(limit as string));
-
-    res.json({ success: true, sources, total: sources.length });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-toolsRouter.patch("/db/curation/:id/used", async (req: Request, res: Response) => {
-  try {
-    const source = await CurationSource.findByIdAndUpdate(
-      req.params.id as string,
-      { $set: { used: true } },
-      { new: true }
-    );
-    if (!source) return res.status(404).json({ success: false, error: "Not found" });
-    res.json({ success: true, source });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 // ── DB: Persona Knowledge ─────────────────────────────────────────────────────
 
 toolsRouter.post("/db/persona", async (req: Request, res: Response) => {
@@ -306,14 +207,13 @@ toolsRouter.get("/db/stats", async (_req: Request, res: Response) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [posts_today, posts_draft, posts_posted, replies_today, replies_draft, curation_unused] =
+    const [posts_today, posts_draft, posts_posted, replies_today, replies_draft] =
       await Promise.all([
         Post.countDocuments({ created_at: { $gte: today } }),
         Post.countDocuments({ status: "draft" }),
         Post.countDocuments({ status: "posted", created_at: { $gte: today } }),
         Reply.countDocuments({ created_at: { $gte: today } }),
         Reply.countDocuments({ status: "draft" }),
-        CurationSource.countDocuments({ used: false }),
       ]);
 
     res.json({
@@ -324,7 +224,6 @@ toolsRouter.get("/db/stats", async (_req: Request, res: Response) => {
         posts_posted,
         replies_today,
         replies_draft,
-        curation_unused,
       },
     });
   } catch (e: any) {
