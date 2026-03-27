@@ -16,12 +16,22 @@ interface CronJob {
 
 // ── Prompt definitions ───────────────────────────────────────────────────────
 
-const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser. 
-Find all notification items that are comments or replies from the last 24 hours. 
+const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser.
+
+Step 1: Locate notification items (comments/replies from the last 24 hours)
+
+**Primary method — Use X's existing DOM elements first:**
+- Look for notification cells using X's built-in selectors: \`[data-testid="cellInnerDiv"]\`, \`[data-testid="notification"]\`, or \`article\` elements inside the notifications timeline.
+- Each notification cell typically contains the commenter's name, the reply text, and a link (anchor tag) to the original post/reply.
+- Use these existing DOM nodes to extract the notification data directly.
+
+**Fallback method — Only if the primary method fails:**
+- If the above selectors return no results or X has changed its DOM structure, then manually analyze the page DOM to identify notification items by inspecting the rendered HTML tree, looking for repeating list-item patterns that contain user avatars, text content, and timestamp indicators.
+
 Scroll the notifications page as needed to ensure no items from the last 24 hours are missed.
 
-For each notification found:
-1. Extract the 'reply_content' (text) and 'url'.
+Step 2: For each notification found:
+1. Extract the 'reply_content' (text) and 'url' from the DOM node (prefer using \`a[href]\` links within the notification cell for the URL).
 2. Evaluate the content of the comment:
    - If the comment is meaningful, constructive, or part of a genuine discussion, set status = "resolved".
    - If the comment is spam, a bot-like promotion, irrelevant gibberish, or just "trash" content, set status = "rejected".
@@ -34,7 +44,7 @@ For each notification found:
    - created_at: (current ISO timestamp)
    - updated_at: (current ISO timestamp)
 
-After processing all items, send a single POST request to ${API}/api/tools/db/replies with the final array of these objects.`;
+Step 3: After processing all items, send a single POST request to ${API}/api/tools/db/replies with the final array of these objects.`;
 
 const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies. 
 Step 2: For each reply in the response that has status "draft" or "resolved": 

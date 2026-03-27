@@ -18,14 +18,21 @@ ${post.raw_content}
 
 Steps:
 1. Navigate to https://x.com/home.
-2. Wait until web page load done
-3. Type the following content into post area (where usually has placeholder text like "What's happening?"):
+2. Wait until web page load done.
+
+3. Type the content into the post input area:
+   **Primary:** Use X's built-in selector \`[data-testid="tweetTextarea_0"]\` to locate the post input area. Click on it to focus, then type the content.
+   **Fallback:** If the selector is not found, look for the contenteditable element or the area with placeholder text like "What's happening?" and type into it.
 """
 ${post.raw_content}
 """
-4. Click the "Post" button (or the button with data-testid="tweetButtonInline").
-5. Wait until the post is confirmed published
-6. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>)
+
+4. Click the Post button:
+   **Primary:** Use X's built-in selector \`[data-testid="tweetButtonInline"]\` to locate and click the Post button.
+   **Fallback:** If the selector is not found, look for a button containing the text "Post" or a submit-like button near the post input area.
+
+5. Wait until the post is confirmed published.
+6. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>).
 7. Report exactly in this format: POST_SUCCESS: <post_url>`;
 
   const escapedMessage = prompt.replace(/'/g, "'\\''");
