@@ -60,41 +60,124 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
 const RESEARCH_AND_DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
+Your goal is to research the AI filmmaking space thoroughly, identify the most impactful trending content, and create a high-quality draft post.
 
-Step 1: Research & Selection
-- Open the browser and go to https://x.com/search.
-- Search for the following keywords one by one: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking".
-- Filter results to posts from the last 24 hours with the highest engagement (likes, reposts, replies).
-- Select the single most outstanding post that contains a video or image. Save its URL and key content.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: DEEP RESEARCH (do not skip any step)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Step 2: Content Creation (CEO Persona)
-- Write a post (under 300 characters) from the perspective of a tech CEO who understands cinema deeply.
-- Tone: Strategic, focused on how AI is transforming the production pipeline (e.g. "Sora isn't just video — it's a redefinition of Pre-visualization").
-- The post MUST include the source link from Step 1 as a reference.
-- Do NOT directly promote any product. Be insightful, not salesy.
+For EACH keyword in this list, execute steps 1a → 1e before moving to the next keyword:
+  Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generation", "generative video", "AI filmmaker"
 
-Step 3: Save as Draft for Review
-- Send a POST request to ${API}/api/content-review/drafts with this JSON body:
-  {
-    "platform": "twitter",
-    "content_type": "hot_take",
-    "raw_content": "<the exact content you created in Step 2>",
-    "ai_stack": ["<AI tools mentioned, e.g. Sora, Runway Gen-3, Kling>"],
-    "research_source": "<the source URL from Step 1>",
-    "research_summary": "<brief summary of what the source post was about>",
-    "status": "pending_review"
-    "media": ["<{
-      "type": "<the media type: video, image, or gif>",
-      "url": "<the media URL>",
-      "thumbnail": "<the media thumbnail URL if the media is a video, otherwise empty>",
-      "duration": "<the media duration if the media is a video, otherwise empty>"
-    }>"],
-    "video_details": <the video details if the post is a video, otherwise empty>,
-    "is_viral_candidate": <true if the post is a viral candidate, false otherwise>,
-    "external_refs": "<the source URL from Step 1>",
-    "metadata": {},
+  1a. Open the search page for this keyword:
+      Run: openclaw browser open https://x.com/search?q=<URL-encoded-keyword>&f=live
+      (Examples:
+        openclaw browser open https://x.com/search?q=Sora&f=live
+        openclaw browser open https://x.com/search?q=AI%20Filmmaking&f=live
+        openclaw browser open https://x.com/search?q=generative%20video&f=live
+      )
+
+  1b. Wait for the page to fully load. Make sure you are on the "Latest" tab (most recent posts).
+
+  1c. Scroll down slowly 3 times to load at least 20-30 posts.
+
+  1d. For each post that contains a video or image (target: collect top 5 per keyword), capture:
+      - post_url        : full URL (click the post, copy from browser address bar)
+      - author_handle   : @username of the poster
+      - author_follower_count : number of followers if visible
+      - post_text       : full text of the post (up to 500 characters)
+      - posted_at       : timestamp of the post (e.g. "2h ago", "Mar 27")
+      - media_type      : video | image | gif
+      - media_url       : direct URL of the video/image
+      - thumbnail_url   : thumbnail if it is a video
+      - duration        : video duration if available
+      - likes           : number of likes
+      - retweets        : number of retweets
+      - replies         : number of replies
+      - views           : number of views if visible
+      - hashtags        : list of hashtags used (e.g. ["#Sora", "#AIFilm"])
+
+  1e. Also note the keyword that surfaced this post.
+
+After collecting posts for all keywords, you should have up to 35 candidate posts total.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: TREND ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2a. Also check what is trending in the AI/tech space:
+    Run: openclaw browser open https://x.com/explore/tabs/trending
+    Note any AI filmmaking or generative video topics appearing in the trending list.
+
+2b. Score each candidate post using this formula:
+    score = (likes * 1) + (retweets * 3) + (replies * 2) + (views * 0.01)
+    Add a +20 bonus if the post is from a verified account or has >10k followers.
+    Add a +15 bonus if the topic matches a trending hashtag on X right now.
+
+2c. Sort all candidate posts by score descending. Keep the top 5 highest-scored posts.
+
+2d. From those top 5, choose the SINGLE BEST post as the research source, prioritizing:
+    - Original content (not just a retweet)
+    - Contains actual video or image media (not just text)
+    - From the last 12 hours if possible
+    - Topic has practical insight (not just hype)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: DEEP READ THE SELECTED POST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3a. Open the selected post in full:
+    Run: openclaw browser open <selected-post-URL>
+
+3b. Read the full post text (including any "Show more" expanded content).
+
+3c. Scroll down to read the top 3 replies/comments to understand community reaction.
+
+3d. Note any linked article, external video, or tool mentioned in the post.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 4: CONTENT CREATION (CEO Persona)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Write a post (under 280 characters) following these rules:
+- Perspective: CEO & founder who uses these AI tools daily
+- Start with a hook — a bold, specific insight (not generic "AI is changing everything")
+- Reference ONE concrete thing from the research (a model name, a capability, a creator's result)
+- Include the source URL
+- End with an open question or a forward-looking statement to invite engagement
+- Do NOT mention Cinee or promote any product
+- Tone: personal, direct, visionary — like a tweet from a founder, not a press release
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 5: SAVE AS DRAFT VIA API
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Send a POST request to ${API}/api/content-review/drafts with Content-Type: application/json and this JSON body:
+{
+  "platform": "twitter",
+  "content_type": "hot_take",
+  "raw_content": "<the exact content from Phase 4>",
+  "ai_stack": ["<AI tools mentioned, e.g. Sora, Runway Gen-3, Kling>"],
+  "research_source": "<the selected post URL>",
+  "research_summary": "<detailed summary: author @handle, post text, top community reactions, engagement score, why this post was selected>",
+  "status": "pending_review",
+  "media": [{
+    "type": "<video or image or gif>",
+    "url": "<media URL>",
+    "thumbnail": "<thumbnail URL if video, otherwise empty string>",
+    "duration": "<duration if video, otherwise empty string>"
+  }],
+  "video_details": null,
+  "is_viral_candidate": false,
+  "external_refs": "<the selected post URL>",
+  "metadata": {
+    "keyword_searched": "<the keyword that surfaced this post>",
+    "engagement_score": <calculated score from Phase 2b>,
+    "top_candidates_count": <total number of posts collected before selection>,
+    "trending_topic_match": <true if topic was trending on X, false otherwise>
   }
-- Report the API response to confirm the draft was created successfully.
+}
+- Report the HTTP status and response body to confirm the draft was created.
 - Do NOT post to X directly. The content will be reviewed via Telegram before posting.`;
 
 
