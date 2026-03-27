@@ -5,8 +5,9 @@
  *   /db/replies  — CEO's replies (status: draft | rejected | resolved | replied)
  */
 import { Router, type Request, type Response } from "express";
-import { Post, Reply, PersonaKnowledge } from "../db/index.js";
+import { Post, Reply, PersonaKnowledge, CurationSource } from "../db/index.js";
 import { EReplyStatus } from "../db/models/Reply.js";
+import { ECurationStatus } from "../db/models/CurationSource.js";
 
 export const toolsRouter = Router();
 
@@ -228,5 +229,124 @@ toolsRouter.get("/db/stats", async (_req: Request, res: Response) => {
     });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+// ── DB: Curation Sources ──────────────────────────────────────────────────────
+
+/**
+ * Batch upsert curation sources.
+ * Accepts a single object or an array. Deduplicated by source_url.
+ * Auto-calculates engagement_score = likes*1 + retweets*3 + comments*2 + views*0.01
+ */
+toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
+  try {
+    const items = (Array.isArray(req.body) ? req.body : [req.body]).map(
+      (item: any) => ({
+        ...item,
+        engagement_score:
+          item.engagement_score ??
+          (item.likes ?? 0) * 1 +
+            (item.retweets ?? 0) * 3 +
+            (item.comments ?? 0) * 2 +
+            (item.views ?? 0) * 0.01,
+        scraped_at: new Date(),
+      }),
+    );
+
+    const results = await Promise.all(
+      items.map((item: any) =>
+        CurationSource.findOneAndUpdate(
+          { source_url: item.source_url },
+          { $set: item },
+          { upsert: true, new: true, runValidators: true },
+        ),
+      ),
+    );
+
+    res.json({ success: true, upserted: results.length, sources: results });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+/**
+ * List curation sources.
+ * Query: status, keyword_searched, limit (default 20), skip (default 0)
+ */
+toolsRouter.get("/db/curation", async (req: Request, res: Response) => {
+  try {
+    const { status, keyword_searched, limit = "20", skip = "0" } = req.query;
+    const filter: Record<string, unknown> = {};
+    if (status) filter.status = status;
+    if (keyword_searched) filter.keyword_searched = keyword_searched;
+
+    const [sources, total] = await Promise.all([
+      CurationSource.find(filter)
+        .sort({ engagement_score: -1, scraped_at: -1 })
+        .skip(parseInt(skip as string))
+        .limit(parseInt(limit as string)),
+      CurationSource.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, sources, total });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/**
+ * Get top N curation sources by engagement_score within the last X hours.
+ * Query: hours (default 24), limit (default 5), status (default "new")
+ */
+toolsRouter.get("/db/curation/top", async (req: Request, res: Response) => {
+  try {
+    const { hours = "24", limit = "5", status = ECurationStatus.NEW } = req.query;
+    const since = new Date(
+      Date.now() - parseInt(hours as string) * 3_600_000,
+    );
+
+    const sources = await CurationSource.find({
+      status,
+      scraped_at: { $gte: since },
+      media_type: { $ne: "none" },
+    })
+      .sort({ engagement_score: -1 })
+      .limit(parseInt(limit as string));
+
+    res.json({ success: true, sources, total: sources.length });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Get a single curation source by ID */
+toolsRouter.get("/db/curation/:id", async (req: Request, res: Response) => {
+  try {
+    const source = await CurationSource.findById(req.params.id);
+    if (!source)
+      return res
+        .status(404)
+        .json({ success: false, error: "CurationSource not found" });
+    res.json({ success: true, source });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Update curation source status or any field */
+toolsRouter.patch("/db/curation/:id", async (req: Request, res: Response) => {
+  try {
+    const source = await CurationSource.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true, runValidators: true },
+    );
+    if (!source)
+      return res
+        .status(404)
+        .json({ success: false, error: "CurationSource not found" });
+    res.json({ success: true, source });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
   }
 });

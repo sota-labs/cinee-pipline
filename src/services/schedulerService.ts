@@ -59,125 +59,180 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
      with JSON body: { "_id": "<the reply _id>", "status": "replied" }. 
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
-const RESEARCH_AND_DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
-Your goal is to research the AI filmmaking space thoroughly, identify the most impactful trending content, and create a high-quality draft post.
+// ── RESEARCH_PROMPT: Scrape X posts → save to CurationSource DB ─────────────
+const RESEARCH_PROMPT = `You are an AI Agent with browser access. Your job is to research the AI filmmaking space on X and save all discovered posts to a database for later use.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 1: DEEP RESEARCH (do not skip any step)
+PHASE 1: COLLECT POSTS FROM X
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For EACH keyword in this list, execute steps 1a → 1e before moving to the next keyword:
-  Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generation", "generative video", "AI filmmaker"
+For EACH keyword below, execute steps 1a → 1e in order before moving to the next keyword.
+Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generation", "generative video", "AI filmmaker"
 
-  1a. Open the search page for this keyword:
+  1a. Open the search results for this keyword:
       Run: openclaw browser open https://x.com/search?q=<URL-encoded-keyword>&f=live
-      (Examples:
+      Examples:
         openclaw browser open https://x.com/search?q=Sora&f=live
         openclaw browser open https://x.com/search?q=AI%20Filmmaking&f=live
         openclaw browser open https://x.com/search?q=generative%20video&f=live
-      )
 
-  1b. Wait for the page to fully load. Make sure you are on the "Latest" tab (most recent posts).
+  1b. Wait until the page fully loads. Confirm you are on the "Latest" tab.
 
-  1c. Scroll down slowly 3 times to load at least 20-30 posts.
+  1c. Scroll down 3 times to load at least 20-30 posts.
 
-  1d. For each post that contains a video or image (target: collect top 5 per keyword), capture:
-      - post_url        : full URL (click the post, copy from browser address bar)
-      - author_handle   : @username of the poster
-      - author_follower_count : number of followers if visible
-      - post_text       : full text of the post (up to 500 characters)
-      - posted_at       : timestamp of the post (e.g. "2h ago", "Mar 27")
-      - media_type      : video | image | gif
-      - media_url       : direct URL of the video/image
-      - thumbnail_url   : thumbnail if it is a video
-      - duration        : video duration if available
-      - likes           : number of likes
-      - retweets        : number of retweets
-      - replies         : number of replies
-      - views           : number of views if visible
-      - hashtags        : list of hashtags used (e.g. ["#Sora", "#AIFilm"])
+  1d. For each post that contains a video or image, click into the post detail page and extract data using X's DOM selectors:
 
-  1e. Also note the keyword that surfaced this post.
+      PRIMARY (use these selectors first):
+        - Post text:       [data-testid="tweetText"]
+        - Like count:      [data-testid="like"] aria-label or inner text
+        - Retweet count:   [data-testid="retweet"] aria-label or inner text
+        - Reply count:     [data-testid="reply"] aria-label or inner text
+        - View count:      [data-testid="views"] or [aria-label*="views"]
+        - Video player:    [data-testid="videoPlayer"] src or poster attribute
+        - Author handle:   [data-testid="User-Name"] or href containing /status/
 
-After collecting posts for all keywords, you should have up to 35 candidate posts total.
+      FALLBACK (only if primary selectors return no data):
+        - Manually inspect the DOM for post content, engagement counters, and media elements.
+        - Time limit: spend NO MORE THAN 10 SECONDS on fallback analysis per post.
+        - If still no data after 10 seconds, skip this post and move on.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: TREND ANALYSIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      Capture these fields per post:
+        - source_url             : the full URL of the post (e.g. https://x.com/<user>/status/<id>)
+        - author_handle          : @username
+        - author_follower_count  : follower count (number) if visible, else null
+        - content                : full post text (up to 500 chars)
+        - media_type             : "video" | "image" | "gif" | "none"
+        - media_url              : direct URL of video/image, else null
+        - thumbnail_url          : thumbnail URL if video, else null
+        - duration               : video duration in seconds if available, else null
+        - likes                  : number (default 0 if not found)
+        - comments               : reply count (default 0)
+        - retweets               : retweet count (default 0)
+        - views                  : view count (default 0)
+        - hashtags               : array of hashtag strings (e.g. ["#Sora", "#AIFilm"])
+        - keyword_searched       : the keyword that surfaced this post
 
-2a. Also check what is trending in the AI/tech space:
-    Run: openclaw browser open https://x.com/explore/tabs/trending
-    Note any AI filmmaking or generative video topics appearing in the trending list.
-
-2b. Score each candidate post using this formula:
-    score = (likes * 1) + (retweets * 3) + (replies * 2) + (views * 0.01)
-    Add a +20 bonus if the post is from a verified account or has >10k followers.
-    Add a +15 bonus if the topic matches a trending hashtag on X right now.
-
-2c. Sort all candidate posts by score descending. Keep the top 5 highest-scored posts.
-
-2d. From those top 5, choose the SINGLE BEST post as the research source, prioritizing:
-    - Original content (not just a retweet)
-    - Contains actual video or image media (not just text)
-    - From the last 12 hours if possible
-    - Topic has practical insight (not just hype)
+  1e. Collect up to 5 posts per keyword. After each post is captured, navigate BACK to the search results before opening the next post.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 3: DEEP READ THE SELECTED POST
+PHASE 2: CHECK TRENDING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-3a. Open the selected post in full:
-    Run: openclaw browser open <selected-post-URL>
-
-3b. Read the full post text (including any "Show more" expanded content).
-
-3c. Scroll down to read the top 3 replies/comments to understand community reaction.
-
-3d. Note any linked article, external video, or tool mentioned in the post.
+Run: openclaw browser open https://x.com/explore/tabs/trending
+Note the names of any AI or filmmaking topics appearing in the trending list.
+For each collected post, add a trending_match = true if any of its hashtags appear in the trending list.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 4: CONTENT CREATION (CEO Persona)
+PHASE 3: CALCULATE SCORE & SAVE TO DB
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Write a post (under 280 characters) following these rules:
+For each collected post, calculate:
+  engagement_score = (likes * 1) + (retweets * 3) + (comments * 2) + (views * 0.01)
+  + 20 if author has > 10k followers or is verified
+  + 15 if trending_match is true
+
+Then send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.
+Body must be a JSON array containing ALL collected posts:
+[
+  {
+    "source_url": "<post URL>",
+    "author_handle": "<@username>",
+    "author_follower_count": <number or null>,
+    "content": "<post text>",
+    "media_type": "<video|image|gif|none>",
+    "media_url": "<url or null>",
+    "thumbnail_url": "<url or null>",
+    "duration": <seconds or null>,
+    "likes": <number>,
+    "comments": <number>,
+    "retweets": <number>,
+    "views": <number>,
+    "hashtags": ["<hashtag>"],
+    "keyword_searched": "<keyword>",
+    "engagement_score": <calculated score>
+  }
+]
+
+Report the HTTP status and response body (number of items upserted) to confirm success.`;
+
+// ── DRAFT_PROMPT: Read CurationSource DB → create post draft ─────────────────
+const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
+Your job is to read already-collected research data from the database and create a high-quality draft post for review.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: LOAD TOP RESEARCH CANDIDATES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Send a GET request to ${API}/api/tools/db/curation/top?hours=12&limit=5
+This returns the top 5 highest-scored posts scraped in the last 12 hours.
+
+If the response returns 0 results, retry with hours=24.
+If still 0, report "No research data available" and stop.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: SELECT THE BEST POST & DEEP READ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+From the returned list, choose the SINGLE BEST post based on:
+  - Highest engagement_score
+  - Original content (not a retweet)
+  - Has video or image media
+  - Topic has practical insight (not just hype)
+
+Then open the selected post in the browser:
+  Run: openclaw browser open <source_url of the selected post>
+
+Read the full post text (expand "Show more" if present).
+Scroll down to read the top 3 replies to understand community reaction.
+Note any linked article, external tool, or video referenced in the post.
+
+Mark the post as selected by sending:
+  PATCH ${API}/api/tools/db/curation/<_id of the selected post>
+  Body: { "status": "selected" }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: WRITE THE DRAFT POST (CEO Persona)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Write a post (under 280 characters) with these rules:
 - Perspective: CEO & founder who uses these AI tools daily
-- Start with a hook — a bold, specific insight (not generic "AI is changing everything")
-- Reference ONE concrete thing from the research (a model name, a capability, a creator's result)
-- Include the source URL
-- End with an open question or a forward-looking statement to invite engagement
+- Start with a bold, specific insight — NOT a generic opener like "AI is changing everything"
+- Reference ONE concrete detail from the research (model name, a creator's result, a capability)
+- Include the source URL from the selected post
+- End with an open question or forward-looking statement to invite engagement
 - Do NOT mention Cinee or promote any product
-- Tone: personal, direct, visionary — like a tweet from a founder, not a press release
+- Tone: personal, direct, visionary — like a real founder's tweet, not a press release
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 5: SAVE AS DRAFT VIA API
+PHASE 4: SAVE AS DRAFT VIA API
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Send a POST request to ${API}/api/content-review/drafts with Content-Type: application/json and this JSON body:
+Send a POST request to ${API}/api/content-review/drafts with Content-Type: application/json:
 {
   "platform": "twitter",
   "content_type": "hot_take",
-  "raw_content": "<the exact content from Phase 4>",
-  "ai_stack": ["<AI tools mentioned, e.g. Sora, Runway Gen-3, Kling>"],
-  "research_source": "<the selected post URL>",
-  "research_summary": "<detailed summary: author @handle, post text, top community reactions, engagement score, why this post was selected>",
+  "raw_content": "<the exact content from Phase 3>",
+  "ai_stack": ["<AI tools mentioned>"],
+  "research_source": "<source_url of the selected post>",
+  "research_summary": "<summary: author handle, post text snippet, top community reactions, why selected>",
   "status": "pending_review",
   "media": [{
-    "type": "<video or image or gif>",
-    "url": "<media URL>",
-    "thumbnail": "<thumbnail URL if video, otherwise empty string>",
-    "duration": "<duration if video, otherwise empty string>"
+    "type": "<media_type from DB>",
+    "url": "<media_url from DB>",
+    "thumbnail": "<thumbnail_url from DB or empty string>",
+    "duration": "<duration from DB or empty string>"
   }],
   "video_details": null,
   "is_viral_candidate": false,
-  "external_refs": "<the selected post URL>",
+  "external_refs": "<source_url of the selected post>",
   "metadata": {
-    "keyword_searched": "<the keyword that surfaced this post>",
-    "engagement_score": <calculated score from Phase 2b>,
-    "top_candidates_count": <total number of posts collected before selection>,
-    "trending_topic_match": <true if topic was trending on X, false otherwise>
+    "curation_source_id": "<_id of the selected CurationSource record>",
+    "engagement_score": <engagement_score from DB>,
+    "keyword_searched": "<keyword_searched from DB>"
   }
 }
-- Report the HTTP status and response body to confirm the draft was created.
+- Then send PATCH ${API}/api/tools/db/curation/<_id> with body { "status": "used" } to mark the source as used.
+- Report the HTTP status and response body of the draft creation to confirm success.
 - Do NOT post to X directly. The content will be reviewed via Telegram before posting.`;
 
 
@@ -198,20 +253,28 @@ const CRON_JOBS: CronJob[] = [
     description: "Auto-reply on X and update status (every hour at :40)",
   },
   {
+    name: "research_and_collect",
+    schedule: "0 */6 * * *",
+    message: RESEARCH_PROMPT,
+    description: "Scrape X for AI filmmaking posts and save to CurationSource DB (every 6 hours)",
+  },
+  {
     name: "research_and_draft_morning",
     schedule: "0 9 * * *",
-    message: RESEARCH_AND_DRAFT_PROMPT,
+    message: DRAFT_PROMPT,
     description:
-      "Research AI filmmaking trends and create draft for review (9 AM daily)",
+      "Read top research from DB and create draft for review (9 AM daily)",
   },
   {
     name: "research_and_draft_evening",
     schedule: "0 21 * * *",
-    message: RESEARCH_AND_DRAFT_PROMPT,
+    message: DRAFT_PROMPT,
     description:
-      "Research AI filmmaking trends and create draft for review (9 PM daily)",
+      "Read top research from DB and create draft for review (9 PM daily)",
   },
 ];
+
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

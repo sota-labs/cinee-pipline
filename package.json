@@ -17,6 +17,7 @@
     "cron:add:reply": "tsx src/scripts/addJob.ts reply_x_notifications",
     "cron:add:research-morning": "tsx src/scripts/addJob.ts research_and_draft_morning",
     "cron:add:research-evening": "tsx src/scripts/addJob.ts research_and_draft_evening",
+    "cron:add:collect": "tsx src/scripts/addJob.ts research_and_collect",
     "cron:add:post": "tsx src/scripts/addJob.ts post_approved_content",
     "cron:remove:scrape": "tsx src/scripts/removeJob.ts scrape_x_notifications",
     "cron:remove:reply": "tsx src/scripts/removeJob.ts reply_x_notifications",

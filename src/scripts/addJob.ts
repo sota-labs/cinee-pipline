@@ -6,6 +6,7 @@
  * Available jobs:
  *   - scrape_x_notifications
  *   - reply_x_notifications
+ *   - research_and_collect
  *   - research_and_draft_morning
  *   - research_and_draft_evening
  */
