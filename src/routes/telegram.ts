@@ -1,10 +1,11 @@
 /** Telegram webhook routes — handle callbacks and messages from Telegram. */
 import { Router, type Request, type Response } from "express";
-import { Post, EPostStatus } from "../db/index.js";
+import { Post, EPostStatus, CurationSource, ECurationStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync } from "child_process";
 import { settings } from "../config/settings.js";
+import { DRAFT_PROMPT } from "../services/schedulerService.js";
 
 export const telegramRouter = Router();
 enum EPendingAction {
@@ -19,6 +20,7 @@ enum EAgentAction {
   EDIT = "edit",
   AI_REWRITE = "ai_rewrite",
   SCHEDULE = "schedule",
+  NEXT_SOURCE = "next_source",
 }
 
 /** In-memory state for pending user inputs (edit or schedule). */
@@ -99,7 +101,7 @@ async function handleCallbackQuery(query: any) {
 
   log.info(`Telegram callback: ${data} from chat ${chatId}`);
 
-  const parts = data.match(/^(post_now|reject|edit|ai_rewrite|schedule)_(.+)$/);
+  const parts = data.match(/^(post_now|reject|edit|ai_rewrite|schedule|next_source)_(.+)$/);
   if (!parts) {
     await telegramService.answerCallback(callbackId, "❓ Unknown action");
     return;
@@ -152,6 +154,18 @@ ${draft.raw_content}
           draft.status = EPostStatus.POSTED;
           draft.post_url = postUrlMatch[1];
           await draft.save();
+
+          // Mark the CurationSource as "used" now that the post is live
+          if (draft.curation_source_id) {
+            try {
+              await CurationSource.findByIdAndUpdate(draft.curation_source_id, {
+                $set: { status: ECurationStatus.USED, posted_at: new Date() },
+              });
+              log.info(`CurationSource ${draft.curation_source_id} marked as used`);
+            } catch (csErr: any) {
+              log.error(`Failed to update CurationSource status: ${csErr.message}`);
+            }
+          }
 
           if (chatId && callbackMessageId) {
             await telegramService.removeMessageButtons(
@@ -233,6 +247,32 @@ ${draft.raw_content}
         `⏰ Nhập giờ đăng bài (format: HH:MM hoặc YYYY-MM-DD HH:MM)\n\nVí dụ: 14:30 hoặc 2026-03-24 10:00`,
         chatId,
       );
+      break;
+    }
+
+    case EAgentAction.NEXT_SOURCE: {
+      draft.status = EPostStatus.REJECTED;
+      await draft.save();
+      await telegramService.answerCallback(callbackId, "🔄 Đang tìm nguồn khác...");
+
+      if (chatId && callbackMessageId) {
+        try {
+          await telegramService.removeMessageButtons(chatId, callbackMessageId);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      await telegramService.sendMessage(`🔄 Draft đã bị reject. Đang tạo draft mới từ nguồn tiếp theo...`, chatId);
+      
+      setTimeout(() => {
+        try {
+          runOpenClaw(DRAFT_PROMPT);
+        } catch (err: any) {
+          log.error(`OpenClaw new draft creation failed: ${err.message}`);
+          telegramService.sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId).catch(console.error);
+        }
+      }, 0);
       break;
     }
   }

@@ -73,31 +73,37 @@ Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generat
       Run: openclaw browser open https://x.com/search?q=<URL-encoded-keyword>&f=live
       Examples:
         openclaw browser open https://x.com/search?q=Sora&f=live
-        openclaw browser open https://x.com/search?q=AI%20Filmmaking&f=live
-        openclaw browser open https://x.com/search?q=generative%20video&f=live
 
   1b. Wait until the page fully loads. Confirm you are on the "Latest" tab.
 
-  1c. Scroll down 3 times to load at least 20-30 posts.
+  1c. Scroll down 3 times using browser actions to load at least 20-30 posts into the DOM.
 
-  1d. For each post that contains a video or image, click into the post detail page and extract data using X's DOM selectors:
+  1d. URL EXTRACTION (CRITICAL): 
+      - DO NOT click on <article> elements to open posts.
+      - Use browser.snapshot on the current search results page.
+      - Parse the snapshot to find the direct URLs of posts. Look for <a> tags where the href attribute matches the pattern \`/[username]/status/[id]\` (often wrapping the <time> element).
+      - Extract and store a list of exactly 5 unique post URLs for this keyword.
 
-      PRIMARY (use these selectors first):
-        - Post text:       [data-testid="tweetText"]
-        - Like count:      [data-testid="like"] aria-label or inner text
-        - Retweet count:   [data-testid="retweet"] aria-label or inner text
-        - Reply count:     [data-testid="reply"] aria-label or inner text
-        - View count:      [data-testid="views"] or [aria-label*="views"]
-        - Video player:    [data-testid="videoPlayer"] src or poster attribute
-        - Author handle:   [data-testid="User-Name"] or href containing /status/
+  1e. DATA EXTRACTION PER POST:
+      Iterate through the 5 extracted URLs. For EACH URL:
+      - Run: openclaw browser open <post_url>
+      - Wait for the detail page to load, then take a browser.snapshot.
+      - Extract data using X's DOM selectors from the snapshot:
+          PRIMARY:
+            - Post text:       [data-testid="tweetText"]
+            - Like count:      [data-testid="like"] aria-label or inner text
+            - Retweet count:   [data-testid="retweet"] aria-label or inner text
+            - Reply count:     [data-testid="reply"] aria-label or inner text
+            - View count:      [data-testid="views"] or [aria-label*="views"]
+            - Video player:    [data-testid="videoPlayer"] src or poster attribute
+            - Author handle:   [data-testid="User-Name"] or href containing /status/
 
-      FALLBACK (only if primary selectors return no data):
-        - Manually inspect the DOM for post content, engagement counters, and media elements.
-        - Time limit: spend NO MORE THAN 10 SECONDS on fallback analysis per post.
-        - If still no data after 10 seconds, skip this post and move on.
+          FALLBACK (only if primary selectors fail):
+            - Manually inspect the snapshot text for content and metrics.
+            - Time limit: spend NO MORE THAN 10 SECONDS on fallback per post. Skip if no data.
 
-      Capture these fields per post:
-        - source_url             : the full URL of the post (e.g. https://x.com/<user>/status/<id>)
+      Capture these fields per post into a JSON object:
+        - source_url             : the full URL of the post
         - author_handle          : @username
         - author_follower_count  : follower count (number) if visible, else null
         - content                : full post text (up to 500 chars)
@@ -105,58 +111,50 @@ Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generat
         - media_url              : direct URL of video/image, else null
         - thumbnail_url          : thumbnail URL if video, else null
         - duration               : video duration in seconds if available, else null
-        - likes                  : number (default 0 if not found)
+        - likes                  : number (default 0)
         - comments               : reply count (default 0)
         - retweets               : retweet count (default 0)
         - views                  : view count (default 0)
-        - hashtags               : array of hashtag strings (e.g. ["#Sora", "#AIFilm"])
+        - hashtags               : array of strings (e.g. ["#Sora", "#AIFilm"])
         - keyword_searched       : the keyword that surfaced this post
-
-  1e. Collect up to 5 posts per keyword. After each post is captured, navigate BACK to the search results before opening the next post.
+        
+      - DO NOT navigate back to the search results. Simply proceed to open the next URL in your list.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 2: CHECK TRENDING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Run: openclaw browser open https://x.com/explore/tabs/trending
-Note the names of any AI or filmmaking topics appearing in the trending list.
-For each collected post, add a trending_match = true if any of its hashtags appear in the trending list.
+Take a snapshot and note the names of any AI or filmmaking topics in the trending list.
+Iterate through all your collected post JSON objects. Add property "trending_match" = true if any of a post's hashtags appear in the trending list, otherwise false.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 3: CALCULATE SCORE & SAVE TO DB
+PHASE 3: CALCULATE SCORE, FILTER & SAVE TO DB
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each collected post, calculate:
+For each collected post in your JSON array, calculate:
   engagement_score = (likes * 1) + (retweets * 3) + (comments * 2) + (views * 0.01)
   + 20 if author has > 10k followers or is verified
   + 15 if trending_match is true
+  Add this calculated score to each post object.
 
-Then send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.
-Body must be a JSON array containing ALL collected posts:
+CRITICAL: Sort all post objects descending by engagement_score. Keep ONLY the top 5 highest-scored posts globally across all keywords.
+
+Send a POST request to \${API}/api/tools/db/curation with Content-Type: application/json.
+CRITICAL: Ensure the JSON body is a properly formatted and escaped array containing strictly the TOP 5 collected posts. If using a shell execution tool, ensure quotes inside the "content" field do not break the command.
+
+Body format:
 [
   {
     "source_url": "<post URL>",
-    "author_handle": "<@username>",
-    "author_follower_count": <number or null>,
-    "content": "<post text>",
-    "media_type": "<video|image|gif|none>",
-    "media_url": "<url or null>",
-    "thumbnail_url": "<url or null>",
-    "duration": <seconds or null>,
-    "likes": <number>,
-    "comments": <number>,
-    "retweets": <number>,
-    "views": <number>,
-    "hashtags": ["<hashtag>"],
-    "keyword_searched": "<keyword>",
+    ... [all fields listed in Phase 1e] ...,
     "engagement_score": <calculated score>
   }
 ]
 
 Report the HTTP status and response body (number of items upserted) to confirm success.`;
 
-// ── DRAFT_PROMPT: Read CurationSource DB → create post draft ─────────────────
-const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
+export const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
 Your job is to read already-collected research data from the database and create a high-quality draft post for review.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -164,7 +162,7 @@ PHASE 1: LOAD TOP RESEARCH CANDIDATES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Send a GET request to ${API}/api/tools/db/curation/top?hours=12&limit=5
-This returns the top 5 highest-scored posts scraped in the last 12 hours.
+This returns the top 5 highest-scored posts with status "new" scraped in the last 12 hours.
 
 If the response returns 0 results, retry with hours=24.
 If still 0, report "No research data available" and stop.
@@ -231,9 +229,9 @@ Send a POST request to ${API}/api/content-review/drafts with Content-Type: appli
     "keyword_searched": "<keyword_searched from DB>"
   }
 }
-- Then send PATCH ${API}/api/tools/db/curation/<_id> with body { "status": "used" } to mark the source as used.
 - Report the HTTP status and response body of the draft creation to confirm success.
-- Do NOT post to X directly. The content will be reviewed via Telegram before posting.`;
+- Do NOT post to X directly. The content will be reviewed via Telegram before posting.
+- Do NOT mark the CurationSource as "used". It will be marked "used" automatically when the user approves and posts the draft.`;
 
 
 

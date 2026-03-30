@@ -51,6 +51,7 @@ export interface IPost extends Document {
   strategy_context?: string;
   research_source?: string;
   research_summary?: string;
+  curation_source_id?: string;
   telegram_message_id?: number;
   telegram_chat_id?: string;
   edit_history: IEditEntry[];
@@ -117,6 +118,7 @@ const postSchema = new Schema<IPost>(
     strategy_context: String,
     research_source: { type: String, default: "" },
     research_summary: { type: String, default: "" },
+    curation_source_id: { type: String, default: null },
     telegram_message_id: Number,
     telegram_chat_id: String,
     edit_history: { type: [editEntrySchema], default: [] },

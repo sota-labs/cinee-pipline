@@ -28,9 +28,12 @@ function runOpenClaw(message: string): string {
 /** Create a new draft (called by the research cron job). */
 contentReviewRouter.post("/drafts", async (req: Request, res: Response) => {
   try {
+    const { metadata, ...rest } = req.body;
     const draft = await Post.create({
-      ...req.body,
+      ...rest,
       status: EPostStatus.PENDING_REVIEW,
+      // Pull curation_source_id out of the metadata object the agent sends
+      curation_source_id: metadata?.curation_source_id ?? null,
     });
 
     if (telegramService.isConfigured()) {

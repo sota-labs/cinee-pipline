@@ -75,7 +75,10 @@ function buildDraftKeyboard(draftId: string) {
         { text: "✏️ Edit", callback_data: `edit_${draftId}` },
         { text: "🤖 AI Rewrite", callback_data: `ai_rewrite_${draftId}` },
       ],
-      [{ text: "⏰ Schedule", callback_data: `schedule_${draftId}` }],
+      [
+        { text: "⏰ Schedule", callback_data: `schedule_${draftId}` },
+        { text: "🔄 Choose another source", callback_data: `next_source_${draftId}` },
+      ],
     ],
   };
 }
