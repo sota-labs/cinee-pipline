@@ -53,7 +53,13 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
      - MANDATORY: The response must be strictly UNDER 300 characters.
      - Keep it concise, high-impact, and relevant to the original content.
      - Avoid fluff or generic "bot" phrases.
-     - Post this CEO-style response on X. 
+     - Post this CEO-style response on X:
+       **Primary method — Use X's existing DOM elements:**
+       - Find the text input box (e.g., using \`[data-testid="tweetTextarea_0"]\` or \`[aria-label="Post text"]\`).
+       - Fill in your response.
+       - Click the post/reply button (e.g., using \`[data-testid="tweetButtonInline"]\` or \`[data-testid="tweetButton"]\`).
+       **Fallback method — Only if primary fails:**
+       - If the exact DOM elements are not found, manually analyze the page to locate the reply input box and post button, and submit the reply. 
   c) Wait 5 seconds before processing the next reply. 
   d) After successfully replying, call PATCH ${API}/api/tools/db/replies 
      with JSON body: { "_id": "<the reply _id>", "status": "replied" }. 
