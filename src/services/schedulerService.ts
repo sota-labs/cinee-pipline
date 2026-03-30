@@ -22,16 +22,17 @@ Step 1: Locate notification items (comments/replies from the last 24 hours)
 
 **Primary method — Use X's existing DOM elements first:**
 - Look for notification cells using X's built-in selectors: \`[data-testid="cellInnerDiv"]\`, \`[data-testid="notification"]\`, or \`article\` elements inside the notifications timeline.
-- Each notification cell typically contains the commenter's name, the reply text, and a link (anchor tag) to the original post/reply.
-- Use these existing DOM nodes to extract the notification data directly.
+- Extract the notification data directly using these specific child elements:
+  - 'reply_content' (text): Extract from \`[data-testid="tweetText"]\` or the primary text block.
+  - 'url': Extract from \`a[href]\` links, ideally resolving to the full comment URL (e.g. https://x.com/.../status/...).
 
 **Fallback method — Only if the primary method fails:**
-- If the above selectors return no results or X has changed its DOM structure, then manually analyze the page DOM to identify notification items by inspecting the rendered HTML tree, looking for repeating list-item patterns that contain user avatars, text content, and timestamp indicators.
+- If the exact DOM elements are not found or X has changed its DOM structure, manually analyze the page HTML to identify repeating list-item patterns containing user avatars, text content, and timestamp links, and extract the 'reply_content' and 'url' yourself.
 
 Scroll the notifications page as needed to ensure no items from the last 24 hours are missed.
 
 Step 2: For each notification found:
-1. Extract the 'reply_content' (text) and 'url' from the DOM node (prefer using \`a[href]\` links within the notification cell for the URL).
+1. Make sure you have the extracted 'reply_content' and 'url' (as guided above).
 2. Evaluate the content of the comment:
    - If the comment is meaningful, constructive, or part of a genuine discussion, set status = "resolved".
    - If the comment is spam, a bot-like promotion, irrelevant gibberish, or just "trash" content, set status = "rejected".
