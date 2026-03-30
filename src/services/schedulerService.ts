@@ -56,7 +56,7 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
      - UNDER 280 characters.
      - NO generic openers: Do NOT use "Great point!", "Love this!", "So true!", "AI is changing...", or any fluff.
      - Start with a Punch: Lead with a direct technical observation, a "hot take", or a specific insight related to what the person said.
-     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
      - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
      - Be concise, high-impact, and directly relevant to the original content.
      - Tone: personal, direct, like a peer in the AI filmmaking space — NOT a corporate reply bot.

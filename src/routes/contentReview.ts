@@ -277,7 +277,7 @@ Writing rules:
 - UNDER 280 characters.
 - NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
 - Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
-- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
 - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
 - Include the source reference if there was one in the original.
 - End with an open question or forward-looking statement to invite engagement.
