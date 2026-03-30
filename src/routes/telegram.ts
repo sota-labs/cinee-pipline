@@ -134,27 +134,37 @@ async function handleCallbackQuery(query: any) {
 
       try {
         const xUser = settings.xUsername;
-        const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter).
+        const firstWords = draft.raw_content.trim().split(/\s+/).slice(0, 8).join(" ");
+        const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter) and VERIFY it was published successfully.
 
 STEP 1 — COMPOSE & POST:
 1. Navigate to https://x.com/home
-2. Wait until the page fully loads.
-3. Type the following content into the post area (where usually has placeholder text like "What's happening?"):
+2. Wait until the page fully loads (tweet compose area is visible).
+3. Click the post compose area and type the following content exactly:
 """
 ${draft.raw_content}
 """
-4. Click the "Post" button (or [data-testid="tweetButtonInline"]).
-5. Wait at least 5 seconds for the post to be confirmed published.
+4. Click the "Post" button ([data-testid="tweetButtonInline"]).
+5. Wait 5 seconds. If an error banner appears (e.g. "Something went wrong"), report POST_FAILED: error banner shown and stop.
 
-STEP 2 — RETRIEVE THE POST URL:
-6. Navigate to https://x.com/${xUser} (the user's own profile page).
-7. Wait until the profile page fully loads and tweets are visible.
-8. Find the FIRST (most recent) tweet on the profile. Locate the <a> tag that wraps the <time> element inside the first <article>. Its href has pattern /${xUser}/status/<tweet_id>.
-9. Build the full URL: https://x.com + that href.
-10. Report exactly in this format (nothing else on the line): POST_SUCCESS: <full_post_url>`;
+STEP 2 — VERIFY THE POST WAS PUBLISHED:
+6. Navigate to https://x.com/${xUser}
+7. Wait until the profile page fully loads and the first tweet is visible.
+8. Take a browser.snapshot and inspect the FIRST <article> on the page:
+   a) Read its tweet text content.
+   b) Read its timestamp from the <time> element. Convert to an absolute time if shown as relative (e.g. "2m" = 2 minutes ago).
+9. VERIFICATION CHECKS — both must pass:
+   CHECK A (Content match): The first tweet's text must START WITH or CONTAIN the following words: "${firstWords}"
+   CHECK B (Time match): The timestamp of the first tweet must be within the last 3 minutes from now.
+10. If BOTH checks pass:
+    - Find the <a> tag that wraps the <time> element. Build the full URL: https://x.com + href.
+    - Report on its own line: POST_SUCCESS_VERIFIED: <full_post_url>
+11. If EITHER check fails:
+    - Report on its own line: POST_FAILED: <reason — e.g. "content mismatch" or "timestamp too old (was: X minutes ago)">`;
 
         const result = runOpenClaw(postPrompt);
-        const postUrlMatch = result.match(/POST_SUCCESS:\s*(https?:\/\/\S+)/);
+        const postUrlMatch = result.match(/POST_SUCCESS_VERIFIED:\s*(https?:\/\/\S+)/);
+        const postFailMatch = result.match(/POST_FAILED:\s*(.+)/);
         if (postUrlMatch) {
           draft.status = EPostStatus.POSTED;
           draft.post_url = postUrlMatch[1];
@@ -184,12 +194,19 @@ STEP 2 — RETRIEVE THE POST URL:
             `✅ Đã đăng bài thành công!${urlInfo}\n\nNội dung:\n${draft.raw_content}`,
             chatId,
           );
-        } else {
-          log.error(
-            `Running OpenClaw agent for posting to X failed: ${result}`,
-          );
+        } else if (postFailMatch) {
+          const reason = postFailMatch[1].trim();
+          log.error(`Post verification failed: ${reason}`);
+          draft.status = EPostStatus.FAILED;
+          await draft.save();
           await telegramService.sendMessage(
-            `❌ Đăng bài thất bại: ${result}`,
+            `❌ Đăng bài thất bại (xác minh không qua):\n${reason}\n\nNội dung:\n${draft.raw_content}`,
+            chatId,
+          );
+        } else {
+          log.error(`OpenClaw agent returned unexpected output: ${result}`);
+          await telegramService.sendMessage(
+            `⚠️ Không xác minh được kết quả đăng bài. Kiểm tra thủ công trên X.\n\nAgent output:\n${result.slice(0, 300)}`,
             chatId,
           );
         }
