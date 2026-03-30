@@ -25,6 +25,7 @@ export interface Settings {
   telegramChatId: string;
   telegramWebhookUrl: string;
   openClawAgent: string;
+  xUsername: string;
 }
 
 export const settings: Settings = {
@@ -97,4 +98,5 @@ export const settings: Settings = {
   telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
   telegramWebhookUrl: process.env.TELEGRAM_WEBHOOK_URL || "",
   openClawAgent: process.env.OPENCLAW_AGENT || "main",
+  xUsername: process.env.X_USERNAME || "",
 };

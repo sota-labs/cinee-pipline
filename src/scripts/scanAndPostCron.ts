@@ -11,29 +11,25 @@ import { settings } from "../config/settings.js";
 let lastProcessedCursorId: string | null = null;
 
 function runOpenClawPost(post: any): string | null {
+  const xUser = settings.xUsername;
   const prompt = `You are an AI Agent with browser access. Your job is to publish this specific content on X immediately.
-  
-Content to post:
-${post.raw_content}
 
-Steps:
+STEP 1 — COMPOSE & POST:
 1. Navigate to https://x.com/home.
-2. Wait until web page load done.
-
-3. Type the content into the post input area:
-   **Primary:** Use X's built-in selector \`[data-testid="tweetTextarea_0"]\` to locate the post input area. Click on it to focus, then type the content.
-   **Fallback:** If the selector is not found, look for the contenteditable element or the area with placeholder text like "What's happening?" and type into it.
+2. Wait until the page fully loads.
+3. Type the following content into the post area (where usually has placeholder text like "What's happening?"):
 """
 ${post.raw_content}
 """
+4. Click the "Post" button (or [data-testid="tweetButtonInline"]).
+5. Wait at least 5 seconds for the post to be confirmed published.
 
-4. Click the Post button:
-   **Primary:** Use X's built-in selector \`[data-testid="tweetButtonInline"]\` to locate and click the Post button.
-   **Fallback:** If the selector is not found, look for a button containing the text "Post" or a submit-like button near the post input area.
-
-5. Wait until the post is confirmed published.
-6. After the post is published, get the URL of the newly created post (e.g. https://x.com/<username>/status/<id>).
-7. Report exactly in this format: POST_SUCCESS: <post_url>`;
+STEP 2 — RETRIEVE THE POST URL:
+6. Navigate to https://x.com/${xUser} (the user's own profile page).
+7. Wait until the profile page fully loads and tweets are visible.
+8. Find the FIRST (most recent) tweet on the profile. Locate the <a> tag that wraps the <time> element inside the first <article>. Its href has pattern /${xUser}/status/<tweet_id>.
+9. Build the full URL: https://x.com + that href.
+10. Report exactly in this format (nothing else on the line): POST_SUCCESS: <full_post_url>`;
 
   const escapedMessage = prompt.replace(/'/g, "'\\''");
 
