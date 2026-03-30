@@ -62,6 +62,8 @@ Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 // ── RESEARCH_PROMPT: Scrape X posts → save to CurationSource DB ─────────────
 const RESEARCH_PROMPT = `You are an AI Agent with browser access. Your job is to research the AI filmmaking space on X and save all discovered posts to a database for later use.
 
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before starting and between each step.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 1: COLLECT POSTS FROM X
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -171,6 +173,8 @@ Report the HTTP status and response body (number of items upserted) to confirm s
 export const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
 Your job is to read already-collected research data from the database and create a high-quality draft post for review.
 
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before starting.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 1: LOAD TOP RESEARCH CANDIDATES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -210,6 +214,7 @@ PHASE 3: WRITE THE DRAFT POST (CEO Persona)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Write a post (under 280 characters) with these rules:
+- LANGUAGE: Write ONLY in English. Do NOT use any other language.
 - Perspective: CEO & founder who uses these AI tools daily
 - Start with a bold, specific insight — NOT a generic opener like "AI is changing everything"
 - Reference ONE concrete detail from the research (model name, a creator's result, a capability)

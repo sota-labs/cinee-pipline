@@ -137,8 +137,10 @@ async function handleCallbackQuery(query: any) {
         const firstWords = draft.raw_content.trim().split(/\s+/).slice(0, 8).join(" ");
         const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter) and VERIFY it was published successfully.
 
+BROWSER RULE: Keep ONLY ONE tab open at all times throughout ALL steps. Close any extra tabs before starting.
+
 STEP 1 — COMPOSE & POST:
-1. Navigate to https://x.com/home
+1. Close all extra tabs. Navigate to https://x.com/home in the single tab.
 2. Wait until the page fully loads (tweet compose area is visible).
 3. Click the post compose area and type the following content exactly:
 """
@@ -147,20 +149,19 @@ ${draft.raw_content}
 4. Click the "Post" button ([data-testid="tweetButtonInline"]).
 5. Wait 5 seconds. If an error banner appears (e.g. "Something went wrong"), report POST_FAILED: error banner shown and stop.
 
-STEP 2 — VERIFY THE POST WAS PUBLISHED:
-6. Navigate to https://x.com/${xUser}
-7. Wait until the profile page fully loads and the first tweet is visible.
-8. Take a browser.snapshot and inspect the FIRST <article> on the page:
-   a) Read its tweet text content.
-   b) Read its timestamp from the <time> element. Convert to an absolute time if shown as relative (e.g. "2m" = 2 minutes ago).
-9. VERIFICATION CHECKS — both must pass:
-   CHECK A (Content match): The first tweet's text must START WITH or CONTAIN the following words: "${firstWords}"
-   CHECK B (Time match): The timestamp of the first tweet must be within the last 3 minutes from now.
-10. If BOTH checks pass:
-    - Find the <a> tag that wraps the <time> element. Build the full URL: https://x.com + href.
-    - Report on its own line: POST_SUCCESS_VERIFIED: <full_post_url>
-11. If EITHER check fails:
-    - Report on its own line: POST_FAILED: <reason — e.g. "content mismatch" or "timestamp too old (was: X minutes ago)">`;
+STEP 2 — VERIFY BY CLICKING INTO THE POST:
+6. In the SAME tab, navigate to https://x.com/${xUser}
+7. Wait until the profile page fully loads and the first tweet article is visible.
+8. Click on the FIRST <article> (the most recent tweet) to open its detail page — do NOT open in new tab.
+9. Wait until the post detail page fully loads.
+10. Take a browser.snapshot and verify:
+    CHECK A (Content): The post text on this detail page must START WITH or CONTAIN: "${firstWords}"
+    CHECK B (Time): The <time> element must show a timestamp within the last 3 minutes.
+11. If BOTH checks pass:
+    - Read the current browser URL (it should match /${xUser}/status/<id>).
+    - Report on its own line: POST_SUCCESS_VERIFIED: <current_browser_url>
+12. If EITHER check fails:
+    - Report on its own line: POST_FAILED: <reason>`;
 
         const result = runOpenClaw(postPrompt);
         const postUrlMatch = result.match(/POST_SUCCESS_VERIFIED:\s*(https?:\/\/\S+)/);
