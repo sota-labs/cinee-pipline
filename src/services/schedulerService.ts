@@ -80,51 +80,52 @@ Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generat
 
   1c. Scroll down 2 times using browser actions to load posts into the DOM.
 
-  1d. URL EXTRACTION (CRITICAL — TOP-LEVEL POSTS ONLY):
+  1d. URL EXTRACTION (CRITICAL — TOP-LEVEL POSTS WITH MEDIA ONLY):
       - DO NOT click on <article> elements to open posts.
       - Use browser.snapshot on the current search results page.
       - Parse the snapshot to find URLs of TOP-LEVEL posts ONLY. Follow these rules:
           a) Find each <article> element on the page.
-          b) SKIP any article that contains text "Replying to" — those are replies/comments, not original posts.
+          b) SKIP any article that contains text "Replying to" — those are replies/comments.
           c) SKIP any article that contains a "Retweeted" label — those are retweets.
-          d) In each remaining (non-reply, non-retweet) article, find the <a> tag that wraps the <time> element. Its href has pattern /[username]/status/[tweet_id]. This is the canonical post URL.
-          e) Build the full URL: https://x.com + href value.
-      - Extract and store a list of exactly 2 unique TOP-LEVEL post URLs for this keyword.
-      - If fewer than 2 top-level posts are found, scroll down once more and repeat.
+          d) PREFER articles that contain visible media indicators: a video player ([data-testid="videoPlayer"], a play button icon), an image ([data-testid="tweetPhoto"]), or a GIF. These articles have media.
+          e) In each qualifying article, find the <a> tag that wraps the <time> element. Its href has pattern /[username]/status/[tweet_id]. Build full URL: https://x.com + href.
+      - Extract and store a list of exactly 2 unique TOP-LEVEL post URLs that appear to have media. If fewer than 2 with media are found, scroll down once more and repeat. Only fall back to text-only posts if absolutely no media posts are available after scrolling.
 
   1e. DATA EXTRACTION PER POST:
-      You have a list of 2 URLs for this keyword. For EACH URL:
+      You have a list of up to 2 URLs for this keyword. For EACH URL:
 
       BEFORE opening each post:
-      - Close all other browser tabs first to keep a clean session. Keep only one tab open at a time.
+      - Close all other browser tabs. Keep only one tab open at a time.
 
       - Run: openclaw browser open <post_url>
-      - Start a 10-second timer.
-      - Wait for the page to fully load: confirm [data-testid="tweetText"] is present in the DOM before proceeding.
-      - If the page has NOT loaded within 10 seconds (no tweetText visible), go back and SKIP this post. Move to the next URL.
-      - IMPORTANT: The source_url for this post is ALWAYS the URL you just navigated to (the URL you opened in this step), NOT any link found inside the page. Record it immediately.
-      - Take a browser.snapshot.
-      - Extract data using X's DOM selectors from the snapshot. Focus on the FIRST/TOP article on the page (that is the original post, not a reply):
-          PRIMARY (look inside the FIRST [data-testid="tweet"] on the page only):
-            - Post text:       [data-testid="tweetText"] (first match)
-            - Like count:      [data-testid="like"] aria-label or inner text
-            - Retweet count:   [data-testid="retweet"] aria-label or inner text
-            - Reply count:     [data-testid="reply"] aria-label or inner text
-            - View count:      [data-testid="views"] or [aria-label*="views"]
-            - Video player:    [data-testid="videoPlayer"] src or poster attribute
-            - Author handle:   [data-testid="User-Name"] (first match on page)
+      - Start a 10-second timer. Wait for [data-testid="tweetText"] to appear.
+      - If the page has NOT loaded within 10 seconds, SKIP this post and move to the next URL.
+      - IMPORTANT: The source_url is ALWAYS the URL you just navigated to. Record it immediately.
+      - Take a browser.snapshot. Focus extraction on the FIRST [data-testid="tweet"] only:
+          - Post text:       [data-testid="tweetText"] (first match)
+          - Like count:      [data-testid="like"] aria-label or inner text
+          - Retweet count:   [data-testid="retweet"] aria-label or inner text
+          - Reply count:     [data-testid="reply"] aria-label or inner text
+          - View count:      [data-testid="views"] or [aria-label*="views"]
+          - Video player:    [data-testid="videoPlayer"] src or poster attribute
+          - Image:           [data-testid="tweetPhoto"] src attribute
+          - Author handle:   [data-testid="User-Name"] (first match)
 
-          FALLBACK (only if primary selectors fail after page fully loaded):
-            - Manually inspect the snapshot text for content and metrics.
-            - Time limit: spend NO MORE THAN 10 SECONDS on fallback per post. Skip if still no data.
+      - Determine media_type:
+          → "video" if [data-testid="videoPlayer"] is present
+          → "image" if [data-testid="tweetPhoto"] is present and no video
+          → "gif"   if a GIF player is present
+          → "none"  if none of the above
 
-      Capture these fields per post into a JSON object:
-        - source_url             : the EXACT URL you navigated to (DO NOT re-extract from page links)
-        - author_handle          : @username from [data-testid="User-Name"] (first match)
-        - author_follower_count  : follower count (number) if visible, else null
-        - content                : full post text from the FIRST tweetText (up to 500 chars)
-        - media_type             : "video" | "image" | "gif" | "none"
-        - media_url              : direct URL of video/image, else null
+      ⚠️ MEDIA FILTER: If media_type is "none", SKIP this post entirely. Do NOT add it to your collection. Move to the next URL immediately.
+
+      Only add the post to your collection if media_type is "video", "image", or "gif". Capture:
+        - source_url             : the EXACT URL you navigated to
+        - author_handle          : @username (first match)
+        - author_follower_count  : follower count if visible, else null
+        - content                : full post text from FIRST tweetText (up to 500 chars)
+        - media_type             : "video" | "image" | "gif"
+        - media_url              : direct URL of video/image/gif
         - thumbnail_url          : thumbnail URL if video, else null
         - duration               : video duration in seconds if available, else null
         - likes                  : number (default 0)
@@ -133,8 +134,9 @@ Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generat
         - views                  : view count (default 0)
         - hashtags               : array of strings (e.g. ["#Sora", "#AIFilm"])
         - keyword_searched       : the keyword that surfaced this post
-        
-      - After extracting each post, proceed to the next URL in your list.
+
+      - After processing each URL, proceed to the next.
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 2: CHECK TRENDING
