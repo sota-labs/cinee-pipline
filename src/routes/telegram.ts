@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { Post, EPostStatus, CurationSource, ECurationStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import { settings } from "../config/settings.js";
 import { DRAFT_PROMPT } from "../services/schedulerService.js";
 
@@ -264,15 +264,23 @@ ${draft.raw_content}
       }
 
       await telegramService.sendMessage(`🔄 Draft đã bị reject. Đang tạo draft mới từ nguồn tiếp theo...`, chatId);
-      
-      setTimeout(() => {
-        try {
-          runOpenClaw(DRAFT_PROMPT);
-        } catch (err: any) {
-          log.error(`OpenClaw new draft creation failed: ${err.message}`);
-          telegramService.sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId).catch(console.error);
-        }
-      }, 0);
+
+      // IMPORTANT: Must use spawn (non-blocking) NOT execSync.
+      // execSync blocks the entire Node.js event loop — the OpenClaw agent
+      // then calls back POST /api/content-review/drafts on this same server,
+      // which cannot respond because the event loop is frozen → silent deadlock.
+      const escaped = DRAFT_PROMPT.replace(/'/g, "'\\''" );
+      const child = spawn(
+        "bash",
+        ["-c", `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`],
+        { detached: true, stdio: ["ignore", "ignore", "ignore"] },
+      );
+      child.on("error", (err) => {
+        log.error(`OpenClaw spawn error (NEXT_SOURCE): ${err.message}`);
+        telegramService.sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId!).catch(console.error);
+      });
+      child.unref(); // detach from parent process
+      log.info(`Spawned OpenClaw DRAFT agent (pid: ${child.pid}) for NEXT_SOURCE`);
       break;
     }
   }
