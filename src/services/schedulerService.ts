@@ -47,23 +47,30 @@ Step 2: For each notification found:
 
 Step 3: After processing all items, send a single POST request to ${API}/api/tools/db/replies with the final array of these objects.`;
 
-const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies. 
-Step 2: For each reply in the response that has status "draft" or "resolved": 
-  a) Open the reply "url" field in the browser. 
-  b) Read the "reply_content". Compose a new response in the tone of a CEO (professional, visionary, and decisive).
-     - MANDATORY: The response must be strictly UNDER 300 characters.
-     - Keep it concise, high-impact, and relevant to the original content.
-     - Avoid fluff or generic "bot" phrases.
-     - Post this CEO-style response on X:
+const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies.
+Step 2: For each reply in the response that has status "draft" or "resolved":
+  a) Open the reply "url" field in the browser.
+  b) Read the "reply_content". Compose a reply as a tech CEO / AI filmmaker.
+
+     Writing rules for the reply:
+     - UNDER 280 characters.
+     - NO generic openers: Do NOT use "Great point!", "Love this!", "So true!", "AI is changing...", or any fluff.
+     - Start with a Punch: Lead with a direct technical observation, a "hot take", or a specific insight related to what the person said.
+     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+     - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
+     - Be concise, high-impact, and directly relevant to the original content.
+     - Tone: personal, direct, like a peer in the AI filmmaking space — NOT a corporate reply bot.
+
+  c) Post this response on X:
        **Primary method — Use X's existing DOM elements:**
        - Find the text input box (e.g., using \`[data-testid="tweetTextarea_0"]\` or \`[aria-label="Post text"]\`).
        - Fill in your response.
        - Click the post/reply button (e.g., using \`[data-testid="tweetButtonInline"]\` or \`[data-testid="tweetButton"]\`).
        **Fallback method — Only if primary fails:**
-       - If the exact DOM elements are not found, manually analyze the page to locate the reply input box and post button, and submit the reply. 
-  c) Wait 5 seconds before processing the next reply. 
-  d) After successfully replying, call PATCH ${API}/api/tools/db/replies 
-     with JSON body: { "_id": "<the reply _id>", "status": "replied" }. 
+       - If the exact DOM elements are not found, manually analyze the page to locate the reply input box and post button, and submit the reply.
+  d) Wait 5 seconds before processing the next reply.
+  e) After successfully replying, call PATCH ${API}/api/tools/db/replies
+     with JSON body: { "_id": "<the reply _id>", "status": "replied" }.
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
 // ── RESEARCH_PROMPT: Scrape X posts → save to CurationSource DB ─────────────
@@ -222,15 +229,16 @@ Mark the post as selected by sending:
 PHASE 3: WRITE THE DRAFT POST (CEO Persona)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Write a post (under 280 characters) with these rules:
-- LANGUAGE: Write ONLY in English. Do NOT use any other language.
-- Perspective: CEO & founder who uses these AI tools daily
-- Start with a bold, specific insight — NOT a generic opener like "AI is changing everything"
-- Reference ONE concrete detail from the research (model name, a creator's result, a capability)
+Write a post in ENGLISH ONLY (under 280 chars) following these "Anti-AI" rules:
+- NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
+- Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+- Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
+- Structure: [Bold Insight] + [Specific Detail/Model Name] + [Source URL] + [One short, sharp question].
 - Include the source URL from the selected post
 - End with an open question or forward-looking statement to invite engagement
-- Do NOT mention Cinee or promote any product
-- Tone: personal, direct, visionary — like a real founder's tweet, not a press release
+- Do NOT mention Cinee or promote any product.
+- Tone: personal, direct, visionary — like a real founder's tweet, not a press release.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 4: SAVE AS DRAFT VIA API
@@ -264,8 +272,6 @@ Send a POST request to ${API}/api/content-review/drafts with Content-Type: appli
 - Do NOT post to X directly. The content will be reviewed via Telegram before posting.
 - Do NOT mark the CurationSource as "used". It will be marked "used" automatically when the user approves and posts the draft.`;
 
-
-
 // ── Job definitions ─────────────────────────────────────────────────────────
 
 const CRON_JOBS: CronJob[] = [
@@ -285,7 +291,8 @@ const CRON_JOBS: CronJob[] = [
     name: "research_and_collect",
     schedule: "0 */6 * * *",
     message: RESEARCH_PROMPT,
-    description: "Scrape X for AI filmmaking posts and save to CurationSource DB (every 6 hours)",
+    description:
+      "Scrape X for AI filmmaking posts and save to CurationSource DB (every 6 hours)",
   },
   {
     name: "research_and_draft_morning",
@@ -302,8 +309,6 @@ const CRON_JOBS: CronJob[] = [
       "Read top research from DB and create draft for review (9 PM daily)",
   },
 ];
-
-
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

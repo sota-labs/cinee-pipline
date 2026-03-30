@@ -264,7 +264,7 @@ contentReviewRouter.post(
 
       const userPrompt =
         req.body.prompt || "Rewrite this to be more punchy and engaging";
-      const aiPrompt = `You are rewriting a social media post for X (Twitter).
+      const aiPrompt = `You are rewriting a social media post for X (Twitter) as a tech CEO / AI filmmaker.
 
 Current content:
 """
@@ -273,10 +273,16 @@ ${draft.raw_content}
 
 Instructions: ${userPrompt}
 
-Rules:
-- Keep it under 300 characters
-- Maintain the CEO/visionary tone about AI filmmaking
-- Include the source reference if there was one in the original
+Writing rules:
+- UNDER 280 characters.
+- NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
+- Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+- Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
+- Include the source reference if there was one in the original.
+- End with an open question or forward-looking statement to invite engagement.
+- Do NOT mention Cinee or promote any product.
+- Tone: personal, direct, visionary — like a real founder's tweet, not a press release.
 - Output ONLY the rewritten post, nothing else.`;
 
       let rewritten: string;
