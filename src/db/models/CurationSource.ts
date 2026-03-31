@@ -15,6 +15,7 @@ export enum ECurationMediaType {
 }
 
 export interface ICurationSource extends Document {
+  platform: "x" | "reddit";
   source_url: string;
   author_handle: string;
   author_follower_count?: number;
@@ -39,6 +40,7 @@ export interface ICurationSource extends Document {
 
 const curationSourceSchema = new Schema<ICurationSource>(
   {
+    platform: { type: String, enum: ["x", "reddit"], required: true, default: "x" },
     source_url: { type: String, required: true, unique: true },
     author_handle: { type: String, required: true, default: "" },
     author_follower_count: { type: Number },

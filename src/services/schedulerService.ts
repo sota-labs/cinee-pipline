@@ -321,6 +321,180 @@ After successfully posting the reply, send a POST request with Content-Type appl
 }
 Report success or failure of this DB save.`;
 
+// ── REDDIT PROMPT DEFINITIONS ──────────────────────────────────────────────────
+
+const SCRAPE_REDDIT_NOTIFICATIONS_PROMPT = `Open https://www.reddit.com/notifications in the browser.
+
+Step 1: Locate notification items (comments/replies from the last 24 hours)
+
+**Primary method — Use Reddit's existing DOM elements first:**
+- Look for notification rows or elements matching \`a[href*="/r/"]\` or elements with aria-labels indicating a reply/comment.
+- Extract the notification data:
+  - 'reply_content' (text): The main text of the reply or notification message.
+  - 'url': The full URL to the comment thread.
+
+**Fallback method:**
+- If the exact DOM elements are not found, manually analyze the page HTML to identify repeating list-item patterns containing user avatars, text content, and timestamp links, and extract the 'reply_content' and 'url' yourself.
+
+Scroll as needed to ensure no items from the last 24 hours are missed.
+
+Step 2: For each notification found:
+1. Make sure you have the extracted 'reply_content' and 'url'.
+2. Evaluate the content:
+   - If meaningful or constructive, set status = "resolved".
+   - If spam, bot-like, or irrelevant, set status = "rejected".
+3. Prepare a JSON object for each reply:
+   - reply_content: (the comment text)
+   - tone_used: "supportive"
+   - status: (either "resolved" or "rejected")
+   - platform: "reddit"
+   - url: (the full URL of the comment)
+   - created_at: (current ISO timestamp)
+   - updated_at: (current ISO timestamp)
+
+Step 3: After processing all items, send a single POST request to ${API}/api/tools/db/replies with the final array of these objects.`;
+
+const REPLY_REDDIT_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies?platform=reddit to fetch the list of replies.
+Step 2: For each reply in the response that has status "draft" or "resolved":
+  a) Open the reply "url" field in the browser.
+  b) Read the "reply_content". Compose a reply as a tech CEO / AI filmmaker.
+
+     Writing rules for the reply:
+     - NO generic openers: Do NOT use "Great point!", "Love this!", etc.
+     - Start with a Punch: Lead with a direct technical observation or specific insight.
+     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency", "vibe").
+     - Blacklisted words: revolutionizing, game-changer, delve, unleash.
+     - Tone: personal, direct, like a peer in the AI filmmaking space.
+
+  c) Post this response on Reddit:
+       **Primary method — Use Reddit's existing DOM elements:**
+       - Find the "Reply" button on the target comment and click it to open the editor (e.g. \`<button slot="reply-button">\` or components matching the comment action).
+       - Find the text input box (e.g. \`<shreddit-composer>\`, \`[name="text"]\`, or a \`contenteditable\` div). Fill in your response.
+       - Click the "Comment" or "Reply" submit button (e.g. \`button[type="submit"]\` inside the composer).
+       **Fallback method — Only if primary fails:**
+       - If the exact DOM elements are not found, manually analyze the page HTML to locate the reply button, input field, and submit button to post the reply.
+  d) Wait 5 seconds before processing the next reply.
+  e) After successfully replying, call PATCH ${API}/api/tools/db/replies
+     with JSON body: { "_id": "<the reply _id>", "status": "replied" }.
+Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
+
+const RESEARCH_REDDIT_PROMPT = `You are an AI Agent with browser access. Your job is to research the AI filmmaking space on Reddit and save valuable posts to a database.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close extra tabs.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: COLLECT POSTS FROM SUBREDDITS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Subreddits: r/aivideo, r/filmmakers, r/MachineLearning
+
+For EACH subreddit:
+  1a. Open: openclaw browser open https://www.reddit.com/<subreddit>/hot/
+  1b. Wait until the page fully loads.
+  1c. Scroll down 2 times using browser actions.
+  1d. URL EXTRACTION:
+      **Primary method — Use Reddit's existing DOM elements:**
+      - Find top-level posts using elements like \`<shreddit-post>\` or \`<article>\`.
+      - Look for media indicators (e.g. \`<shreddit-async-loader>\`, \`[slot="thumbnail"]\`, or an inline video/image tag).
+      - Extract post URLs (e.g., the \`permalink\` attribute on \`<shreddit-post>\` or an \`a[slot="full-post-link"]\` element). Build full URL if necessary.
+      - Extract exactly 2 unique post URLs that have multimedia.
+      **Fallback method — Only if primary fails:**
+      - Manually analyze the HTML to identify post containers and extract 2 unique post URLs that appear to have media (skip purely text posts).
+
+  1e. DATA EXTRACTION PER POST:
+      For each URL:
+      - Open the post URL.
+      - Wait 10s for page to load.
+      - Take a snapshot.
+      **Primary extractmethod:**
+        - Post text: title (\`<h1 slot="title">\` or similar) + body content.
+        - Upvotes: \`score\` attribute on \`<shreddit-post>\` or upvote counter element.
+        - Comments: \`comment-count\` attribute or text inside comment action button.
+        - Author: \`author\` attribute or user links (\`a[href*="/user/"]\`).
+      **Fallback extract method:** Manually extract these fields from the HTML text.
+      - Determine Media type ("video" | "image" | "gif" | "none").
+      - If media_type is "none", SKIP this post.
+      Only add the post to your collection if it has media.
+      Capture:
+        - platform: "reddit"
+        - source_url: EXACT URL
+        - author_handle
+        - content: Post title + body
+        - media_type, media_url
+        - likes: upvote count
+        - comments: comment count
+        - retweets: 0
+        - views: 0
+        - hashtags: ["#<subreddit_name>"]
+        - keyword_searched: <subreddit_name>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: CALCULATE SCORE & SAVE TO DB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For each collected post:
+  engagement_score = (likes * 1) + (comments * 3)
+  Keep ONLY the top 5 highest-scored posts globally across all subreddits.
+
+Send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.
+Body format:
+[
+  {
+    "platform": "reddit",
+    "source_url": "<post URL>",
+    ... [extracted fields],
+    "engagement_score": <calculated score>
+  }
+]
+Report the HTTP status and response body to confirm success.`;
+
+const AUTO_INTERACT_REDDIT_PROMPT = `You are an AI Agent with browser access acting as a tech CEO in AI filmmaking.
+Your job is to interact with high-engagement Reddit posts by leaving a founder-style comment.
+
+BROWSER RULE: Keep ONLY ONE tab open.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: FETCH HOT POST CANDIDATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Send a GET request to ${API}/api/tools/db/curation/interact-candidates?platform=reddit&hours=24&limit=1
+If 0 candidates, report "No candidates available" and stop.
+Extract "source_url".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: DEEP READ & ANALYZE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Open the source_url.
+- Read the main post content and top replies.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: WRITE AND POST THE REPLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Compose a comment as a tech CEO.
+Writing rules:
+- UNDER 500 characters.
+- Start with a direct technical observation.
+- Use founder slang (e.g., "temporal consistency", "latent space").
+- Tone: personal, direct, deeply knowledgeable.
+
+Post this response on Reddit:
+- **Primary method — Use Reddit's existing DOM elements:**
+  - Locate the main "Add a comment" box on the post (e.g., \`<shreddit-composer>\` or \`[name="text"]\`).
+  - Fill in your response.
+  - Click the "Comment" submit button (e.g., \`button[type="submit"]\` within the composer).
+- **Fallback method — Only if primary fails:**
+  - Manually analyze the page to locate the main reply text input field and its submit button.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 4: SAVE RECORD TO DB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Send POST request to ${API}/api/tools/db/interactions:
+{
+  "platform": "reddit",
+  "source_url": "<exact source_url>",
+  "bot_comment_content": "<exact text posted>"
+}
+Report success or failure.`;
+
 // ── Job definitions ─────────────────────────────────────────────────────────
 
 const CRON_JOBS: CronJob[] = [
@@ -362,6 +536,30 @@ const CRON_JOBS: CronJob[] = [
     schedule: "0 */4 * * *",
     message: AUTO_INTERACT_PROMPT,
     description: "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
+  },
+  {
+    name: "scrape_reddit_notifications",
+    schedule: "25 * * * *",
+    message: SCRAPE_REDDIT_NOTIFICATIONS_PROMPT,
+    description: "Scrape Reddit notifications and store replies (every hour at :25)",
+  },
+  {
+    name: "reply_reddit_notifications",
+    schedule: "45 * * * *",
+    message: REPLY_REDDIT_PROMPT,
+    description: "Auto-reply on Reddit and update status (every hour at :45)",
+  },
+  {
+    name: "research_and_collect_reddit",
+    schedule: "0 */6 * * *",
+    message: RESEARCH_REDDIT_PROMPT,
+    description: "Scrape Reddit for AI filmmaking posts and save to CurationSource DB (every 6 hours)",
+  },
+  {
+    name: "auto_interact_hot_posts_reddit",
+    schedule: "0 */4 * * *",
+    message: AUTO_INTERACT_REDDIT_PROMPT,
+    description: "Tự động comment dạo phong cách CEO vào bài viết Reddit hot (mỗi 4 tiếng)",
   },
 ];
 
