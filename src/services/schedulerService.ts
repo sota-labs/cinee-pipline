@@ -74,117 +74,60 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
 Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
 
 // ── RESEARCH_PROMPT: Scrape X posts → save to CurationSource DB ─────────────
-const RESEARCH_PROMPT = `You are an AI Agent with browser access. Your job is to research the AI filmmaking space on X and save all discovered posts to a database for later use.
+const RESEARCH_PROMPT = `You are an AI Agent with browser access. Your job is to research the AI filmmaking space on X and save all discovered posts to a database.
 
-BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before starting and between each step.
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close extra tabs before starting and between each step.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 1: COLLECT POSTS FROM X
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For EACH keyword below, execute steps 1a → 1e in order before moving to the next keyword.
-Keywords: "Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generation", "generative video", "AI filmmaker"
+For EACH keyword: ["Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI video generation", "generative video", "AI filmmaker"]
 
-  1a. Open the search results for this keyword:
-      Run: openclaw browser open https://x.com/search?q=<URL-encoded-keyword>&f=live
-      Examples:
-        openclaw browser open https://x.com/search?q=Sora&f=live
+  1a. Open search: openclaw browser open https://x.com/search?q=<URL-encoded-keyword>&f=live
+  1b. Confirm "Latest" tab and scroll 2 times.
+  
+  1c. URL EXTRACTION (PRIORITIZE FIXED DOM):
+      - Use browser.snapshot to find exactly 2 unique TOP-LEVEL post URLs.
+      - PRIMARY SELECTOR: article[data-testid="tweet"]
+      - FILTERS: 
+          a) Skip if contains "Replying to" or "Retweeted" label.
+          b) Prefer posts with [data-testid="videoPlayer"] or [data-testid="tweetPhoto"].
+          c) URL is in the <a> tag wrapping the <time> element.
+      - FALLBACK: If data-testid fails, look for the first 2 links following the pattern "/status/[number]".
 
-  1b. Wait until the page fully loads. Confirm you are on the "Latest" tab.
+  1d. DATA EXTRACTION (DOM-FIRST MAPPING):
+      For EACH URL:
+      - Open: openclaw browser open <post_url>
+      - Wait 10s for page load.
+      - Extract data from the FIRST [data-testid="tweet"] using this mapping:
+        
+        | Field | Primary DOM Selector (Fixed) | Fallback Logic (If null) |
+        | :--- | :--- | :--- |
+        | Text | [data-testid="tweetText"] | Look for the largest block of text in <article> |
+        | Likes | [data-testid="like"] | aria-label containing "likes" |
+        | Retweets | [data-testid="retweet"] | aria-label containing "retweets" |
+        | Replies | [data-testid="reply"] | aria-label containing "replies" |
+        | Views | [data-testid="views"] | aria-label containing "views" |
+        | Media | [data-testid="videoPlayer"], [data-testid="tweetPhoto"] | Any <img> or <video> tag inside tweet |
 
-  1c. Scroll down 2 times using browser actions to load posts into the DOM.
+      ⚠️ MEDIA FILTER: If no media is found by both methods, SKIP post.
 
-  1d. URL EXTRACTION (CRITICAL — TOP-LEVEL POSTS WITH MEDIA ONLY):
-      - DO NOT click on <article> elements to open posts.
-      - Use browser.snapshot on the current search results page.
-      - Parse the snapshot to find URLs of TOP-LEVEL posts ONLY. Follow these rules:
-          a) Find each <article> element on the page.
-          b) SKIP any article that contains text "Replying to" — those are replies/comments.
-          c) SKIP any article that contains a "Retweeted" label — those are retweets.
-          d) PREFER articles that contain visible media indicators: a video player ([data-testid="videoPlayer"], a play button icon), an image ([data-testid="tweetPhoto"]), or a GIF. These articles have media.
-          e) In each qualifying article, find the <a> tag that wraps the <time> element. Its href has pattern /[username]/status/[tweet_id]. Build full URL: https://x.com + href.
-      - Extract and store a list of exactly 2 unique TOP-LEVEL post URLs that appear to have media. If fewer than 2 with media are found, scroll down once more and repeat. Only fall back to text-only posts if absolutely no media posts are available after scrolling.
-
-  1e. DATA EXTRACTION PER POST:
-      You have a list of up to 2 URLs for this keyword. For EACH URL:
-
-      BEFORE opening each post:
-      - Close all other browser tabs. Keep only one tab open at a time.
-
-      - Run: openclaw browser open <post_url>
-      - Start a 10-second timer. Wait for [data-testid="tweetText"] to appear.
-      - If the page has NOT loaded within 10 seconds, SKIP this post and move to the next URL.
-      - IMPORTANT: The source_url is ALWAYS the URL you just navigated to. Record it immediately.
-      - Take a browser.snapshot. Focus extraction on the FIRST [data-testid="tweet"] only:
-          - Post text:       [data-testid="tweetText"] (first match)
-          - Like count:      [data-testid="like"] aria-label or inner text
-          - Retweet count:   [data-testid="retweet"] aria-label or inner text
-          - Reply count:     [data-testid="reply"] aria-label or inner text
-          - View count:      [data-testid="views"] or [aria-label*="views"]
-          - Video player:    [data-testid="videoPlayer"] src or poster attribute
-          - Image:           [data-testid="tweetPhoto"] src attribute
-          - Author handle:   [data-testid="User-Name"] (first match)
-
-      - Determine media_type:
-          → "video" if [data-testid="videoPlayer"] is present
-          → "image" if [data-testid="tweetPhoto"] is present and no video
-          → "gif"   if a GIF player is present
-          → "none"  if none of the above
-
-      ⚠️ MEDIA FILTER: If media_type is "none", SKIP this post entirely. Do NOT add it to your collection. Move to the next URL immediately.
-
-      Only add the post to your collection if media_type is "video", "image", or "gif". Capture:
-        - source_url             : the EXACT URL you navigated to
-        - author_handle          : @username (first match)
-        - author_follower_count  : follower count if visible, else null
-        - content                : full post text from FIRST tweetText (up to 500 chars)
-        - media_type             : "video" | "image" | "gif"
-        - media_url              : direct URL of video/image/gif
-        - thumbnail_url          : thumbnail URL if video, else null
-        - duration               : video duration in seconds if available, else null
-        - likes                  : number (default 0)
-        - comments               : reply count (default 0)
-        - retweets               : retweet count (default 0)
-        - views                  : view count (default 0)
-        - hashtags               : array of strings (e.g. ["#Sora", "#AIFilm"])
-        - keyword_searched       : the keyword that surfaced this post
-
-      - After processing each URL, proceed to the next.
-
+      Capture: source_url, author_handle, content (max 500 chars), media_type, media_url, 
+               likes, comments, retweets, views (numbers only), hashtags, keyword_searched.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: CHECK TRENDING
+PHASE 2: SCORE & SAVE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Run: openclaw browser open https://x.com/explore/tabs/trending
-Take a snapshot and note the names of any AI or filmmaking topics in the trending list.
-Iterate through all your collected post JSON objects. Add property "trending_match" = true if any of a post's hashtags appear in the trending list, otherwise false.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 3: CALCULATE SCORE, FILTER & SAVE TO DB
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-For each collected post in your JSON array, calculate:
+For each post, calculate:
   engagement_score = (likes * 1) + (retweets * 3) + (comments * 2) + (views * 0.01)
-  + 20 if author has > 10k followers or is verified
-  + 15 if trending_match is true
-  Add this calculated score to each post object.
 
-CRITICAL: Sort all post objects descending by engagement_score. Keep ONLY the top 5 highest-scored posts globally across all keywords.
+1. Sort posts descending by engagement_score.
+2. Keep ONLY the top 5 globally.
 
-Send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.
-CRITICAL: Ensure the JSON body is a properly formatted and escaped array containing strictly the TOP 5 collected posts. If using a shell execution tool, ensure quotes inside the "content" field do not break the command.
-
-Body format:
-[
-  {
-    "source_url": "<post URL>",
-    ... [all fields listed in Phase 1e] ...,
-    "engagement_score": <calculated score>
-  }
-]
-
-Report the HTTP status and response body (number of items upserted) to confirm success.`;
+Send POST to ${API}/api/tools/db/curation (Content-Type: application/json).
+Report success/failure.`;
 
 export const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
 Your job is to read already-collected research data from the database and create a high-quality draft post for review.
