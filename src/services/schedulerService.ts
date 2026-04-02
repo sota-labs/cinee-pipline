@@ -172,7 +172,7 @@ For each collected post in your JSON array, calculate:
 
 CRITICAL: Sort all post objects descending by engagement_score. Keep ONLY the top 5 highest-scored posts globally across all keywords.
 
-Send a POST request to \${API}/api/tools/db/curation with Content-Type: application/json.
+Send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.
 CRITICAL: Ensure the JSON body is a properly formatted and escaped array containing strictly the TOP 5 collected posts. If using a shell execution tool, ensure quotes inside the "content" field do not break the command.
 
 Body format:
