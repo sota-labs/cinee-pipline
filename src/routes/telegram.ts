@@ -1,6 +1,11 @@
 /** Telegram webhook routes — handle callbacks and messages from Telegram. */
 import { Router, type Request, type Response } from "express";
-import { Post, EPostStatus, CurationSource, ECurationStatus } from "../db/index.js";
+import {
+  Post,
+  EPostStatus,
+  CurationSource,
+  ECurationStatus,
+} from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync, spawn } from "child_process";
@@ -101,7 +106,9 @@ async function handleCallbackQuery(query: any) {
 
   log.info(`Telegram callback: ${data} from chat ${chatId}`);
 
-  const parts = data.match(/^(post_now|reject|edit|ai_rewrite|schedule|next_source)_(.+)$/);
+  const parts = data.match(
+    /^(post_now|reject|edit|ai_rewrite|schedule|next_source)_(.+)$/,
+  );
   if (!parts) {
     await telegramService.answerCallback(callbackId, "❓ Unknown action");
     return;
@@ -134,7 +141,11 @@ async function handleCallbackQuery(query: any) {
 
       try {
         const xUser = settings.xUsername;
-        const firstWords = draft.raw_content.trim().split(/\s+/).slice(0, 8).join(" ");
+        const firstWords = draft.raw_content
+          .trim()
+          .split(/\s+/)
+          .slice(0, 8)
+          .join(" ");
         const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter) and VERIFY it was published successfully.
 
 BROWSER RULE: Keep ONLY ONE tab open at all times throughout ALL steps. Close any extra tabs before starting.
@@ -164,7 +175,9 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
     - Report on its own line: POST_FAILED: <reason>`;
 
         const result = runOpenClaw(postPrompt);
-        const postUrlMatch = result.match(/POST_SUCCESS_VERIFIED:\s*(https?:\/\/\S+)/);
+        const postUrlMatch = result.match(
+          /POST_SUCCESS_VERIFIED:\s*(https?:\/\/\S+)/,
+        );
         const postFailMatch = result.match(/POST_FAILED:\s*(.+)/);
         if (postUrlMatch) {
           draft.status = EPostStatus.POSTED;
@@ -177,9 +190,13 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
               await CurationSource.findByIdAndUpdate(draft.curation_source_id, {
                 $set: { status: ECurationStatus.USED, posted_at: new Date() },
               });
-              log.info(`CurationSource ${draft.curation_source_id} marked as used`);
+              log.info(
+                `CurationSource ${draft.curation_source_id} marked as used`,
+              );
             } catch (csErr: any) {
-              log.error(`Failed to update CurationSource status: ${csErr.message}`);
+              log.error(
+                `Failed to update CurationSource status: ${csErr.message}`,
+              );
             }
           }
 
@@ -276,7 +293,10 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
     case EAgentAction.NEXT_SOURCE: {
       draft.status = EPostStatus.REJECTED;
       await draft.save();
-      await telegramService.answerCallback(callbackId, "🔄 Đang tìm nguồn khác...");
+      await telegramService.answerCallback(
+        callbackId,
+        "🔄 Đang tìm nguồn khác...",
+      );
 
       if (chatId && callbackMessageId) {
         try {
@@ -286,24 +306,34 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
         }
       }
 
-      await telegramService.sendMessage(`🔄 Draft đã bị reject. Đang tạo draft mới từ nguồn tiếp theo...`, chatId);
+      await telegramService.sendMessage(
+        `🔄 Draft đã bị reject. Đang tạo draft mới từ nguồn tiếp theo...`,
+        chatId,
+      );
 
       // IMPORTANT: Must use spawn (non-blocking) NOT execSync.
       // execSync blocks the entire Node.js event loop — the OpenClaw agent
       // then calls back POST /api/content-review/drafts on this same server,
       // which cannot respond because the event loop is frozen → silent deadlock.
-      const escaped = DRAFT_PROMPT.replace(/'/g, "'\\''" );
+      const escaped = DRAFT_PROMPT.replace(/'/g, "'\\''");
       const child = spawn(
         "bash",
-        ["-c", `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`],
+        [
+          "-c",
+          `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`,
+        ],
         { detached: true, stdio: ["ignore", "ignore", "ignore"] },
       );
       child.on("error", (err) => {
         log.error(`OpenClaw spawn error (NEXT_SOURCE): ${err.message}`);
-        telegramService.sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId!).catch(console.error);
+        telegramService
+          .sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId!)
+          .catch(console.error);
       });
       child.unref(); // detach from parent process
-      log.info(`Spawned OpenClaw DRAFT agent (pid: ${child.pid}) for NEXT_SOURCE`);
+      log.info(
+        `Spawned OpenClaw DRAFT agent (pid: ${child.pid}) for NEXT_SOURCE`,
+      );
       break;
     }
   }
@@ -413,7 +443,7 @@ Writing rules:
 - UNDER 280 characters.
 - NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
 - Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
-- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
 - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
 - Include the source reference if there was one in the original.
 - End with an open question or forward-looking statement to invite engagement.

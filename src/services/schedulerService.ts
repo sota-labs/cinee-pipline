@@ -56,7 +56,7 @@ Step 2: For each reply in the response that has status "draft" or "resolved":
      - UNDER 280 characters.
      - NO generic openers: Do NOT use "Great point!", "Love this!", "So true!", "AI is changing...", or any fluff.
      - Start with a Punch: Lead with a direct technical observation, a "hot take", or a specific insight related to what the person said.
-     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+     - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
      - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
      - Be concise, high-impact, and directly relevant to the original content.
      - Tone: personal, direct, like a peer in the AI filmmaking space — NOT a corporate reply bot.
@@ -172,7 +172,7 @@ PHASE 3: WRITE THE DRAFT POST (CEO Persona)
 Write a post in ENGLISH ONLY (under 280 chars) following these "Anti-AI" rules:
 - NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
 - Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
-- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
 - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
 - Formatting: Use natural line breaks for readability. The Source URL MUST be placed at the very end of the post on its own separate line.
 - Structure: 
@@ -245,7 +245,7 @@ Writing rules:
 - UNDER 280 characters.
 - NO generic openers: Do NOT use "Great point!", "Love this!", "So true!", or any fluff.
 - Start with a Punch: Lead with a direct technical observation, a "hot take", or point out a technical flaw/detail (e.g. physics, render artifacts, temporal consistency).
-- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency", "vibe", "latent space"). Use lowercase where it feels more natural/urgent.
+- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency", "vibe", "latent space").
 - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, incredible.
 - Tone: personal, direct, slightly arrogant but deeply knowledgeable — NOT a corporate bot.
 
@@ -305,7 +305,8 @@ const CRON_JOBS: CronJob[] = [
     name: "auto_interact_hot_posts",
     schedule: "0 */4 * * *",
     message: AUTO_INTERACT_PROMPT,
-    description: "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
+    description:
+      "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
   },
 ];
 
