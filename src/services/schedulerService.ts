@@ -114,19 +114,16 @@ For EACH keyword: ["Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI vide
       ⚠️ MEDIA FILTER: If no media is found by both methods, SKIP post.
 
       Capture: source_url, author_handle, content (max 500 chars), media_type, media_url, 
-               likes, comments, retweets, views (numbers only), hashtags, keyword_searched.
+               likes, comments, retweets, views, hashtags, keyword_searched.
+      
+      ⚠️ NUMBER PARSING: You MUST convert metrics (likes, comments, retweets, views) from strings like "1.2K" or "3.5M" to actual integers (e.g. 1200, 3500000) before saving.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: SCORE & SAVE
+PHASE 2: SAVE DATA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each post, calculate:
-  engagement_score = (likes * 1) + (retweets * 3) + (comments * 2) + (views * 0.01)
-
-1. Sort posts descending by engagement_score.
-2. Keep ONLY the top 5 globally.
-
-Send POST to ${API}/api/tools/db/curation (Content-Type: application/json).
+Send a single POST request to ${API}/api/tools/db/curation (Content-Type: application/json) containing the array of ALL valid posts you collected.
+Do NOT calculate the engagement score yourself (the database will automatically calculate and sort them).
 Report success/failure.`;
 
 export const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
