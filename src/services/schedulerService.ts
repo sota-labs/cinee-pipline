@@ -114,19 +114,16 @@ For EACH keyword: ["Sora", "Runway Gen-3", "Kling AI", "AI Filmmaking", "AI vide
       ⚠️ MEDIA FILTER: If no media is found by both methods, SKIP post.
 
       Capture: source_url, author_handle, content (max 500 chars), media_type, media_url, 
-               likes, comments, retweets, views (numbers only), hashtags, keyword_searched.
+               likes, comments, retweets, views, hashtags, keyword_searched.
+      
+      ⚠️ NUMBER PARSING: You MUST convert metrics (likes, comments, retweets, views) from strings like "1.2K" or "3.5M" to actual integers (e.g. 1200, 3500000) before saving.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: SCORE & SAVE
+PHASE 2: SAVE DATA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each post, calculate:
-  engagement_score = (likes * 1) + (retweets * 3) + (comments * 2) + (views * 0.01)
-
-1. Sort posts descending by engagement_score.
-2. Keep ONLY the top 5 globally.
-
-Send POST to ${API}/api/tools/db/curation (Content-Type: application/json).
+Send a single POST request to ${API}/api/tools/db/curation (Content-Type: application/json) containing the array of ALL valid posts you collected.
+Do NOT calculate the engagement score yourself (the database will automatically calculate and sort them).
 Report success/failure.`;
 
 export const DRAFT_PROMPT = `You are an AI Agent with browser access acting as a visionary tech CEO who deeply understands cinema and AI filmmaking.
@@ -225,7 +222,7 @@ BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before s
 PHASE 1: FETCH HOT POST CANDIDATE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Send a GET request to ${API}/api/tools/db/curation/interact-candidates?hours=24&limit=1
-This endpoint returns the top hot post from the CurationSource database (collected by the research job) that has NOT been drafted/posted (status="new") and has NOT been replied to yet.
+This endpoint returns the top hot post from the CurationSource database (sorted by engagement_score) that has NOT been replied to yet.
 If the response returns 0 candidates, report "No candidates available" and stop.
 Otherwise, extract the "source_url" from the first candidate in the response array.
 

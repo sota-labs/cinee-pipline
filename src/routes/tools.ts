@@ -367,9 +367,8 @@ toolsRouter.get("/db/curation/interact-candidates", async (req: Request, res: Re
     const interactions = await Interaction.find().select("source_url");
     const interactedUrls = interactions.map(i => i.source_url);
 
-    // Find CurationSource candidates (leftovers from research that weren't selected)
+    // Find CurationSource candidates (leftovers from research or already used ones)
     const sources = await CurationSource.find({
-      status: ECurationStatus.NEW,
       scraped_at: { $gte: since },
       source_url: { $nin: interactedUrls }
     })
