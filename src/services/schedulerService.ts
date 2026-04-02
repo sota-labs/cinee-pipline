@@ -225,7 +225,7 @@ BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before s
 PHASE 1: FETCH HOT POST CANDIDATE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Send a GET request to ${API}/api/tools/db/curation/interact-candidates?hours=24&limit=1
-This endpoint returns the top hot post from the CurationSource database (collected by the research job) that has NOT been drafted/posted (status="new") and has NOT been replied to yet.
+This endpoint returns the top hot post from the CurationSource database (sorted by engagement_score) that has NOT been replied to yet.
 If the response returns 0 candidates, report "No candidates available" and stop.
 Otherwise, extract the "source_url" from the first candidate in the response array.
 
