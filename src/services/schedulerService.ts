@@ -174,17 +174,21 @@ Write a post in ENGLISH ONLY (under 280 chars) following these "Anti-AI" rules:
 - Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
 - Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space"). Use lowercase where it feels more natural/urgent.
 - Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
-- Structure: [Bold Insight] + [Specific Detail/Model Name] + [Source URL] + [One short, sharp question].
-- Include the source URL from the selected post
-- End with an open question or forward-looking statement to invite engagement
-- Do NOT mention Cinee or promote any product.
-- Tone: personal, direct, visionary — like a real founder's tweet, not a press release.
+- Formatting: Use natural line breaks for readability. The Source URL MUST be placed at the very end of the post on its own separate line.
+- Structure: 
+  [Bold Insight or Hot Take]
+  [Specific Detail or Model Name]
+  [One short, sharp question]
+  
+  [Source URL]
+- Tone: personal, direct, visionary — like a real founder's tweet, not a press release. Do NOT mention Cinee or promote any product.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 4: SAVE AS DRAFT VIA API
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Send a POST request to ${API}/api/content-review/drafts with Content-Type: application/json:
+Send a POST request to ${API}/api/content-review/drafts. 
+Set the header "Content-Type: application/json" and send EXACTLY this JSON body (do not wrap in markdown tags):
 {
   "platform": "twitter",
   "content_type": "hot_take",
