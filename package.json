@@ -19,11 +19,13 @@
     "cron:add:research-evening": "tsx src/scripts/addJob.ts research_and_draft_evening",
     "cron:add:collect": "tsx src/scripts/addJob.ts research_and_collect",
     "cron:add:post": "tsx src/scripts/addJob.ts post_approved_content",
+    "cron:add:auto-interact": "tsx src/scripts/addJob.ts auto_interact_hot_posts",
     "cron:remove:scrape": "tsx src/scripts/removeJob.ts scrape_x_notifications",
     "cron:remove:reply": "tsx src/scripts/removeJob.ts reply_x_notifications",
     "cron:remove:research-morning": "tsx src/scripts/removeJob.ts research_and_draft_morning",
     "cron:remove:research-evening": "tsx src/scripts/removeJob.ts research_and_draft_evening",
     "cron:remove:post": "tsx src/scripts/removeJob.ts post_approved_content",
+    "cron:remove:auto-interact": "tsx src/scripts/removeJob.ts auto_interact_hot_posts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

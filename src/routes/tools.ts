@@ -5,7 +5,7 @@
  *   /db/replies  — CEO's replies (status: draft | rejected | resolved | replied)
  */
 import { Router, type Request, type Response } from "express";
-import { Post, Reply, PersonaKnowledge, CurationSource } from "../db/index.js";
+import { Post, Reply, PersonaKnowledge, CurationSource, Interaction } from "../db/index.js";
 import { EReplyStatus } from "../db/models/Reply.js";
 import { ECurationStatus } from "../db/models/CurationSource.js";
 
@@ -346,6 +346,47 @@ toolsRouter.patch("/db/curation/:id", async (req: Request, res: Response) => {
         .status(404)
         .json({ success: false, error: "CurationSource not found" });
     res.json({ success: true, source });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+// ── DB: Interactions ────────────────────────────────────────────────────────
+
+/**
+ * Auto-Interact Candidates
+ * Get top N curation sources by engagement_score (from the last X hours)
+ * that have NOT been interacted with yet, and have status "new" (not selected for draft).
+ */
+toolsRouter.get("/db/curation/interact-candidates", async (req: Request, res: Response) => {
+  try {
+    const { hours = "24", limit = "1" } = req.query;
+    const since = new Date(Date.now() - parseInt(hours as string) * 3_600_000);
+
+    // Get all interacted URLs
+    const interactions = await Interaction.find().select("source_url");
+    const interactedUrls = interactions.map(i => i.source_url);
+
+    // Find CurationSource candidates (leftovers from research that weren't selected)
+    const sources = await CurationSource.find({
+      status: ECurationStatus.NEW,
+      scraped_at: { $gte: since },
+      source_url: { $nin: interactedUrls }
+    })
+      .sort({ engagement_score: -1 })
+      .limit(parseInt(limit as string));
+
+    res.json({ success: true, candidates: sources });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Save a new interaction */
+toolsRouter.post("/db/interactions", async (req: Request, res: Response) => {
+  try {
+    const interaction = await Interaction.create(req.body);
+    res.json({ success: true, interaction });
   } catch (e: any) {
     res.status(400).json({ success: false, error: e.message });
   }
