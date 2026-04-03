@@ -3,25 +3,11 @@ import { Router, type Request, type Response } from "express";
 import { Post, EPostStatus } from "../db/index.js";
 import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
-import { execSync } from "child_process";
 import * as dotenv from "dotenv";
-import { settings } from "../config/settings.js";
+import { runOpenClawAgentText } from "../services/openclawAgentService.js";
 dotenv.config();
 
 export const contentReviewRouter = Router();
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function runOpenClaw(message: string): string {
-  const escaped = message.replace(/'/g, "'\\''");
-  return execSync(
-    `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`,
-    {
-      encoding: "utf-8",
-      timeout: 300_000,
-    },
-  ).trim();
-}
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
@@ -287,7 +273,7 @@ Writing rules:
 
       let rewritten: string;
       try {
-        rewritten = runOpenClaw(aiPrompt);
+        rewritten = runOpenClawAgentText(aiPrompt);
       } catch (err: any) {
         return res
           .status(500)

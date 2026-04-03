@@ -11,6 +11,7 @@ import { log } from "../utils/logger.js";
 import { execSync, spawn } from "child_process";
 import { settings } from "../config/settings.js";
 import { DRAFT_PROMPT } from "../services/schedulerService.js";
+import { runOpenClawAgentText } from "../services/openclawAgentService.js";
 
 export const telegramRouter = Router();
 enum EPendingAction {
@@ -451,7 +452,7 @@ Writing rules:
 - Tone: personal, direct, visionary — like a real founder's tweet, not a press release.
 - Output ONLY the rewritten post, nothing else.`;
 
-    const rewritten = runOpenClaw(aiPrompt);
+    const rewritten = runOpenClawAgentText(aiPrompt);
 
     draft.edit_history.push({
       content: draft.raw_content,
