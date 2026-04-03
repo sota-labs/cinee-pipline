@@ -18,34 +18,35 @@ interface CronJob {
 
 const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser.
 
-Step 1: Locate notification items (comments/replies from the last 24 hours)
+Reference Time: Today is ${new Date().toISOString()}. 
+Target Window: Only items created within the last 24 hours from this Reference Time.
 
-**Primary method — Use X's existing DOM elements first:**
-- Look for notification cells using X's built-in selectors: \`[data-testid="cellInnerDiv"]\`, \`[data-testid="notification"]\`, or \`article\` elements inside the notifications timeline.
-- Extract the notification data directly using these specific child elements:
-  - 'reply_content' (text): Extract from \`[data-testid="tweetText"]\` or the primary text block.
-  - 'url': Extract from \`a[href]\` links, ideally resolving to the full comment URL (e.g. https://x.com/.../status/...).
+Step 1: Locate and Filter notification items
+- Use X's selectors: [data-testid="cellInnerDiv"], [data-testid="notification"], or article.
+- **CRITICAL - Time Validation:** For every item, locate the <time> element and extract its 'datetime' attribute.
+  - Compare the 'datetime' value with the Reference Time.
+  - If the 'datetime' is older than 24 hours (e.g., from March 26 when today is April 3), IMMEDIATELY skip this item.
+  - Stop scrolling once you encounter 3 consecutive items older than the 24-hour window.
 
-**Fallback method — Only if the primary method fails:**
-- If the exact DOM elements are not found or X has changed its DOM structure, manually analyze the page HTML to identify repeating list-item patterns containing user avatars, text content, and timestamp links, and extract the 'reply_content' and 'url' yourself.
+Step 2: Extract Data for valid items (Last 24h only):
+- 'reply_content': Extract from [data-testid="tweetText"].
+- 'url': Extract the full URL from the <a> link associated with the timestamp or status.
+- 'timestamp': The value from the 'datetime' attribute.
 
-Scroll the notifications page as needed to ensure no items from the last 24 hours are missed.
-
-Step 2: For each notification found:
-1. Make sure you have the extracted 'reply_content' and 'url' (as guided above).
-2. Evaluate the content of the comment:
-   - If the comment is meaningful, constructive, or part of a genuine discussion, set status = "resolved".
-   - If the comment is spam, a bot-like promotion, irrelevant gibberish, or just "trash" content, set status = "rejected".
-3. Prepare a JSON object for each reply with:
-   - reply_content: (the comment text)
+Step 3: Evaluate and Format:
+1. Evaluate the 'reply_content':
+   - status = "resolved" if meaningful/constructive.
+   - status = "rejected" if spam, bot-like, or irrelevant.
+2. Prepare JSON object:
+   - reply_content: (text)
    - tone_used: "supportive"
-   - status: (either "resolved" or "rejected" based on your evaluation)
+   - status: (resolved/rejected)
    - platform: "x"
-   - url: (the full URL of the comment)
-   - created_at: (current ISO timestamp)
-   - updated_at: (current ISO timestamp)
+   - url: (full URL)
+   - created_at: (The 'datetime' value extracted from X)
+   - updated_at: ${new Date().toISOString()}
 
-Step 3: After processing all items, send a single POST request to ${API}/api/tools/db/replies with the final array of these objects.`;
+Step 4: Send a single POST request to ${API}/api/tools/db/replies with the final array.`;
 
 const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies.
 Step 2: For each reply in the response that has status "draft" or "resolved":
