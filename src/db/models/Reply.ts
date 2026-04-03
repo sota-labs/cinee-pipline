@@ -2,22 +2,22 @@
 import { Schema, model, Document } from "mongoose";
 
 export enum EReplyStatus {
-  DRAFT    = "draft",
+  DRAFT = "draft",
   REJECTED = "rejected",
   RESOLVED = "resolved",
-  REPLIED  = "replied",
+  REPLIED = "replied",
 }
 
 export enum EReplyTone {
-  SUPPORTIVE  = "supportive",
-  VISIONARY   = "visionary",
+  SUPPORTIVE = "supportive",
+  VISIONARY = "visionary",
   CHALLENGING = "challenging",
-  CURIOUS     = "curious",
-  GRATEFUL    = "grateful",
+  CURIOUS = "curious",
+  GRATEFUL = "grateful",
 }
 
 export enum EReplyPlatform {
-  X      = "x",
+  X = "x",
   REDDIT = "reddit",
 }
 
@@ -58,10 +58,11 @@ const replySchema = new Schema<IReply>(
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-  }
+  },
 );
 
 replySchema.index({ status: 1, created_at: -1 });
 replySchema.index({ platform: 1 });
+replySchema.index({ url: 1 }, { unique: true });
 
 export const Reply = model<IReply>("Reply", replySchema);
