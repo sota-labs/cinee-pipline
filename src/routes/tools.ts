@@ -241,16 +241,28 @@ toolsRouter.get("/db/stats", async (_req: Request, res: Response) => {
 toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
   try {
     const items = (Array.isArray(req.body) ? req.body : [req.body]).map(
-      (item: any) => ({
-        ...item,
-        engagement_score:
-          item.engagement_score ??
-          (item.likes ?? 0) * 1 +
-            (item.retweets ?? 0) * 3 +
-            (item.comments ?? 0) * 2 +
-            (item.views ?? 0) * 0.01,
-        scraped_at: new Date(),
-      }),
+      (item: any) => {
+        // For Reddit, set defaults for missing fields that exist in Twitter
+        if (item.platform === "reddit") {
+          item.author_handle = item.author_handle || "anonymous";
+          item.retweets = item.retweets || 0;
+          item.views = item.views || 0;
+          item.likes = item.likes || 0;
+          item.comments = item.comments || 0;
+          item.content = item.content || "No title";
+        }
+
+        return {
+          ...item,
+          engagement_score:
+            item.engagement_score ??
+            (item.likes ?? 0) * 1 +
+              (item.retweets ?? 0) * 3 +
+              (item.comments ?? 0) * 2 +
+              (item.views ?? 0) * 0.01,
+          scraped_at: new Date(),
+        };
+      }
     );
 
     const results = await Promise.all(
@@ -326,7 +338,7 @@ toolsRouter.get("/db/curation/top", async (req: Request, res: Response) => {
  */
 toolsRouter.get("/db/curation/interact-candidates", async (req: Request, res: Response) => {
   try {
-    const { hours = "24", limit = "1" } = req.query;
+    const { hours = "24", limit = "1", platform } = req.query;
     const since = new Date(Date.now() - parseInt(hours as string) * 3_600_000);
 
     // Get all interacted URLs
@@ -334,10 +346,16 @@ toolsRouter.get("/db/curation/interact-candidates", async (req: Request, res: Re
     const interactedUrls = interactions.map(i => i.source_url);
 
     // Find CurationSource candidates (leftovers from research or already used ones)
-    const sources = await CurationSource.find({
+    const filter: Record<string, any> = {
       scraped_at: { $gte: since },
       source_url: { $nin: interactedUrls }
-    })
+    };
+    
+    if (platform) {
+      filter.platform = platform;
+    }
+
+    const sources = await CurationSource.find(filter)
       .sort({ engagement_score: -1 })
       .limit(parseInt(limit as string));
 
