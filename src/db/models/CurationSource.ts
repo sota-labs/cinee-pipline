@@ -25,9 +25,11 @@ export interface ICurationSource extends Document {
   thumbnail_url?: string;
   duration?: number;
   likes: number;
+  dislikes?: number;
   comments: number;
   retweets: number;
   views: number;
+  awards?: number;
   hashtags: string[];
   keyword_searched: string;
   engagement_score: number;
@@ -54,9 +56,11 @@ const curationSourceSchema = new Schema<ICurationSource>(
     thumbnail_url: { type: String },
     duration: { type: Number },
     likes: { type: Number, default: 0 },
+    dislikes: { type: Number, default: 0 },
     comments: { type: Number, default: 0 },
     retweets: { type: Number, default: 0 },
     views: { type: Number, default: 0 },
+    awards: { type: Number, default: 0 },
     hashtags: { type: [String], default: [] },
     keyword_searched: { type: String, default: "" },
     engagement_score: { type: Number, default: 0 },

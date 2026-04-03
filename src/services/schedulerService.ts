@@ -373,7 +373,9 @@ For EACH subreddit:
         - content: Post title + body
         - media_type, media_url
         - likes: upvote count
+        - dislikes: downvote count (if available, otherwise estimate or 0)
         - comments: comment count
+        - awards: number of awards given to the post (if visible, otherwise 0)
         - retweets: 0
         - views: 0
         - hashtags: ["#<subreddit_name>"]
@@ -384,7 +386,7 @@ PHASE 2: CALCULATE SCORE & SAVE TO DB
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 For each collected post:
-  engagement_score = (likes * 1) + (comments * 3)
+  engagement_score = (likes * 1) - (dislikes * 1) + (comments * 3) + (awards * 10)
   Keep ONLY the top 5 highest-scored posts globally across all subreddits.
 
 Send a POST request to ${API}/api/tools/db/curation with Content-Type: application/json.

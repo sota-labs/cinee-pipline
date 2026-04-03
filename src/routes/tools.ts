@@ -252,14 +252,23 @@ toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
           item.content = item.content || "No title";
         }
 
+        let calculated_score = 0;
+        if (item.platform === "reddit") {
+          item.dislikes = item.dislikes || 0;
+          item.awards = item.awards || 0;
+          calculated_score = (item.likes ?? 0) * 1 - (item.dislikes ?? 0) * 1 + (item.comments ?? 0) * 3 + (item.awards ?? 0) * 10;
+        } else {
+          // Twitter calculation
+          calculated_score = 
+            (item.likes ?? 0) * 1 +
+            (item.retweets ?? 0) * 3 +
+            (item.comments ?? 0) * 2 +
+            (item.views ?? 0) * 0.01;
+        }
+
         return {
           ...item,
-          engagement_score:
-            item.engagement_score ??
-            (item.likes ?? 0) * 1 +
-              (item.retweets ?? 0) * 3 +
-              (item.comments ?? 0) * 2 +
-              (item.views ?? 0) * 0.01,
+          engagement_score: item.engagement_score ?? calculated_score,
           scraped_at: new Date(),
         };
       }
