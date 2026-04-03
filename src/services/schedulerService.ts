@@ -252,7 +252,7 @@ Compose a reply that acts as a **Bridge** between the post's content and your CE
 **Writing Guidelines:**
 UNDER 250 characters (keep it snappy).
 **NO generic praise:** Ban "Great job!", "Amazing!", "Keep it up!".
-**Slang & Vibe:** Use industry shorthand (workflow, viz, latent, temporal, tokens, prompt-to-video). Lowercase is encouraged for a "sent from my phone" vibe.
+**Slang & Vibe:** Use industry shorthand (workflow, viz, latent, temporal, tokens, prompt-to-video).
 **The "Founder" Twist:** Instead of being arrogant, be **Opinionated & Observant**. Point out something only a pro would notice.
 
 Post the response on X:
