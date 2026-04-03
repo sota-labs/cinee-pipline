@@ -16,37 +16,37 @@ interface CronJob {
 
 // ── Prompt definitions ───────────────────────────────────────────────────────
 
-const SCRAPE_PROMPT = `Open https://x.com/notifications in the browser.
+const SCRAPE_PROMPT = `Open https://x.com/notifications/mentions in the browser.
 
 Reference Time: Today is ${new Date().toISOString()}. 
 Target Window: Only items created within the last 24 hours from this Reference Time.
 
-Step 1: Locate and Filter notification items
-- Use X's selectors: [data-testid="cellInnerDiv"], [data-testid="notification"], or article.
-- **CRITICAL - Time Validation:** For every item, locate the <time> element and extract its 'datetime' attribute.
-  - Compare the 'datetime' value with the Reference Time.
-  - If the 'datetime' is older than 24 hours (e.g., from March 26 when today is April 3), IMMEDIATELY skip this item.
-  - Stop scrolling once you encounter 3 consecutive items older than the 24-hour window.
+Step 1: Locate and Filter Mentions
+- Primary selector: [data-testid="cellInnerDiv"] or article.
+- **CRITICAL - Time Validation:** - For every item, find the <time> element and extract its 'datetime' attribute.
+  - Compare this 'datetime' with the Reference Time.
+  - If 'datetime' is older than 24 hours from now, SKIP the item.
+  - If you encounter 3 consecutive items older than 24 hours, STOP scrolling and proceed to Step 3.
 
-Step 2: Extract Data for valid items (Last 24h only):
-- 'reply_content': Extract from [data-testid="tweetText"].
-- 'url': Extract the full URL from the <a> link associated with the timestamp or status.
-- 'timestamp': The value from the 'datetime' attribute.
+Step 2: Extract Data (Only for items within the 24h window):
+- 'reply_content': Extract text from [data-testid="tweetText"].
+- 'url': Find the <a> tag linked to the timestamp or the tweet status to get the full URL (e.g., https://x.com/username/status/...).
+- 'actual_timestamp': The value from the 'datetime' attribute of the <time> element.
 
 Step 3: Evaluate and Format:
-1. Evaluate the 'reply_content':
-   - status = "resolved" if meaningful/constructive.
-   - status = "rejected" if spam, bot-like, or irrelevant.
+1. Evaluate 'reply_content':
+   - status = "resolved" if the comment is a genuine question, constructive feedback, or meaningful discussion.
+   - status = "rejected" if it is spam, automated bot promotion, irrelevant gibberish, or offensive "trash" content.
 2. Prepare JSON object:
-   - reply_content: (text)
+   - reply_content: (the extracted text)
    - tone_used: "supportive"
    - status: (resolved/rejected)
    - platform: "x"
-   - url: (full URL)
-   - created_at: (The 'datetime' value extracted from X)
+   - url: (the full comment URL)
+   - created_at: (use the 'actual_timestamp' extracted from the element)
    - updated_at: ${new Date().toISOString()}
 
-Step 4: Send a single POST request to ${API}/api/tools/db/replies with the final array.`;
+Step 4: After processing all valid items, send a single POST request to ${API}/api/tools/db/replies with the final array of objects.`;
 
 const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies.
 Step 2: For each reply in the response that has status "draft" or "resolved":
