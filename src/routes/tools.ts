@@ -283,14 +283,15 @@ toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
 
 /**
  * List curation sources.
- * Query: status, keyword_searched, limit (default 20), skip (default 0)
+ * Query: status, keyword_searched, platform, limit (default 20), skip (default 0)
  */
 toolsRouter.get("/db/curation", async (req: Request, res: Response) => {
   try {
-    const { status, keyword_searched, limit = "20", skip = "0" } = req.query;
+    const { status, keyword_searched, platform, limit = "20", skip = "0" } = req.query;
     const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
     if (keyword_searched) filter.keyword_searched = keyword_searched;
+    if (platform) filter.platform = platform;
 
     const [sources, total] = await Promise.all([
       CurationSource.find(filter)
@@ -308,20 +309,26 @@ toolsRouter.get("/db/curation", async (req: Request, res: Response) => {
 
 /**
  * Get top N curation sources by engagement_score within the last X hours.
- * Query: hours (default 24), limit (default 5), status (default "new")
+ * Query: hours (default 24), limit (default 5), status (default "new"), platform
  */
 toolsRouter.get("/db/curation/top", async (req: Request, res: Response) => {
   try {
-    const { hours = "24", limit = "5", status = ECurationStatus.NEW } = req.query;
+    const { hours = "24", limit = "5", status = ECurationStatus.NEW, platform } = req.query;
     const since = new Date(
       Date.now() - parseInt(hours as string) * 3_600_000,
     );
 
-    const sources = await CurationSource.find({
+    const filter: Record<string, any> = {
       status,
       scraped_at: { $gte: since },
       media_type: { $ne: "none" },
-    })
+    };
+    
+    if (platform) {
+      filter.platform = platform;
+    }
+
+    const sources = await CurationSource.find(filter)
       .sort({ engagement_score: -1 })
       .limit(parseInt(limit as string));
 
