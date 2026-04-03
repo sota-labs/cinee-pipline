@@ -74,7 +74,6 @@ const curationSourceSchema = new Schema<ICurationSource>(
 curationSourceSchema.index({ engagement_score: -1 });
 curationSourceSchema.index({ status: 1, scraped_at: -1 });
 curationSourceSchema.index({ keyword_searched: 1, scraped_at: -1 });
-curationSourceSchema.index({ source_url: 1 }, { unique: true });
 
 export const CurationSource = model<ICurationSource>(
   "CurationSource",
