@@ -16,9 +16,10 @@ const interactionSchema = new Schema<IInteraction>(
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-  }
+  },
 );
 
-interactionSchema.index({ source_url: 1 }, { unique: true });
-
-export const Interaction = model<IInteraction>("Interaction", interactionSchema);
+export const Interaction = model<IInteraction>(
+  "Interaction",
+  interactionSchema,
+);
