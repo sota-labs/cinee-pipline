@@ -307,6 +307,54 @@ After posting, send a POST request to ${API}/api/tools/db/interactions:
 }
 Report result.`;
 
+// ── AUTO_LIKE_PROMPT: Auto-like priority and hot posts ───────────────────────
+export const AUTO_LIKE_PROMPT = `You are an AI Agent with browser access. Your goal is to organically like posts on X from our inner circle and hot industry topics.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before starting.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: LIKE HIGH-PRIORITY ACCOUNTS (2-3 posts)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Send a GET request to ${API}/api/priority-accounts?limit=5
+2. Pick 2 to 3 accounts from the response.
+3. For each selected account (using the "handle"):
+   a. Run: openclaw browser open https://x.com/<handle>
+   b. Wait for the profile to load.
+   c. Scroll down and find the first or second original post (skip pinned posts and retweets).
+   d. Locate the Like button ([data-testid="like"]) for that post.
+   e. Click the Like button.
+   f. Wait 5 seconds to simulate human behavior.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: LIKE HOT POSTS (2-3 posts)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Send a GET request to ${API}/api/tools/db/curation/interact-candidates?hours=24&limit=3
+2. For each candidate returned:
+   a. Run: openclaw browser open <source_url>
+   b. Wait for the page to load.
+   c. Locate the Like button for the main post ([data-testid="like"]).
+   d. Click the Like button.
+   e. Wait 5 seconds.
+
+Report the total number of posts liked.`;
+
+// ── AUTO_BOOKMARK_PROMPT: Auto-bookmark a hot post ───────────────────────────
+export const AUTO_BOOKMARK_PROMPT = `You are an AI Agent with browser access. Your goal is to occasionally bookmark a valuable post on X.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times. Close any extra tabs before starting.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: BOOKMARK A HOT POST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Send a GET request to ${API}/api/tools/db/curation/interact-candidates?hours=48&limit=1
+2. Extract the "source_url" from the candidate.
+3. Run: openclaw browser open <source_url>
+4. Wait for the page to load.
+5. Locate the Bookmark button for the main post ([data-testid="bookmark"]).
+6. Click the Bookmark button to save it.
+7. Wait 5 seconds to confirm.
+8. Report the URL of the bookmarked post.`;
+
 // ── Job definitions ─────────────────────────────────────────────────────────
 
 const CRON_JOBS: CronJob[] = [
@@ -349,6 +397,19 @@ const CRON_JOBS: CronJob[] = [
     message: AUTO_INTERACT_PROMPT,
     description:
       "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
+  },
+  {
+    name: "auto_like_posts",
+    schedule: "0 10,22 * * *",
+    message: AUTO_LIKE_PROMPT,
+    description:
+      "Tự động thả like (ngày 2 lần, mỗi lần ~5 bài) cho priority accounts và hot posts",
+  },
+  {
+    name: "auto_bookmark_posts",
+    schedule: "0 14 */2 * *",
+    message: AUTO_BOOKMARK_PROMPT,
+    description: "Tự động bookmark 1 post hay (mỗi 2 ngày)",
   },
 ];
 
