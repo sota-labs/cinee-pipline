@@ -16,24 +16,28 @@ interface CronJob {
 
 // ── Prompt definitions ───────────────────────────────────────────────────────
 
-const SCRAPE_PROMPT = `Open https://x.com/notifications/mentions in the browser.
-
-Reference Time: Today is ${new Date().toISOString()}. 
+const SCRAPE_PROMPT = `Reference Time: Today is ${new Date().toISOString()}.
 Target Window: Only items created within the last 24 hours from this Reference Time.
 
-Step 1: Locate and Filter Mentions
-- Primary selector: [data-testid="cellInnerDiv"] or article.
-- **CRITICAL - Time Validation:** - For every item, find the <time> element and extract its 'datetime' attribute.
-  - Compare this 'datetime' with the Reference Time.
-  - If 'datetime' is older than 24 hours from now, SKIP the item.
-  - If you encounter 3 consecutive items older than 24 hours, STOP scrolling and proceed to Step 3.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE A: SCRAPE MENTIONS → Save to Replies DB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Step 2: Extract Data (Only for items within the 24h window):
+Step 1: Open https://x.com/notifications/mentions in the browser.
+
+Step 2: Locate and Filter Mentions
+- Primary selector: [data-testid="cellInnerDiv"] or article.
+- **CRITICAL - Time Validation:** For every item, find the <time> element and extract its 'datetime' attribute.
+  - If 'datetime' is older than 24 hours from Reference Time, SKIP the item.
+  - If you encounter 3 consecutive items older than 24 hours, STOP scrolling and proceed to Step 4.
+
+Step 3: Extract Data (Only for items within the 24h window):
 - 'reply_content': Extract text from [data-testid="tweetText"].
 - 'url': Find the <a> tag linked to the timestamp or the tweet status to get the full URL (e.g., https://x.com/username/status/...).
 - 'actual_timestamp': The value from the 'datetime' attribute of the <time> element.
+- 'author_handle': The @username who wrote the mention (found in the tweet header or URL path).
 
-Step 3: Evaluate and Format:
+Step 4: Evaluate and Format:
 1. Evaluate 'reply_content':
    - status = "resolved" if the comment is a genuine question, constructive feedback, or meaningful discussion.
    - status = "rejected" if it is spam, automated bot promotion, irrelevant gibberish, or offensive "trash" content.
@@ -46,7 +50,37 @@ Step 3: Evaluate and Format:
    - created_at: (use the 'actual_timestamp' extracted from the element)
    - updated_at: ${new Date().toISOString()}
 
-Step 4: After processing all valid items, send a single POST request to ${API}/api/tools/db/replies with the final array of objects.`;
+Step 5: Send a single POST request to ${API}/api/tools/db/replies with the final array of objects.
+Keep a local list of { author_handle, type: "comment" } for every mention saved — you will use this in Phase B.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE B: DETECT LIKES & RETWEETS → Update Inner Circle Scores
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Step 6: Open https://x.com/notifications (the "All" tab).
+Apply the same 24-hour time filter as Phase A.
+Scroll until you encounter 3 consecutive items older than 24 hours or reach the end.
+
+Step 7: For each notification item within the time window, detect the type and extract the author:
+- LIKE    → notification sentence contains "liked"    → type = "like"
+- RETWEET → notification sentence contains "reposted" or "retweeted" → type = "share"
+- REPLY / MENTION → already captured in Phase A → type = "comment" (skip here to avoid double-counting)
+- Extract author_handle: the @username shown in the notification (first @mention in the text).
+
+Step 8: Combine all interactions from Phase A (comments) and Phase B (likes + shares).
+Group by author_handle and sum each type:
+  { handle: "@alice", likes: 2, comments: 1, shares: 0 }
+
+Step 9: For each unique handle in the grouped list:
+- Skip the entry if likes + comments + shares = 0.
+- Send POST ${API}/api/priority-accounts/inc-stats with body:
+  {
+    "handle": "<author_handle>",
+    "likes": <total_likes>,
+    "comments": <total_comments>,
+    "shares": <total_shares>
+  }
+- Report total number of inc-stats calls made at the end.`;
 
 const REPLY_PROMPT = `Step 1: Call GET ${API}/api/tools/db/replies to fetch the list of replies.
 Step 2: For each reply in the response that has status "draft" or "resolved":

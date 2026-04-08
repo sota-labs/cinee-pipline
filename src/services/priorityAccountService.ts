@@ -160,7 +160,7 @@ export async function incStats(input: IncStatsInput): Promise<IPriorityAccount |
     log.error(`[PriorityAccount] Redis incStats failed for ${handle}: ${err.message}`);
   }
 
-  // ── MongoDB: $inc + last_seen_at ──────────────────────────────────────────
+  // ── MongoDB: $inc + last_seen_at (upsert if not exists) ─────────────────
   const incPayload: Record<string, number> = {};
   if (likes    > 0) incPayload.likes_30d    = likes;
   if (comments > 0) incPayload.comments_30d = comments;
@@ -168,11 +168,21 @@ export async function incStats(input: IncStatsInput): Promise<IPriorityAccount |
 
   const account = await PriorityAccount.findOneAndUpdate(
     { handle },
-    { $inc: incPayload, $set: { last_seen_at: today } },
-    { new: true },
+    {
+      $inc: incPayload,
+      $set: { last_seen_at: today },
+      $setOnInsert: {
+        is_manual_priority: false,
+        vibe_notes: "",
+        follower_count: 0,
+        closeness_score: 0,
+        hybrid_score: 0,
+        relationship_tier: ERelationshipTier.STRANGER,
+      },
+    },
+    { new: true, upsert: true },
   );
 
-  if (!account) return null;
   return refreshScores(account);
 }
 
