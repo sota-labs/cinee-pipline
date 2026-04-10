@@ -7,6 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "setup-cron": "tsx src/scripts/setupCronJobs.ts",
     "scan-post": "tsx src/scripts/scanAndPostCron.ts",
     "cron:add-all": "tsx src/scripts/addAllJobs.ts",
@@ -44,6 +46,7 @@
     "@types/mongoose": "^5.11.96",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.4"
   }
 }

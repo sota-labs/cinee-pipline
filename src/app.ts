@@ -7,6 +7,7 @@ import { toolsRouter } from "./routes/tools.js";
 import { contentReviewRouter } from "./routes/contentReview.js";
 import { telegramRouter } from "./routes/telegram.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
+import { topicConfigRouter } from "./routes/topicConfig.js";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/tools", toolsRouter);
 app.use("/api/content-review", contentReviewRouter);
 app.use("/api/telegram", telegramRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
+app.use("/api/topic-config", topicConfigRouter);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -33,6 +35,7 @@ app.get("/", (_req, res) => {
       content_review: "/api/content-review/*",
       telegram: "/api/telegram/*",
       priority_accounts: "/api/priority-accounts/*",
+      topic_config: "/api/topic-config/*",
     },
   });
 });

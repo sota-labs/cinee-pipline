@@ -6,6 +6,7 @@ export { PersonaKnowledge } from "./models/PersonaKnowledge.js";
 export { CurationSource, ECurationStatus, ECurationMediaType } from "./models/CurationSource.js";
 export { Interaction } from "./models/Interaction.js";
 export { PriorityAccount, ERelationshipTier } from "./models/PriorityAccount.js";
+export { TopicConfig } from "./models/TopicConfig.js";
 export type { ICurationSource } from "./models/CurationSource.js";
 export type { IPriorityAccount } from "./models/PriorityAccount.js";
 export type { IInteraction } from "./models/Interaction.js";
@@ -13,3 +14,4 @@ export type { IPost, IMedia, IVideoDetails, IEditEntry } from "./models/Post.js"
 export { EReplyStatus as ReplyStatus, EReplyTone as ReplyTone, EReplyPlatform as ReplyPlatform } from "./models/Reply.js";
 export type { IReply } from "./models/Reply.js";
 export type { IPersonaKnowledge } from "./models/PersonaKnowledge.js";
+export type { ITopicConfig } from "./models/TopicConfig.js";
