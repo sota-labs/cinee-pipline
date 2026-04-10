@@ -4,12 +4,12 @@
  */
 import { removeAllJobs, listJobs } from "../services/schedulerService.js";
 
-function main() {
+async function main() {
   console.log("╔══════════════════════════════════════════════════════╗");
   console.log("║  Removing ALL OpenClaw Cron Jobs                    ║");
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
-  const results = removeAllJobs();
+  const results = await removeAllJobs();
 
   console.log("── Results ──");
   for (const r of results) {

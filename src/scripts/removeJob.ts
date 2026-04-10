@@ -11,14 +11,15 @@
  */
 import { removeSingleJob, listJobs, getJobDefinitions } from "../services/schedulerService.js";
 
-function main() {
+async function main() {
   const jobName = process.argv[2];
 
   if (!jobName) {
     console.error("❌ Error: Please provide a job name.\n");
     console.log("Usage:  npx tsx src/scripts/removeJob.ts <job_name>\n");
     console.log("Available jobs:");
-    for (const job of getJobDefinitions()) {
+    const defs = await getJobDefinitions();
+    for (const job of defs) {
       console.log(`  - ${job.name}  (${job.schedule})  ${job.description}`);
     }
     process.exit(1);
@@ -28,7 +29,7 @@ function main() {
   console.log(`║  Removing Job: ${jobName.padEnd(37)}║`);
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
-  const result = removeSingleJob(jobName);
+  const result = await removeSingleJob(jobName);
   const icon = result.status === "removed" ? "✅" : "❌";
   console.log(`${icon}  ${result.name}: ${result.status}`);
   if (result.output) console.log(`   output: ${result.output}`);
