@@ -10,6 +10,8 @@ import {
   deactivateAll,
   getActiveRoleConfig,
 } from "../services/topicConfigService.js";
+import { registerIsolatedJobs, removeAllJobs } from "../services/schedulerService.js";
+import { log } from "../utils/logger.js";
 
 export const topicConfigRouter = Router();
 
@@ -89,24 +91,53 @@ topicConfigRouter.delete("/:id", async (req: Request<{ id: string }>, res: Respo
   }
 });
 
-/** POST /api/topic-config/:id/activate — set as active (deactivates all others). */
+/** POST /api/topic-config/:id/activate — set as active, re-registers cron jobs. */
 topicConfigRouter.post("/:id/activate", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const activated = await activateTopicConfig(req.params.id);
     if (!activated) {
       return res.status(404).json({ success: false, error: "Topic config not found" });
     }
-    res.json({ success: true, data: activated, message: "Topic config activated" });
+
+    // Re-register all cron jobs with new topic prompts
+    let cronResults: Record<string, unknown>[] = [];
+    try {
+      await removeAllJobs();
+      cronResults = await registerIsolatedJobs();
+    } catch (cronErr) {
+      log.error(`[topicConfig] Cron re-registration failed after activate: ${(cronErr as Error).message}`);
+    }
+
+    res.json({
+      success: true,
+      data: activated,
+      message: "Topic config activated. Cron jobs re-registered with new prompts.",
+      cron_results: cronResults,
+    });
   } catch (e: unknown) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }
 });
 
-/** POST /api/topic-config/deactivate-all — revert to settings.ts default. */
+/** POST /api/topic-config/deactivate-all — revert to settings.ts default, re-registers cron jobs. */
 topicConfigRouter.post("/deactivate-all", async (_req: Request, res: Response) => {
   try {
     await deactivateAll();
-    res.json({ success: true, message: "All topic configs deactivated. Using settings.ts default." });
+
+    // Re-register all cron jobs using the settings.ts default persona
+    let cronResults: Record<string, unknown>[] = [];
+    try {
+      await removeAllJobs();
+      cronResults = await registerIsolatedJobs();
+    } catch (cronErr) {
+      log.error(`[topicConfig] Cron re-registration failed after deactivate-all: ${(cronErr as Error).message}`);
+    }
+
+    res.json({
+      success: true,
+      message: "All topic configs deactivated. Using settings.ts default. Cron jobs re-registered.",
+      cron_results: cronResults,
+    });
   } catch (e: unknown) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }
