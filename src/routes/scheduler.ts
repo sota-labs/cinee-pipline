@@ -15,9 +15,9 @@ schedulerRouter.post("/setup", async (_req: Request, res: Response) => {
 
 schedulerRouter.get("/jobs", async (_req: Request, res: Response) => {
   try {
-    const jobs = schedulerService.listJobs();
+    const { jobs, raw } = schedulerService.listJobs();
     const definitions = await schedulerService.getJobDefinitions();
-    res.json({ output: jobs, definitions });
+    res.json({ jobs, definitions, raw });
   } catch (error: unknown) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -41,9 +41,9 @@ schedulerRouter.delete("/jobs/:jobId", async (req: Request, res: Response) => {
   }
 });
 
-schedulerRouter.post("/jobs/:jobName/trigger", async (req: Request, res: Response) => {
+schedulerRouter.post("/jobs/:jobId/trigger", async (req: Request, res: Response) => {
   try {
-    const result = await schedulerService.triggerSingleJob(req.params.jobName as string);
+    const result = await schedulerService.triggerSingleJob(req.params.jobId as string);
     res.json({ message: "Job trigger result", result });
   } catch (error: unknown) {
     res.status(500).json({ error: (error as Error).message });
