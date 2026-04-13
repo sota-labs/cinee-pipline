@@ -133,16 +133,65 @@ export function listJobs(): string {
   }
 }
 
+/**
+ * Parse job IDs from `openclaw cron list --json` output.
+ * Expects an array of objects with an `id` field.
+ * Falls back to parsing plain text output if --json is not supported.
+ */
+function parseJobIds(): string[] {
+  // Try JSON format first
+  try {
+    const jsonOutput = runOpenClaw("cron list --json");
+    const parsed = JSON.parse(jsonOutput);
+    const jobs = Array.isArray(parsed) ? parsed : (parsed.jobs ?? parsed.data ?? []);
+    return jobs.map((j: Record<string, unknown>) => String(j.id)).filter(Boolean);
+  } catch {
+    // --json not supported or parse failed, fall back to plain text
+  }
+
+  // Fallback: parse plain text output for UUIDs or ID-like strings
+  try {
+    const textOutput = runOpenClaw("cron list");
+    // Match common UUID pattern (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+    const uuidRegex = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+    const matches = textOutput.match(uuidRegex);
+    if (matches && matches.length > 0) {
+      return [...new Set(matches)]; // deduplicate
+    }
+
+    // Try matching any ID-like pattern at the start of lines (e.g. numeric IDs)
+    const lineIdRegex = /^(\S+)\s+/gm;
+    const ids: string[] = [];
+    let m;
+    while ((m = lineIdRegex.exec(textOutput)) !== null) {
+      // Skip header-like lines
+      if (!/^(id|name|ID|NAME|---|#)/i.test(m[1])) {
+        ids.push(m[1]);
+      }
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
   const results: Record<string, unknown>[] = [];
-  const jobs = await buildCronJobs();
+  const jobIds = parseJobIds();
 
-  for (const job of jobs) {
+  if (jobIds.length === 0) {
+    log.info("[Scheduler] No jobs found to remove");
+    return [{ status: "no_jobs", message: "No cron jobs found" }];
+  }
+
+  for (const id of jobIds) {
     try {
-      const output = runOpenClaw(`cron rm ${job.name}`);
-      results.push({ name: job.name, status: "removed", output });
+      const output = runOpenClaw(`cron rm ${id}`);
+      log.info(`[Scheduler] Removed job: ${id}`);
+      results.push({ id, status: "removed", output });
     } catch (error: unknown) {
-      results.push({ name: job.name, status: "failed", error: (error as Error).message });
+      log.error(`[Scheduler] Failed to remove job: ${id}`);
+      results.push({ id, status: "failed", error: (error as Error).message });
     }
   }
 
