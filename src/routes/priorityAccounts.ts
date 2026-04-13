@@ -45,11 +45,13 @@ priorityAccountsRouter.get("/", async (req: Request, res: Response) => {
       skip: parseInt(skip as string),
     };
 
-    if (tier) {
-      if (!Object.values(ERelationshipTier).includes(tier as ERelationshipTier)) {
+    if (tier && tier !== "ALL") {
+      if (
+        !Object.values(ERelationshipTier).includes(tier as ERelationshipTier)
+      ) {
         return res.status(400).json({
           success: false,
-          error: `Invalid tier. Must be one of: ${Object.values(ERelationshipTier).join(", ")}`,
+          error: `Invalid tier. Must be one of: ALL, ${Object.values(ERelationshipTier).join(", ")}`,
         });
       }
       filter.tier = tier as ERelationshipTier;
@@ -85,7 +87,9 @@ priorityAccountsRouter.post("/", async (req: Request, res: Response) => {
   try {
     const { handle } = req.body;
     if (!handle) {
-      return res.status(400).json({ success: false, error: "`handle` is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "`handle` is required" });
     }
 
     const account = await svc.createAccount(req.body);
@@ -94,7 +98,9 @@ priorityAccountsRouter.post("/", async (req: Request, res: Response) => {
     const isDuplicate = e.code === 11000;
     res.status(isDuplicate ? 409 : 400).json({
       success: false,
-      error: isDuplicate ? "An account with this handle already exists" : e.message,
+      error: isDuplicate
+        ? "An account with this handle already exists"
+        : e.message,
     });
   }
 });
@@ -121,28 +127,33 @@ priorityAccountsRouter.post("/", async (req: Request, res: Response) => {
  *   • Recomputes CS / HCS / tier.
  *   • Returns 404 if the handle is not in the priority_accounts collection.
  */
-priorityAccountsRouter.post("/inc-stats", async (req: Request, res: Response) => {
-  try {
-    const { handle, likes, comments, shares } = req.body;
+priorityAccountsRouter.post(
+  "/inc-stats",
+  async (req: Request, res: Response) => {
+    try {
+      const { handle, likes, comments, shares } = req.body;
 
-    if (!handle) {
-      return res.status(400).json({ success: false, error: "`handle` is required" });
+      if (!handle) {
+        return res
+          .status(400)
+          .json({ success: false, error: "`handle` is required" });
+      }
+
+      const account = await svc.incStats({ handle, likes, comments, shares });
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          error: `No priority account found for handle "${handle}". Add them first via POST /api/priority-accounts.`,
+        });
+      }
+
+      res.json({ success: true, account });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
     }
-
-    const account = await svc.incStats({ handle, likes, comments, shares });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        error: `No priority account found for handle "${handle}". Add them first via POST /api/priority-accounts.`,
-      });
-    }
-
-    res.json({ success: true, account });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+  },
+);
 
 // ── Batch recalculate ─────────────────────────────────────────────────────────
 
@@ -152,14 +163,17 @@ priorityAccountsRouter.post("/inc-stats", async (req: Request, res: Response) =>
  * Recomputes CS, HCS and tier for every account from current DB values.
  * Does NOT read Redis — use the daily cron for rolling-window accuracy.
  */
-priorityAccountsRouter.post("/recalculate", async (_req: Request, res: Response) => {
-  try {
-    const result = await svc.recalculateAllScores();
-    res.json({ success: true, ...result });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+priorityAccountsRouter.post(
+  "/recalculate",
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await svc.recalculateAllScores();
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  },
+);
 
 // ── Lookup by handle ──────────────────────────────────────────────────────────
 
@@ -168,17 +182,22 @@ priorityAccountsRouter.post("/recalculate", async (_req: Request, res: Response)
  *
  * The leading @ is optional (e.g. both "elonmusk" and "@elonmusk" work).
  */
-priorityAccountsRouter.get("/handle/:handle", async (req: Request, res: Response) => {
-  try {
-    const account = await svc.getAccountByHandle(req.params.handle as string);
-    if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+priorityAccountsRouter.get(
+  "/handle/:handle",
+  async (req: Request, res: Response) => {
+    try {
+      const account = await svc.getAccountByHandle(req.params.handle as string);
+      if (!account) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Account not found" });
+      }
+      res.json({ success: true, account });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
     }
-    res.json({ success: true, account });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+  },
+);
 
 // ── Get by ID ─────────────────────────────────────────────────────────────────
 
@@ -186,7 +205,9 @@ priorityAccountsRouter.get("/:id", async (req: Request, res: Response) => {
   try {
     const account = await svc.getAccountById(req.params.id as string);
     if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Account not found" });
     }
     res.json({ success: true, account });
   } catch (e: any) {
@@ -206,7 +227,9 @@ priorityAccountsRouter.patch("/:id", async (req: Request, res: Response) => {
   try {
     const account = await svc.updateAccount(req.params.id as string, req.body);
     if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Account not found" });
     }
     res.json({ success: true, account });
   } catch (e: any) {
@@ -220,7 +243,9 @@ priorityAccountsRouter.delete("/:id", async (req: Request, res: Response) => {
   try {
     const deleted = await svc.deleteAccount(req.params.id as string);
     if (!deleted) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Account not found" });
     }
     res.json({ success: true });
   } catch (e: any) {
@@ -239,26 +264,34 @@ priorityAccountsRouter.delete("/:id", async (req: Request, res: Response) => {
  * Increments the correct 30d counter, sets last_seen_at = now,
  * and recomputes CS / HCS / tier.
  */
-priorityAccountsRouter.post("/:id/interact", async (req: Request, res: Response) => {
-  try {
-    const { type } = req.body;
+priorityAccountsRouter.post(
+  "/:id/interact",
+  async (req: Request, res: Response) => {
+    try {
+      const { type } = req.body;
 
-    if (!["like", "comment", "share"].includes(type)) {
-      return res.status(400).json({
-        success: false,
-        error: '`type` must be "like", "comment", or "share"',
-      });
-    }
+      if (!["like", "comment", "share"].includes(type)) {
+        return res.status(400).json({
+          success: false,
+          error: '`type` must be "like", "comment", or "share"',
+        });
+      }
 
-    const account = await svc.recordInteraction(req.params.id as string, type);
-    if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+      const account = await svc.recordInteraction(
+        req.params.id as string,
+        type,
+      );
+      if (!account) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Account not found" });
+      }
+      res.json({ success: true, account });
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
     }
-    res.json({ success: true, account });
-  } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message });
-  }
-});
+  },
+);
 
 // ── Reset 30-day counters ─────────────────────────────────────────────────────
 
@@ -268,14 +301,19 @@ priorityAccountsRouter.post("/:id/interact", async (req: Request, res: Response)
  * Zeros out likes_30d, comments_30d, shares_30d and recomputes scores.
  * Intended to be called by a monthly cron job for each account.
  */
-priorityAccountsRouter.post("/:id/reset-counters", async (req: Request, res: Response) => {
-  try {
-    const account = await svc.reset30dCounters(req.params.id as string);
-    if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found" });
+priorityAccountsRouter.post(
+  "/:id/reset-counters",
+  async (req: Request, res: Response) => {
+    try {
+      const account = await svc.reset30dCounters(req.params.id as string);
+      if (!account) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Account not found" });
+      }
+      res.json({ success: true, account });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
     }
-    res.json({ success: true, account });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+  },
+);
