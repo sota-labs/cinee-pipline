@@ -32,6 +32,24 @@ schedulerRouter.delete("/jobs", async (_req: Request, res: Response) => {
   }
 });
 
+schedulerRouter.delete("/jobs/:jobId", async (req: Request, res: Response) => {
+  try {
+    const result = await schedulerService.removeSingleJob(req.params.jobId as string);
+    res.json({ message: "Job removed", result });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+schedulerRouter.post("/jobs/:jobName/trigger", async (req: Request, res: Response) => {
+  try {
+    const result = await schedulerService.triggerSingleJob(req.params.jobName as string);
+    res.json({ message: "Job trigger result", result });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 schedulerRouter.get("/check", (_req: Request, res: Response) => {
   try {
     const healthy = schedulerService.checkGateway();
