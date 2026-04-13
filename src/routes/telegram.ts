@@ -127,16 +127,16 @@ async function handleCallbackQuery(query: any) {
   if (draft.status === EPostStatus.POSTED) {
     await telegramService.answerCallback(
       callbackId,
-      "📌 Bài này đã được đăng rồi",
+      "📌 This post has already been published",
     );
     return;
   }
 
   switch (action) {
     case EAgentAction.POST_NOW: {
-      await telegramService.answerCallback(callbackId, "🚀 Đang đăng bài...");
+      await telegramService.answerCallback(callbackId, "🚀 Posting...");
       await telegramService.sendMessage(
-        `🚀 Đang đăng bài lên X, chờ chút...`,
+        `🚀 Posting to X, please wait...`,
         chatId,
       );
 
@@ -210,7 +210,7 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
 
           const urlInfo = `\n\n🔗 ${draft.post_url}`;
           await telegramService.sendMessage(
-            `✅ Đã đăng bài thành công!${urlInfo}\n\nNội dung:\n${draft.raw_content}`,
+            `✅ Posted successfully!${urlInfo}\n\nContent:\n${draft.raw_content}`,
             chatId,
           );
         } else if (postFailMatch) {
@@ -219,20 +219,20 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
           draft.status = EPostStatus.FAILED;
           await draft.save();
           await telegramService.sendMessage(
-            `❌ Đăng bài thất bại (xác minh không qua):\n${reason}\n\nNội dung:\n${draft.raw_content}`,
+            `❌ Posting failed (verification failed):\n${reason}\n\nContent:\n${draft.raw_content}`,
             chatId,
           );
         } else {
           log.error(`OpenClaw agent returned unexpected output: ${result}`);
           await telegramService.sendMessage(
-            `⚠️ Không xác minh được kết quả đăng bài. Kiểm tra thủ công trên X.\n\nAgent output:\n${result.slice(0, 300)}`,
+            `⚠️ Could not verify posting results. Please check manually on X.\n\nAgent output:\n${result.slice(0, 300)}`,
             chatId,
           );
         }
       } catch (err: any) {
         log.error(`Post to X failed: ${err.message}`);
         await telegramService.sendMessage(
-          `❌ Đăng bài thất bại: ${err.message}`,
+          `❌ Posting failed: ${err.message}`,
           chatId,
         );
         draft.status = EPostStatus.FAILED;
@@ -254,15 +254,15 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
         }
       }
 
-      await telegramService.sendMessage(`❌ Draft đã bị reject.`, chatId);
+      await telegramService.sendMessage(`❌ Draft has been rejected.`, chatId);
       break;
     }
 
     case EAgentAction.EDIT: {
       pendingActions.set(chatId!, { action: EPendingAction.EDIT, draftId });
-      await telegramService.answerCallback(callbackId, "✏️ Gửi nội dung mới");
+      await telegramService.answerCallback(callbackId, "✏️ Send new content");
       await telegramService.sendMessage(
-        `✏️ Gửi nội dung mới cho draft này.`,
+        `✏️ Send new content for this draft.`,
         chatId,
       );
       break;
@@ -273,9 +273,9 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
         action: EPendingAction.AI_PROMPT,
         draftId,
       });
-      await telegramService.answerCallback(callbackId, "🤖 Nhập hướng dẫn");
+      await telegramService.answerCallback(callbackId, "🤖 Enter instructions");
       await telegramService.sendMessage(
-        `🤖 Nhập hướng dẫn cho AI rewrite.\n\nVí dụ: make it shorter and more punchy`,
+        `🤖 Enter instructions for AI rewrite.\n\nExample: make it shorter and more punchy`,
         chatId,
       );
       break;
@@ -283,9 +283,9 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
 
     case EAgentAction.SCHEDULE: {
       pendingActions.set(chatId!, { action: EPendingAction.SCHEDULE, draftId });
-      await telegramService.answerCallback(callbackId, "⏰ Nhập giờ");
+      await telegramService.answerCallback(callbackId, "⏰ Enter time");
       await telegramService.sendMessage(
-        `⏰ Nhập giờ đăng bài (format: HH:MM hoặc YYYY-MM-DD HH:MM)\n\nVí dụ: 14:30 hoặc 2026-03-24 10:00`,
+        `⏰ Enter scheduled time (format: HH:MM or YYYY-MM-DD HH:MM)\n\nExample: 14:30 or 2026-03-24 10:00`,
         chatId,
       );
       break;
@@ -296,7 +296,7 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
       await draft.save();
       await telegramService.answerCallback(
         callbackId,
-        "🔄 Đang tìm nguồn khác...",
+        "🔄 Finding another source...",
       );
 
       if (chatId && callbackMessageId) {
@@ -308,7 +308,7 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
       }
 
       await telegramService.sendMessage(
-        `🔄 Draft đã bị reject. Đang tạo draft mới từ nguồn tiếp theo...`,
+        `🔄 Draft has been rejected. Creating a new draft from the next source...`,
         chatId,
       );
 
@@ -328,7 +328,7 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
       child.on("error", (err) => {
         log.error(`OpenClaw spawn error (NEXT_SOURCE): ${err.message}`);
         telegramService
-          .sendMessage(`❌ Lỗi tạo draft mới: ${err.message}`, chatId!)
+          .sendMessage(`❌ Error creating new draft: ${err.message}`, chatId!)
           .catch(console.error);
       });
       child.unref(); // detach from parent process
@@ -352,7 +352,7 @@ async function handleTextMessage(message: any) {
 
   if (!pending) {
     await telegramService.sendMessage(
-      `💡 Không có hành động nào đang chờ.\n\nDùng các nút bên dưới bài draft để tương tác.`,
+      `💡 No pending action.\n\nUse the buttons below a draft to interact.`,
       chatId,
     );
     return;
@@ -412,7 +412,7 @@ async function handleAiPrompt(
 
   if (!aiInstruction) {
     await telegramService.sendMessage(
-      "❌ Hướng dẫn không được để trống",
+      "❌ Instructions cannot be empty",
       chatId,
     );
     return;
@@ -426,7 +426,7 @@ async function handleAiPrompt(
   }
 
   await telegramService.sendMessage(
-    `🤖 Đang sửa theo: ${aiInstruction}`,
+    `🤖 Editing according to: ${aiInstruction}`,
     chatId,
   );
 
@@ -515,7 +515,7 @@ async function handleSchedule(
     );
   } else {
     await telegramService.sendMessage(
-      "❌ Format không đúng. Dùng HH:MM hoặc YYYY-MM-DD HH:MM",
+      "❌ Invalid format. Use HH:MM or YYYY-MM-DD HH:MM",
       chatId,
     );
     return;
@@ -525,11 +525,11 @@ async function handleSchedule(
   draft.scheduled_at = scheduledDate;
   await draft.save();
 
-  const timeStr = scheduledDate.toLocaleString("vi-VN", {
+  const timeStr = scheduledDate.toLocaleString("en-US", {
     timeZone: "Asia/Ho_Chi_Minh",
   });
   await telegramService.sendMessage(
-    `⏰ Đã schedule lúc ${timeStr}\n\nNội dung:\n${draft.raw_content}`,
+    `⏰ Scheduled for ${timeStr}\n\nContent:\n${draft.raw_content}`,
     chatId,
   );
 

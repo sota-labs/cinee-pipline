@@ -147,7 +147,7 @@ contentReviewRouter.patch(
       if (telegramService.isConfigured()) {
         try {
           await telegramService.sendMessage(
-            `✅ Draft approved! Sẽ được đăng sớm.\n\nID: ${draft._id}`,
+            `✅ Draft approved! Will be posted soon.\n\nID: ${draft._id}`,
             draft.telegram_chat_id,
           );
         } catch {
@@ -179,7 +179,7 @@ contentReviewRouter.patch(
       if (telegramService.isConfigured()) {
         try {
           await telegramService.sendMessage(
-            `❌ Draft đã bị reject.\n\nID: ${draft._id}`,
+            `❌ Draft has been rejected.\n\nID: ${draft._id}`,
             draft.telegram_chat_id,
           );
         } catch {
@@ -215,14 +215,14 @@ contentReviewRouter.patch(
       draft.scheduled_at = new Date(req.body.scheduled_at);
       await draft.save();
 
-      const timeStr = draft.scheduled_at.toLocaleString("vi-VN", {
+      const timeStr = draft.scheduled_at.toLocaleString("en-US", {
         timeZone: "Asia/Ho_Chi_Minh",
       });
 
       if (telegramService.isConfigured()) {
         try {
           await telegramService.sendMessage(
-            `⏰ Draft đã được schedule lúc ${timeStr}\n\nID: ${draft._id}`,
+            `⏰ Draft has been scheduled for ${timeStr}\n\nID: ${draft._id}`,
             draft.telegram_chat_id,
           );
         } catch {
