@@ -279,7 +279,7 @@ PHASE 3: CRAFTING THE "INSIDER" REPLY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Compose a reply that acts as a **Bridge** between the post's content and your CEO perspective.
 
-**Engagement Rules (To avoid "Lạc quẻ"):**
+**Engagement Rules (To avoid being "Out of place"):**
 **Anchor your reply:** You MUST reference a specific detail from the post/media. (e.g., "The way that camera tracks through the window is...", "That frame rate choice actually works because...").
 **Match the Energy:** If the thread is hyped, be the "visionary leader" adding fuel. If the thread is technical/skeptical, be the "expert analyst".
 **No Self-Centeredness:** Don't just announce your opinion. Acknowledge the original creator's work or the point they made first.
@@ -396,20 +396,20 @@ const CRON_JOBS: CronJob[] = [
     schedule: "0 */4 * * *",
     message: AUTO_INTERACT_PROMPT,
     description:
-      "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
+      "Automatically post CEO-style comments on hot posts (every 4 hours)",
   },
   {
     name: "auto_like_posts",
     schedule: "0 10,22 * * *",
     message: AUTO_LIKE_PROMPT,
     description:
-      "Tự động thả like (ngày 2 lần, mỗi lần ~5 bài) cho priority accounts và hot posts",
+      "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
   },
   {
     name: "auto_bookmark_posts",
     schedule: "0 14 */2 * *",
     message: AUTO_BOOKMARK_PROMPT,
-    description: "Tự động bookmark 1 post hay (mỗi 2 ngày)",
+    description: "Automatically bookmark a high-quality post (every 2 days)",
   },
 ];
 
