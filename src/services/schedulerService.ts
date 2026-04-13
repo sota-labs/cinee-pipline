@@ -260,7 +260,7 @@ export async function removeSingleJob(jobId: string): Promise<Record<string, unk
 
 export async function triggerSingleJob(jobId: string): Promise<Record<string, unknown>> {
   try {
-    const output = runOpenClaw(`cron trigger ${jobId}`);
+    const output = runOpenClaw(`cron run ${jobId}`);
     return { id: jobId, status: "triggered", output };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
