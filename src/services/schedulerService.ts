@@ -31,56 +31,53 @@ async function buildCronJobs(): Promise<CronJob[]> {
   const replyPrompt = buildReplyPrompt(role, API);
   const interactPrompt = buildInteractPrompt(role, API);
 
+  const topicSuffix = role.name ? role.name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase() : "default";
+
   return [
     {
-      name: "scrape_x_notifications",
+      name: `scrape_x_notifications_${topicSuffix}`,
       schedule: "20 * * * *",
       message: SCRAPE_PROMPT,
       description: "Scrape X notifications and store replies (every hour at :20)",
     },
     {
-      name: "reply_x_notifications",
+      name: `reply_x_notifications_${topicSuffix}`,
       schedule: "40 * * * *",
       message: replyPrompt,
       description: "Auto-reply on X and update status (every hour at :40)",
     },
     {
-      name: "research_and_collect",
+      name: `research_and_collect_${topicSuffix}`,
       schedule: "0 */6 * * *",
       message: researchPrompt,
-      description:
-        "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
+      description: "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
     },
     {
-      name: "research_and_draft_morning",
+      name: `research_and_draft_morning_${topicSuffix}`,
       schedule: "0 9 * * *",
       message: draftPrompt,
-      description:
-        "Read top research from DB and create draft for review (9 AM daily)",
+      description: "Read top research from DB and create draft for review (9 AM daily)",
     },
     {
-      name: "research_and_draft_evening",
+      name: `research_and_draft_evening_${topicSuffix}`,
       schedule: "0 21 * * *",
       message: draftPrompt,
-      description:
-        "Read top research from DB and create draft for review (9 PM daily)",
+      description: "Read top research from DB and create draft for review (9 PM daily)",
     },
     {
-      name: "auto_interact_hot_posts",
+      name: `auto_interact_hot_posts_${topicSuffix}`,
       schedule: "0 */4 * * *",
       message: interactPrompt,
-      description:
-        "Automatically post CEO-style comments on hot posts (every 4 hours)",
+      description: "Automatically post CEO-style comments on hot posts (every 4 hours)",
     },
     {
-      name: "auto_like_posts",
+      name: `auto_like_posts_${topicSuffix}`,
       schedule: "0 10,22 * * *",
       message: AUTO_LIKE_PROMPT,
-      description:
-        "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
+      description: "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
     },
     {
-      name: "auto_bookmark_posts",
+      name: `auto_bookmark_posts_${topicSuffix}`,
       schedule: "0 14 */2 * *",
       message: AUTO_BOOKMARK_PROMPT,
       description: "Automatically bookmark a high-quality post (every 2 days)",
@@ -173,7 +170,16 @@ export async function registerSingleJob(jobName: string): Promise<Record<string,
   }
 }
 
-export async function removeSingleJob(jobName: string): Promise<Record<string, unknown>> {
+export async function removeSingleJob(jobId: string): Promise<Record<string, unknown>> {
+  try {
+    const output = runOpenClaw(`cron rm ${jobId}`);
+    return { id: jobId, status: "removed", output };
+  } catch (error: unknown) {
+    return { id: jobId, status: "failed", error: (error as Error).message };
+  }
+}
+
+export async function triggerSingleJob(jobName: string): Promise<Record<string, unknown>> {
   const jobs = await buildCronJobs();
   const job = jobs.find((j) => j.name === jobName);
   if (!job) {
@@ -184,8 +190,16 @@ export async function removeSingleJob(jobName: string): Promise<Record<string, u
     };
   }
   try {
-    const output = runOpenClaw(`cron rm ${job.name}`);
-    return { name: job.name, status: "removed", output };
+    // Send background task directly to OpenClaw so the API doesn't block forever
+    const escapedMessage = job.message.replace(/'/g, "'\\''");
+    import("child_process").then((cp) => {
+      try {
+        cp.exec(`openclaw --message '${escapedMessage}'`);
+      } catch (err) {
+        log.error(`Background job execution failed: ${err}`);
+      }
+    });
+    return { name: job.name, status: "triggered", message: "Job launched in background" };
   } catch (error: unknown) {
     return { name: job.name, status: "failed", error: (error as Error).message };
   }
