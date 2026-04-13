@@ -70,20 +70,20 @@ async function buildCronJobs(): Promise<CronJob[]> {
       schedule: "0 */4 * * *",
       message: interactPrompt,
       description:
-        "Tự động comment dạo phong cách CEO vào các bài viết hot (mỗi 4 tiếng)",
+        "Automatically post CEO-style comments on hot posts (every 4 hours)",
     },
     {
       name: "auto_like_posts",
       schedule: "0 10,22 * * *",
       message: AUTO_LIKE_PROMPT,
       description:
-        "Tự động thả like (ngày 2 lần, mỗi lần ~5 bài) cho priority accounts và hot posts",
+        "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
     },
     {
       name: "auto_bookmark_posts",
       schedule: "0 14 */2 * *",
       message: AUTO_BOOKMARK_PROMPT,
-      description: "Tự động bookmark 1 post hay (mỗi 2 ngày)",
+      description: "Automatically bookmark a high-quality post (every 2 days)",
     },
   ];
 }
