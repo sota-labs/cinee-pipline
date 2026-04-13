@@ -4,31 +4,31 @@ import * as schedulerService from "../services/schedulerService.js";
 
 export const schedulerRouter = Router();
 
-schedulerRouter.post("/setup", (_req: Request, res: Response) => {
+schedulerRouter.post("/setup", async (_req: Request, res: Response) => {
   try {
-    const results = schedulerService.registerIsolatedJobs();
+    const results = await schedulerService.registerIsolatedJobs();
     res.json({ message: "Cron jobs registered", results });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-schedulerRouter.get("/jobs", (_req: Request, res: Response) => {
+schedulerRouter.get("/jobs", async (_req: Request, res: Response) => {
   try {
     const jobs = schedulerService.listJobs();
-    const definitions = schedulerService.getJobDefinitions();
+    const definitions = await schedulerService.getJobDefinitions();
     res.json({ output: jobs, definitions });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-schedulerRouter.delete("/jobs", (_req: Request, res: Response) => {
+schedulerRouter.delete("/jobs", async (_req: Request, res: Response) => {
   try {
-    const results = schedulerService.removeAllJobs();
+    const results = await schedulerService.removeAllJobs();
     res.json({ message: "Jobs removed", results });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
@@ -36,7 +36,7 @@ schedulerRouter.get("/check", (_req: Request, res: Response) => {
   try {
     const healthy = schedulerService.checkGateway();
     res.json({ healthy });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    res.status(500).json({ error: (error as Error).message });
   }
 });

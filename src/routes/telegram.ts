@@ -10,7 +10,9 @@ import * as telegramService from "../services/telegramService.js";
 import { log } from "../utils/logger.js";
 import { execSync, spawn } from "child_process";
 import { settings } from "../config/settings.js";
-import { DRAFT_PROMPT } from "../services/schedulerService.js";
+import { getDraftPrompt } from "../services/schedulerService.js";
+import { buildRewritePrompt } from "../prompts/index.js";
+import { getActiveRoleConfig } from "../services/topicConfigService.js";
 import { runOpenClawAgentText } from "../services/openclawAgentService.js";
 
 export const telegramRouter = Router();
@@ -316,7 +318,8 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
       // execSync blocks the entire Node.js event loop — the OpenClaw agent
       // then calls back POST /api/content-review/drafts on this same server,
       // which cannot respond because the event loop is frozen → silent deadlock.
-      const escaped = DRAFT_PROMPT.replace(/'/g, "'\\''");
+      const draftPrompt = await getDraftPrompt();
+      const escaped = draftPrompt.replace(/'/g, "'\\''");
       const child = spawn(
         "bash",
         [
@@ -431,26 +434,8 @@ async function handleAiPrompt(
   );
 
   try {
-    const aiPrompt = `You are rewriting a social media post for X (Twitter) as a tech CEO / AI filmmaker.
-
-Current content:
-"""
-${draft.raw_content}
-"""
-
-User instruction: ${aiInstruction}
-
-Writing rules:
-- UNDER 280 characters.
-- NO generic openers: Do NOT use "AI is changing...", "The future is here...", or "Check out this...".
-- Start with a Punch: Lead with a direct technical observation or a "hot take" on the production workflow.
-- Language Style: Use founder slang (e.g., "RIP my VFX budget", "temporal consistency is finally usable", "vibe", "pre-viz", "POV", "latent space").
-- Blacklisted words: Absolutely NO: revolutionizing, game-changer, delve, unleash, testament, incredible, groundbreaking.
-- Include the source reference if there was one in the original.
-- End with an open question or forward-looking statement to invite engagement.
-- Do NOT mention Cinee or promote any product.
-- Tone: personal, direct, visionary — like a real founder's tweet, not a press release.
-- Output ONLY the rewritten post, nothing else.`;
+    const role = await getActiveRoleConfig();
+    const aiPrompt = buildRewritePrompt(role, draft.raw_content, aiInstruction);
 
     const rewritten = runOpenClawAgentText(aiPrompt);
 

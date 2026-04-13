@@ -4,12 +4,12 @@
  */
 import { registerIsolatedJobs, listJobs } from "../services/schedulerService.js";
 
-function main() {
+async function main() {
   console.log("╔══════════════════════════════════════════════════════╗");
   console.log("║  Adding ALL OpenClaw Cron Jobs                      ║");
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
-  const results = registerIsolatedJobs();
+  const results = await registerIsolatedJobs();
 
   console.log("── Results ──");
   for (const r of results) {

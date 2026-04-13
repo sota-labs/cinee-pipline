@@ -12,14 +12,15 @@
  */
 import { registerSingleJob, listJobs, getJobDefinitions } from "../services/schedulerService.js";
 
-function main() {
+async function main() {
   const jobName = process.argv[2];
 
   if (!jobName) {
     console.error("❌ Error: Please provide a job name.\n");
     console.log("Usage:  npx tsx src/scripts/addJob.ts <job_name>\n");
     console.log("Available jobs:");
-    for (const job of getJobDefinitions()) {
+    const defs = await getJobDefinitions();
+    for (const job of defs) {
       console.log(`  - ${job.name}  (${job.schedule})  ${job.description}`);
     }
     process.exit(1);
@@ -29,7 +30,7 @@ function main() {
   console.log(`║  Adding Job: ${jobName.padEnd(39)}║`);
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
-  const result = registerSingleJob(jobName);
+  const result = await registerSingleJob(jobName);
   const icon = result.status === "registered" ? "✅" : "❌";
   console.log(`${icon}  ${result.name}: ${result.status}`);
   if (result.output) console.log(`   output: ${result.output}`);
