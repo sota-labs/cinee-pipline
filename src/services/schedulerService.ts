@@ -127,86 +127,43 @@ export async function registerIsolatedJobs(): Promise<Record<string, unknown>[]>
 
 export interface ListedJob {
   id: string;
-  name?: string;
-  schedule?: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  schedule: { kind: string; expr: string; tz: string };
   [key: string]: unknown;
 }
 
 /**
  * List all registered cron jobs with their IDs.
- * Tries --json first for structured data, falls back to text parsing.
+ * `openclaw cron list` returns JSON: { items: [...], total, hasMore, ... }
  */
-export function listJobs(): { jobs: ListedJob[]; raw: string } {
-  // Try JSON format first
+export function listJobs(): { jobs: ListedJob[]; total: number; raw: string } {
   try {
-    const jsonOutput = runOpenClaw("cron list --json");
-    const parsed = JSON.parse(jsonOutput);
-    const jobs: ListedJob[] = (Array.isArray(parsed) ? parsed : (parsed.jobs ?? parsed.data ?? []))
-      .map((j: Record<string, unknown>) => ({ ...j, id: String(j.id) }));
-    return { jobs, raw: jsonOutput };
+    const output = runOpenClaw("cron list");
+    const parsed = JSON.parse(output);
+    const jobs: ListedJob[] = (parsed.items ?? []).map((j: Record<string, unknown>) => ({
+      id: String(j.id),
+      name: j.name as string,
+      description: j.description as string,
+      enabled: j.enabled as boolean,
+      schedule: j.schedule as ListedJob["schedule"],
+    }));
+    return { jobs, total: parsed.total ?? jobs.length, raw: output };
   } catch {
-    // --json not supported, fall back to plain text
-  }
-
-  // Fallback: parse plain text
-  try {
-    const textOutput = runOpenClaw("cron list");
-    const uuidRegex = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
-    const jobs: ListedJob[] = [];
-    const seen = new Set<string>();
-
-    for (const line of textOutput.split("\n")) {
-      const match = uuidRegex.exec(line);
-      if (match && !seen.has(match[1])) {
-        seen.add(match[1]);
-        jobs.push({ id: match[1], name: line.trim() });
-      }
-      uuidRegex.lastIndex = 0;
-    }
-
-    return { jobs, raw: textOutput };
-  } catch {
-    return { jobs: [], raw: "Failed to list jobs" };
+    return { jobs: [], total: 0, raw: "Failed to list jobs" };
   }
 }
 
 /**
- * Parse job IDs from `openclaw cron list --json` output.
- * Expects an array of objects with an `id` field.
- * Falls back to parsing plain text output if --json is not supported.
+ * Parse all job IDs from `openclaw cron list`.
+ * Output format: { items: [{ id, name, ... }, ...] }
  */
 function parseJobIds(): string[] {
-  // Try JSON format first
   try {
-    const jsonOutput = runOpenClaw("cron list --json");
-    const parsed = JSON.parse(jsonOutput);
-    const jobs = Array.isArray(parsed) ? parsed : (parsed.jobs ?? parsed.data ?? []);
-    return jobs.map((j: Record<string, unknown>) => String(j.id)).filter(Boolean);
-  } catch {
-    // --json not supported or parse failed, fall back to plain text
-  }
-
-  // Fallback: parse plain text output for UUIDs or ID-like strings
-  try {
-    const textOutput = runOpenClaw("cron list");
-    // Match common UUID pattern (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-    const uuidRegex = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-    const matches = textOutput.match(uuidRegex);
-    if (matches && matches.length > 0) {
-      return [...new Set(matches)]; // deduplicate
-    }
-
-    // Try matching any ID-like pattern at the start of lines (e.g. numeric IDs)
-    const lineIdRegex = /^(\S+)\s+/gm;
-    const ids: string[] = [];
-    let m;
-    while ((m = lineIdRegex.exec(textOutput)) !== null) {
-      // Skip header-like lines
-      if (!/^(id|name|ID|NAME|---|#)/i.test(m[1])) {
-        ids.push(m[1]);
-      }
-    }
-    return ids;
+    const output = runOpenClaw("cron list");
+    const parsed = JSON.parse(output);
+    return (parsed.items ?? []).map((j: Record<string, unknown>) => String(j.id)).filter(Boolean);
   } catch {
     return [];
   }
