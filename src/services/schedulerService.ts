@@ -125,11 +125,48 @@ export async function registerIsolatedJobs(): Promise<Record<string, unknown>[]>
   return results;
 }
 
-export function listJobs(): string {
+export interface ListedJob {
+  id: string;
+  name?: string;
+  schedule?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * List all registered cron jobs with their IDs.
+ * Tries --json first for structured data, falls back to text parsing.
+ */
+export function listJobs(): { jobs: ListedJob[]; raw: string } {
+  // Try JSON format first
   try {
-    return runOpenClaw("cron list");
+    const jsonOutput = runOpenClaw("cron list --json");
+    const parsed = JSON.parse(jsonOutput);
+    const jobs: ListedJob[] = (Array.isArray(parsed) ? parsed : (parsed.jobs ?? parsed.data ?? []))
+      .map((j: Record<string, unknown>) => ({ ...j, id: String(j.id) }));
+    return { jobs, raw: jsonOutput };
   } catch {
-    return "Failed to list jobs";
+    // --json not supported, fall back to plain text
+  }
+
+  // Fallback: parse plain text
+  try {
+    const textOutput = runOpenClaw("cron list");
+    const uuidRegex = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
+    const jobs: ListedJob[] = [];
+    const seen = new Set<string>();
+
+    for (const line of textOutput.split("\n")) {
+      const match = uuidRegex.exec(line);
+      if (match && !seen.has(match[1])) {
+        seen.add(match[1]);
+        jobs.push({ id: match[1], name: line.trim() });
+      }
+      uuidRegex.lastIndex = 0;
+    }
+
+    return { jobs, raw: textOutput };
+  } catch {
+    return { jobs: [], raw: "Failed to list jobs" };
   }
 }
 
@@ -228,29 +265,12 @@ export async function removeSingleJob(jobId: string): Promise<Record<string, unk
   }
 }
 
-export async function triggerSingleJob(jobName: string): Promise<Record<string, unknown>> {
-  const jobs = await buildCronJobs();
-  const job = jobs.find((j) => j.name === jobName);
-  if (!job) {
-    return {
-      name: jobName,
-      status: "not_found",
-      error: `Job "${jobName}" not found in definitions`,
-    };
-  }
+export async function triggerSingleJob(jobId: string): Promise<Record<string, unknown>> {
   try {
-    // Send background task directly to OpenClaw so the API doesn't block forever
-    const escapedMessage = job.message.replace(/'/g, "'\\''");
-    import("child_process").then((cp) => {
-      try {
-        cp.exec(`openclaw --message '${escapedMessage}'`);
-      } catch (err) {
-        log.error(`Background job execution failed: ${err}`);
-      }
-    });
-    return { name: job.name, status: "triggered", message: "Job launched in background" };
+    const output = runOpenClaw(`cron trigger ${jobId}`);
+    return { id: jobId, status: "triggered", output };
   } catch (error: unknown) {
-    return { name: job.name, status: "failed", error: (error as Error).message };
+    return { id: jobId, status: "failed", error: (error as Error).message };
   }
 }
 
