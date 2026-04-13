@@ -16,8 +16,7 @@ schedulerRouter.post("/setup", async (_req: Request, res: Response) => {
 schedulerRouter.get("/jobs", async (_req: Request, res: Response) => {
   try {
     const { jobs, total } = schedulerService.listJobs();
-    const definitions = await schedulerService.getJobDefinitions();
-    res.json({ jobs, total, definitions });
+    res.json({ jobs, total });
   } catch (error: unknown) {
     res.status(500).json({ error: (error as Error).message });
   }

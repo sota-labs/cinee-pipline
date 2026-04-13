@@ -131,40 +131,76 @@ export interface ListedJob {
   description: string;
   enabled: boolean;
   schedule: { kind: string; expr: string; tz: string };
-  [key: string]: unknown;
 }
 
 /**
- * List all registered cron jobs with their IDs.
- * `openclaw cron list` returns JSON: { items: [...], total, hasMore, ... }
+ * Parse the plain-text table output from `openclaw cron list`.
+ * Each data row starts with a UUID followed by space-padded columns:
+ * ID   Name   Schedule   Next   Last   Status   Target   Agent ID   Model
  */
-export function listJobs(): { jobs: ListedJob[]; total: number; raw: string } {
+function parseOpenClawList(output: string): ListedJob[] {
+  const jobs: ListedJob[] = [];
+  const uuidRegex = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s+(.+)$/;
+
+  for (const line of output.split("\n")) {
+    const match = uuidRegex.exec(line.trim());
+    if (!match) continue;
+
+    const id = match[1];
+    // Split remaining columns by 2+ consecutive spaces
+    const cols = match[2].split(/\s{2,}/).filter(Boolean);
+
+    // cols: [name, schedule, next, last, status, target, agentId, model]
+    const rawName = (cols[0] ?? "").trim();
+    const rawSchedule = (cols[1] ?? "").trim();
+    const status = (cols[4] ?? "idle").trim();
+
+    // name may be truncated with "..." — keep as-is
+    const name = rawName;
+
+    // schedule: "cron 40 * * * * @ Asia/Ho_Chi_Minh" (may be truncated)
+    const schedMatch = rawSchedule.match(/^cron\s+(.+?)\s+@\s+(.+)/);
+    const expr = schedMatch ? schedMatch[1].trim() : rawSchedule;
+    const tz = schedMatch ? schedMatch[2].replace(/\.\.\..*$/, "").trim() : "UTC";
+
+    jobs.push({
+      id,
+      name,
+      description: "",
+      enabled: ["ok", "idle", "running"].includes(status),
+      schedule: { kind: "cron", expr, tz },
+    });
+  }
+
+  return jobs;
+}
+
+export function listJobs(): { jobs: ListedJob[]; total: number } {
   try {
     const output = runOpenClaw("cron list");
-    const parsed = JSON.parse(output);
-    const jobs: ListedJob[] = (parsed.items ?? []).map((j: Record<string, unknown>) => ({
-      id: String(j.id),
-      name: j.name as string,
-      description: j.description as string,
-      enabled: j.enabled as boolean,
-      schedule: j.schedule as ListedJob["schedule"],
-    }));
-    return { jobs, total: parsed.total ?? jobs.length, raw: output };
-  } catch {
-    return { jobs: [], total: 0, raw: "Failed to list jobs" };
+    const jobs = parseOpenClawList(output);
+    return { jobs, total: jobs.length };
+  } catch (err: unknown) {
+    log.error(`[Scheduler] listJobs failed: ${(err as Error).message}`);
+    return { jobs: [], total: 0 };
   }
 }
 
 /**
- * Parse all job IDs from `openclaw cron list`.
- * Output format: { items: [{ id, name, ... }, ...] }
+ * Extract all job IDs from `openclaw cron list` plain text output.
  */
 function parseJobIds(): string[] {
   try {
     const output = runOpenClaw("cron list");
-    const parsed = JSON.parse(output);
-    return (parsed.items ?? []).map((j: Record<string, unknown>) => String(j.id)).filter(Boolean);
-  } catch {
+    const uuidRegex = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s/gm;
+    const ids: string[] = [];
+    let m;
+    while ((m = uuidRegex.exec(output)) !== null) {
+      ids.push(m[1]);
+    }
+    return ids;
+  } catch (err: unknown) {
+    log.error(`[Scheduler] parseJobIds failed: ${(err as Error).message}`);
     return [];
   }
 }
