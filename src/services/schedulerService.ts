@@ -130,45 +130,59 @@ export interface ListedJob {
   name: string;
   description: string;
   enabled: boolean;
-  schedule: { kind: string; expr: string; tz: string };
+  nextRunAt: string | null;   // ISO 8601 converted from nextRunAtMs
+  lastRunAt: string | null;   // ISO 8601 converted from lastRunAtMs
 }
 
+const LIST_CMD = `openclaw cron list --json | tr ',' '\\n' | grep -E '"id"|"name"|"description"|"enabled"|"nextRunAtMs"|"lastRunAtMs"' | tr -d '"{}'`;
+
 /**
- * Parse the plain-text table output from `openclaw cron list`.
- * Each data row starts with a UUID followed by space-padded columns:
- * ID   Name   Schedule   Next   Last   Status   Target   Agent ID   Model
+ * Parse the key:value text output from the openclaw list pipeline.
+ * Each job block starts with an `id:` line.
  */
-function parseOpenClawList(output: string): ListedJob[] {
+function parseJobsFromText(output: string): ListedJob[] {
   const jobs: ListedJob[] = [];
-  const uuidRegex = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s+(.+)$/;
+  let current: Partial<ListedJob & { nextRunAtMs?: string; lastRunAtMs?: string }> = {};
 
-  for (const line of output.split("\n")) {
-    const match = uuidRegex.exec(line.trim());
-    if (!match) continue;
+  for (const raw of output.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
 
-    const id = match[1];
-    // Split remaining columns by 2+ consecutive spaces
-    const cols = match[2].split(/\s{2,}/).filter(Boolean);
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
 
-    // cols: [name, schedule, next, last, status, target, agentId, model]
-    const rawName = (cols[0] ?? "").trim();
-    const rawSchedule = (cols[1] ?? "").trim();
-    const status = (cols[4] ?? "idle").trim();
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
 
-    // name may be truncated with "..." — keep as-is
-    const name = rawName;
+    if (key === "id") {
+      // New job block — flush previous
+      if (current.id) {
+        jobs.push({
+          id: current.id,
+          name: current.name ?? "",
+          description: current.description ?? "",
+          enabled: current.enabled ?? true,
+          nextRunAt: current.nextRunAtMs ? new Date(Number(current.nextRunAtMs)).toISOString() : null,
+          lastRunAt: current.lastRunAtMs ? new Date(Number(current.lastRunAtMs)).toISOString() : null,
+        });
+      }
+      current = { id: value };
+    } else if (key === "name")        current.name = value;
+    else if (key === "description")   current.description = value;
+    else if (key === "enabled")       current.enabled = value === "true";
+    else if (key === "nextRunAtMs")   current.nextRunAtMs = value;
+    else if (key === "lastRunAtMs")   current.lastRunAtMs = value;
+  }
 
-    // schedule: "cron 40 * * * * @ Asia/Ho_Chi_Minh" (may be truncated)
-    const schedMatch = rawSchedule.match(/^cron\s+(.+?)\s+@\s+(.+)/);
-    const expr = schedMatch ? schedMatch[1].trim() : rawSchedule;
-    const tz = schedMatch ? schedMatch[2].replace(/\.\.\..*$/, "").trim() : "UTC";
-
+  // Flush last job
+  if (current.id) {
     jobs.push({
-      id,
-      name,
-      description: "",
-      enabled: ["ok", "idle", "running"].includes(status),
-      schedule: { kind: "cron", expr, tz },
+      id: current.id,
+      name: current.name ?? "",
+      description: current.description ?? "",
+      enabled: current.enabled ?? true,
+      nextRunAt: current.nextRunAtMs ? new Date(Number(current.nextRunAtMs)).toISOString() : null,
+      lastRunAt: current.lastRunAtMs ? new Date(Number(current.lastRunAtMs)).toISOString() : null,
     });
   }
 
@@ -177,8 +191,8 @@ function parseOpenClawList(output: string): ListedJob[] {
 
 export function listJobs(): { jobs: ListedJob[]; total: number } {
   try {
-    const output = runOpenClaw("cron list");
-    const jobs = parseOpenClawList(output);
+    const output = execSync(LIST_CMD, { encoding: "utf-8", timeout: 30_000, shell: "/bin/sh" }).trim();
+    const jobs = parseJobsFromText(output);
     return { jobs, total: jobs.length };
   } catch (err: unknown) {
     log.error(`[Scheduler] listJobs failed: ${(err as Error).message}`);
@@ -187,23 +201,18 @@ export function listJobs(): { jobs: ListedJob[]; total: number } {
 }
 
 /**
- * Extract all job IDs from `openclaw cron list` plain text output.
+ * Extract all job IDs using the same pipeline command.
  */
 function parseJobIds(): string[] {
   try {
-    const output = runOpenClaw("cron list");
-    const uuidRegex = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s/gm;
-    const ids: string[] = [];
-    let m;
-    while ((m = uuidRegex.exec(output)) !== null) {
-      ids.push(m[1]);
-    }
-    return ids;
+    const output = execSync(LIST_CMD, { encoding: "utf-8", timeout: 30_000, shell: "/bin/sh" }).trim();
+    return parseJobsFromText(output).map((j) => j.id);
   } catch (err: unknown) {
     log.error(`[Scheduler] parseJobIds failed: ${(err as Error).message}`);
     return [];
   }
 }
+
 
 export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
   const results: Record<string, unknown>[] = [];
