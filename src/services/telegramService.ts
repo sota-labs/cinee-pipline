@@ -92,7 +92,7 @@ export async function sendDraftForReview(
   chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
 ): Promise<{ message_id: number }> {
   const text = [
-    "📝 *Bài viết mới cần duyệt:*\n",
+    "📝 *New draft for review:*\n",
     escapeMarkdown(content),
     `\n🔗 *Source:* ${escapeMarkdown(researchSource)}`,
     `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
@@ -121,7 +121,7 @@ export async function sendUpdatedPreview(
   chatId = settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || "",
 ): Promise<{ message_id: number }> {
   const text = [
-    `📝 *Bản cập nhật \\#${version}:*\n`,
+    `📝 *Updated draft \\#${version}:*\n`,
     escapeMarkdown(content),
     `\n_Draft ID: \`${escapeMarkdown(draftId)}\`_`,
   ].join("\n");
