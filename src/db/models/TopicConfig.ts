@@ -29,7 +29,11 @@ const topicConfigSchema = new Schema<ITopicConfig>(
     description: { type: String, default: "" },
     brand: { type: String, required: true, default: "" },
     persona: { type: String, required: true, default: "" },
-    tone: { type: String, required: true, default: "personal, conversational, authentic" },
+    tone: {
+      type: String,
+      required: true,
+      default: "personal, conversational, authentic",
+    },
     topics: { type: [String], default: [] },
     communities: { type: [String], default: [] },
     engagement_keywords: { type: [String], default: [] },
@@ -37,7 +41,15 @@ const topicConfigSchema = new Schema<ITopicConfig>(
     slang_examples: { type: [String], default: [] },
     blacklisted_words: {
       type: [String],
-      default: ["revolutionizing", "game-changer", "delve", "unleash", "testament", "incredible", "groundbreaking"],
+      default: [
+        "revolutionizing",
+        "game-changer",
+        "delve",
+        "unleash",
+        "testament",
+        "incredible",
+        "groundbreaking",
+      ],
     },
     brand_mention_ban: { type: [String], default: [] },
     human_style_level: {
@@ -52,6 +64,8 @@ const topicConfigSchema = new Schema<ITopicConfig>(
 );
 
 topicConfigSchema.index({ is_active: 1 });
-topicConfigSchema.index({ name: 1 });
 
-export const TopicConfig = model<ITopicConfig>("TopicConfig", topicConfigSchema);
+export const TopicConfig = model<ITopicConfig>(
+  "TopicConfig",
+  topicConfigSchema,
+);
