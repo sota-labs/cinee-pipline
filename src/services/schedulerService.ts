@@ -15,6 +15,7 @@ import {
   AUTO_BOOKMARK_PROMPT,
   SCRAPE_PROMPT,
 } from "./schedulerPrompts.js";
+import { Task, ETaskType, ETaskStatus, type ITask } from "../db/models/Task.js";
 dotenv.config();
 
 const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
@@ -99,14 +100,22 @@ async function buildCronJobs(): Promise<CronJob[]> {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function runOpenClaw(args: string): string {
+/**
+ * Enqueue an openclaw command as a pending Task record.
+ * The actual execution is handled by the task worker process.
+ */
+async function createOpenClawTask(args: string): Promise<ITask> {
   try {
-    return execSync(`openclaw ${args}`, {
-      encoding: "utf-8",
-      timeout: 300_000,
-    }).trim();
+    const task = await Task.create({
+      type: ETaskType.RUN_AGENT,
+      agent: "openclaw",
+      prompt: args,
+      status: ETaskStatus.PENDING,
+    });
+    log.info(`[Task] Queued openclaw task: ${task._id} — ${args.slice(0, 80)}`);
+    return task;
   } catch (error: unknown) {
-    log.error(`OpenClaw error: ${(error as Error).message}`);
+    log.error(`[Task] Failed to create task: ${(error as Error).message}`);
     throw error;
   }
 }
@@ -127,9 +136,9 @@ export async function registerIsolatedJobs(): Promise<
   for (const job of jobs) {
     try {
       const cmd = buildAddCommand(job);
-      const output = runOpenClaw(cmd);
+      const task = await createOpenClawTask(cmd);
       log.info(`Registered: ${job.name} (${job.schedule})`);
-      results.push({ name: job.name, status: "registered", output });
+      results.push({ name: job.name, status: "queued", taskId: task._id.toString() });
     } catch (error: unknown) {
       log.error(`Failed to register: ${job.name}`);
       results.push({
@@ -260,11 +269,11 @@ export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
 
   for (const id of jobIds) {
     try {
-      const output = runOpenClaw(`cron rm ${id}`);
-      log.info(`[Scheduler] Removed job: ${id}`);
-      results.push({ id, status: "removed", output });
+      const task = await createOpenClawTask(`cron rm ${id}`);
+      log.info(`[Scheduler] Queued removal for job: ${id}`);
+      results.push({ id, status: "queued", taskId: task._id.toString() });
     } catch (error: unknown) {
-      log.error(`[Scheduler] Failed to remove job: ${id}`);
+      log.error(`[Scheduler] Failed to queue removal for job: ${id}`);
       results.push({ id, status: "failed", error: (error as Error).message });
     }
   }
@@ -286,9 +295,9 @@ export async function registerSingleJob(
   }
   try {
     const cmd = buildAddCommand(job);
-    const output = runOpenClaw(cmd);
+    const task = await createOpenClawTask(cmd);
     log.info(`Registered: ${job.name} (${job.schedule})`);
-    return { name: job.name, status: "registered", output };
+    return { name: job.name, status: "queued", taskId: task._id.toString() };
   } catch (error: unknown) {
     log.error(`Failed to register: ${job.name}`);
     return {
@@ -303,8 +312,8 @@ export async function removeSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const output = runOpenClaw(`cron rm ${jobId}`);
-    return { id: jobId, status: "removed", output };
+    const task = await createOpenClawTask(`cron rm ${jobId}`);
+    return { id: jobId, status: "queued", taskId: task._id.toString() };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }
@@ -314,8 +323,8 @@ export async function triggerSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const output = runOpenClaw(`cron run ${jobId}`);
-    return { id: jobId, status: "triggered", output };
+    const task = await createOpenClawTask(`cron run ${jobId}`);
+    return { id: jobId, status: "queued", taskId: task._id.toString() };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }
@@ -323,7 +332,7 @@ export async function triggerSingleJob(
 
 export function checkGateway(): boolean {
   try {
-    runOpenClaw("health");
+    execSync("openclaw health", { encoding: "utf-8", timeout: 10_000 });
     return true;
   } catch {
     return false;
