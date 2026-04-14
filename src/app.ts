@@ -7,6 +7,7 @@ import { toolsRouter } from "./routes/tools.js";
 import { contentReviewRouter } from "./routes/contentReview.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
+import { tasksRouter } from "./routes/tasks.js";
 
 // Comma-separated list of allowed origins, e.g. "https://your-frontend.com,https://admin.your-frontend.com"
 const allowedOrigins: string[] = (process.env.ALLOWED_ORIGINS ?? "")
@@ -42,6 +43,7 @@ app.use("/api/tools", toolsRouter);
 app.use("/api/content-review", contentReviewRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
 app.use("/api/topic-config", topicConfigRouter);
+app.use("/api/tasks", tasksRouter);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -54,9 +56,9 @@ app.get("/", (_req, res) => {
       status: "/api/status",
       tools: "/api/tools/*",
       content_review: "/api/content-review/*",
-      telegram: "/api/telegram/*",
       priority_accounts: "/api/priority-accounts/*",
       topic_config: "/api/topic-config/*",
+      tasks: "/api/tasks/*",
     },
   });
 });

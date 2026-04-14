@@ -1,15 +1,13 @@
 /** Content Review routes — manage drafts through the review flow. */
 import { Router, type Request, type Response } from "express";
-import { execSync } from "child_process";
 import {
   Post,
   EPostStatus,
-  CurationSource,
-  ECurationStatus,
+  Task,
+  ETaskType,
 } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { settings } from "../config/settings.js";
-import { runOpenClawAgentText } from "../services/openclawAgentService.js";
 import { buildRewritePrompt } from "../prompts/index.js";
 import { getActiveRoleConfig } from "../services/topicConfigService.js";
 
@@ -17,12 +15,36 @@ export const contentReviewRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function runOpenClaw(message: string): string {
-  const escaped = message.replace(/'/g, "'\\''");
-  return execSync(
-    `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}'`,
-    { encoding: "utf-8", timeout: 300_000 },
-  ).trim();
+/** Build the full OpenClaw browser prompt for posting a draft to X. */
+function buildPostNowPrompt(rawContent: string, xUser: string): string {
+  const firstWords = rawContent.trim().split(/\s+/).slice(0, 8).join(" ");
+  return `You are an AI Agent with browser access. Post this content to X (Twitter) and VERIFY it was published successfully.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times throughout ALL steps. Close any extra tabs before starting.
+
+STEP 1 — COMPOSE & POST:
+1. Close all extra tabs. Navigate to https://x.com/home in the single tab.
+2. Wait until the page fully loads (tweet compose area is visible).
+3. Click the post compose area and type the following content exactly:
+"""
+${rawContent}
+"""
+4. Click the "Post" button ([data-testid="tweetButtonInline"]).
+5. Wait 5 seconds. If an error banner appears (e.g. "Something went wrong"), report POST_FAILED: error banner shown and stop.
+
+STEP 2 — VERIFY BY CLICKING INTO THE POST:
+6. In the SAME tab, navigate to https://x.com/${xUser}
+7. Wait until the profile page fully loads and the first tweet article is visible.
+8. Click on the FIRST <article> (the most recent tweet) to open its detail page — do NOT open in new tab.
+9. Wait until the post detail page fully loads.
+10. Take a browser.snapshot and verify:
+    CHECK A (Content): The post text on this detail page must START WITH or CONTAIN: "${firstWords}"
+    CHECK B (Time): The <time> element must show a timestamp within the last 3 minutes.
+11. If BOTH checks pass:
+    - Read the current browser URL (it should match /${xUser}/status/<id>).
+    - Report on its own line: POST_SUCCESS_VERIFIED: <current_browser_url>
+12. If EITHER check fails:
+    - Report on its own line: POST_FAILED: <reason>`;
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -109,7 +131,6 @@ contentReviewRouter.patch(
       draft.status = req.body.status || EPostStatus.EDITING;
 
       await draft.save();
-
       res.json({ success: true, draft });
     } catch (e: any) {
       res.status(400).json({ success: false, error: e.message });
@@ -130,7 +151,6 @@ contentReviewRouter.patch(
 
       draft.status = EPostStatus.APPROVED;
       await draft.save();
-
       res.json({ success: true, draft });
     } catch (e: any) {
       res.status(400).json({ success: false, error: e.message });
@@ -151,7 +171,6 @@ contentReviewRouter.patch(
 
       draft.status = EPostStatus.REJECTED;
       await draft.save();
-
       res.json({ success: true, draft });
     } catch (e: any) {
       res.status(400).json({ success: false, error: e.message });
@@ -179,7 +198,6 @@ contentReviewRouter.patch(
       draft.status = EPostStatus.SCHEDULED;
       draft.scheduled_at = new Date(req.body.scheduled_at);
       await draft.save();
-
       res.json({ success: true, draft });
     } catch (e: any) {
       res.status(400).json({ success: false, error: e.message });
@@ -189,8 +207,8 @@ contentReviewRouter.patch(
 
 /**
  * POST /drafts/:id/post-now
- * Immediately post the draft to X via the OpenClaw browser agent,
- * verify the post was published, and mark the draft as POSTED.
+ * Creates a task to post the draft to X via OpenClaw.
+ * Returns immediately with task_id — the worker executes asynchronously.
  */
 contentReviewRouter.post(
   "/drafts/:id/post-now",
@@ -210,104 +228,23 @@ contentReviewRouter.post(
         });
       }
 
-      const xUser = settings.xUsername;
-      const firstWords = draft.raw_content
-        .trim()
-        .split(/\s+/)
-        .slice(0, 8)
-        .join(" ");
+      const prompt = buildPostNowPrompt(draft.raw_content, settings.xUsername);
 
-      const postPrompt = `You are an AI Agent with browser access. Post this content to X (Twitter) and VERIFY it was published successfully.
-
-BROWSER RULE: Keep ONLY ONE tab open at all times throughout ALL steps. Close any extra tabs before starting.
-
-STEP 1 — COMPOSE & POST:
-1. Close all extra tabs. Navigate to https://x.com/home in the single tab.
-2. Wait until the page fully loads (tweet compose area is visible).
-3. Click the post compose area and type the following content exactly:
-"""
-${draft.raw_content}
-"""
-4. Click the "Post" button ([data-testid="tweetButtonInline"]).
-5. Wait 5 seconds. If an error banner appears (e.g. "Something went wrong"), report POST_FAILED: error banner shown and stop.
-
-STEP 2 — VERIFY BY CLICKING INTO THE POST:
-6. In the SAME tab, navigate to https://x.com/${xUser}
-7. Wait until the profile page fully loads and the first tweet article is visible.
-8. Click on the FIRST <article> (the most recent tweet) to open its detail page — do NOT open in new tab.
-9. Wait until the post detail page fully loads.
-10. Take a browser.snapshot and verify:
-    CHECK A (Content): The post text on this detail page must START WITH or CONTAIN: "${firstWords}"
-    CHECK B (Time): The <time> element must show a timestamp within the last 3 minutes.
-11. If BOTH checks pass:
-    - Read the current browser URL (it should match /${xUser}/status/<id>).
-    - Report on its own line: POST_SUCCESS_VERIFIED: <current_browser_url>
-12. If EITHER check fails:
-    - Report on its own line: POST_FAILED: <reason>`;
-
-      let result: string;
-      try {
-        result = runOpenClaw(postPrompt);
-      } catch (err: any) {
-        draft.status = EPostStatus.FAILED;
-        await draft.save();
-        return res.status(500).json({
-          success: false,
-          error: `OpenClaw agent error: ${err.message}`,
-        });
-      }
-
-      const postUrlMatch = result.match(
-        /POST_SUCCESS_VERIFIED:\s*(https?:\/\/\S+)/,
-      );
-      const postFailMatch = result.match(/POST_FAILED:\s*(.+)/);
-
-      if (postUrlMatch) {
-        draft.status = EPostStatus.POSTED;
-        draft.post_url = postUrlMatch[1];
-        await draft.save();
-
-        if (draft.curation_source_id) {
-          try {
-            await CurationSource.findByIdAndUpdate(draft.curation_source_id, {
-              $set: { status: ECurationStatus.USED, posted_at: new Date() },
-            });
-            log.info(
-              `CurationSource ${draft.curation_source_id} marked as used`,
-            );
-          } catch (csErr: any) {
-            log.error(
-              `Failed to update CurationSource status: ${csErr.message}`,
-            );
-          }
-        }
-
-        return res.json({
-          success: true,
-          post_url: draft.post_url,
-          draft,
-        });
-      }
-
-      if (postFailMatch) {
-        const reason = postFailMatch[1].trim();
-        log.error(`Post verification failed: ${reason}`);
-        draft.status = EPostStatus.FAILED;
-        await draft.save();
-        return res.status(500).json({
-          success: false,
-          error: `Post failed (verification): ${reason}`,
-          draft,
-        });
-      }
-
-      // Unexpected agent output — do not mark as failed, return agent output for manual check
-      log.error(`OpenClaw agent returned unexpected output: ${result}`);
-      return res.status(500).json({
-        success: false,
-        error: "Could not verify posting result. Check agent output.",
-        agent_output: result.slice(0, 500),
+      const task = await Task.create({
+        type: ETaskType.POST_NOW,
+        agent: settings.openClawAgent,
+        prompt,
+        ref_id: draft._id.toString(),
+        ref_collection: "posts",
+        payload: {
+          draft_id: draft._id.toString(),
+          raw_content: draft.raw_content,
+          curation_source_id: draft.curation_source_id ?? null,
+        },
       });
+
+      log.info(`Task created: ${task._id} (post_now) for draft ${draft._id}`);
+      res.status(202).json({ success: true, task_id: task._id, task });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -316,8 +253,9 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
 
 /**
  * POST /drafts/:id/ai-rewrite
- * Use OpenClaw to rewrite the draft content with an optional instruction prompt.
+ * Creates a task to rewrite the draft content with AI.
  * Body: { prompt?: string }
+ * Returns immediately with task_id — the worker executes asynchronously.
  */
 contentReviewRouter.post(
   "/drafts/:id/ai-rewrite",
@@ -329,31 +267,26 @@ contentReviewRouter.post(
           .status(404)
           .json({ success: false, error: "Draft not found" });
 
-      const userPrompt: string =
+      const userInstruction: string =
         req.body.prompt || "Rewrite this to be more punchy and engaging";
       const role = await getActiveRoleConfig();
-      const aiPrompt = buildRewritePrompt(role, draft.raw_content, userPrompt);
+      const prompt = buildRewritePrompt(role, draft.raw_content, userInstruction);
 
-      let rewritten: string;
-      try {
-        rewritten = runOpenClawAgentText(aiPrompt);
-      } catch (err: any) {
-        return res
-          .status(500)
-          .json({ success: false, error: `AI rewrite failed: ${err.message}` });
-      }
-
-      draft.edit_history.push({
-        content: draft.raw_content,
-        edited_at: new Date(),
-        edited_by: "ai",
-        prompt: userPrompt,
+      const task = await Task.create({
+        type: ETaskType.AI_REWRITE,
+        agent: settings.openClawAgent,
+        prompt,
+        ref_id: draft._id.toString(),
+        ref_collection: "posts",
+        payload: {
+          draft_id: draft._id.toString(),
+          user_instruction: userInstruction,
+          original_content: draft.raw_content,
+        },
       });
-      draft.raw_content = rewritten;
-      draft.status = EPostStatus.PENDING_REVIEW;
-      await draft.save();
 
-      res.json({ success: true, draft });
+      log.info(`Task created: ${task._id} (ai_rewrite) for draft ${draft._id}`);
+      res.status(202).json({ success: true, task_id: task._id, task });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

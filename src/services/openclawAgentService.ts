@@ -1,62 +1,37 @@
 /**
- * AI rewrite must use `openclaw agent --json`: plain stdout often ends with log lines
- * like "completed" / summary, not the generated text. Real content is in
- * `result.payloads[].text`.
+ * OpenClaw Agent Service — creates async Task records instead of
+ * running the CLI directly via execSync.
+ *
+ * The actual execution is handled by the OpenClaw worker which polls
+ * GET /api/tasks?status=pending and calls the status transition endpoints:
+ *   PATCH /api/tasks/:id/start
+ *   PATCH /api/tasks/:id/complete  { result }
+ *   PATCH /api/tasks/:id/fail      { error_log }
  */
-import { execSync } from "child_process";
+import { Task, ETaskType } from "../db/index.js";
 import { settings } from "../config/settings.js";
+import type { ITask } from "../db/index.js";
 
-interface AgentJsonPayload {
-  text?: string | null;
+export interface CreateTaskOptions {
+  type?: string;
+  prompt: string;
+  ref_id?: string;
+  ref_collection?: string;
+  payload?: Record<string, unknown>;
 }
 
-interface AgentJsonResult {
-  summary?: string;
-  status?: string;
-  result?: {
-    payloads?: AgentJsonPayload[];
-  };
-}
-
-function extractTextFromParsed(parsed: AgentJsonResult): string {
-  const payloads = parsed.result?.payloads ?? [];
-  const parts = payloads
-    .map((p) => (typeof p.text === "string" ? p.text.trim() : ""))
-    .filter(Boolean);
-  return parts.join("\n\n").trim();
-}
-
-function parseAgentStdout(stdout: string): AgentJsonResult {
-  const trimmed = stdout.trim();
-  try {
-    return JSON.parse(trimmed) as AgentJsonResult;
-  } catch {
-    const lastBrace = trimmed.lastIndexOf("{");
-    if (lastBrace === -1) {
-      throw new Error("OpenClaw --json output: no JSON object found");
-    }
-    return JSON.parse(trimmed.slice(lastBrace)) as AgentJsonResult;
-  }
-}
-
-/** Run agent with --json and return assistant-generated text (not status/summary). */
-export function runOpenClawAgentText(message: string): string {
-  const escaped = message.replace(/'/g, "'\\''");
-  const stdout = execSync(
-    `openclaw agent --agent ${settings.openClawAgent} --message '${escaped}' --json`,
-    {
-      encoding: "utf-8",
-      maxBuffer: 20 * 1024 * 1024,
-      timeout: 300_000,
-    },
-  );
-
-  const parsed = parseAgentStdout(stdout);
-  const text = extractTextFromParsed(parsed);
-  if (!text) {
-    throw new Error(
-      `OpenClaw returned empty assistant text (status=${parsed.status ?? "?"}, summary=${parsed.summary ?? "?"})`,
-    );
-  }
-  return text;
+/**
+ * Create a pending OpenClaw agent task and return the saved record.
+ * The worker picks it up asynchronously.
+ */
+export async function createAgentTask(opts: CreateTaskOptions): Promise<ITask> {
+  const task = await Task.create({
+    type: opts.type ?? ETaskType.RUN_AGENT,
+    agent: settings.openClawAgent,
+    prompt: opts.prompt,
+    ref_id: opts.ref_id,
+    ref_collection: opts.ref_collection,
+    payload: opts.payload ?? {},
+  });
+  return task;
 }

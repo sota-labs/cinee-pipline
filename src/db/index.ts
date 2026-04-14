@@ -1,6 +1,8 @@
 /** Database layer — Mongoose models + connection. */
 export { connectDb, disconnectDb } from "./connection.js";
 export { Post, EPostStatus } from "./models/Post.js";
+export { Task, ETaskStatus, ETaskType } from "./models/Task.js";
+export type { ITask } from "./models/Task.js";
 export { Reply } from "./models/Reply.js";
 export { PersonaKnowledge } from "./models/PersonaKnowledge.js";
 export { CurationSource, ECurationStatus, ECurationMediaType } from "./models/CurationSource.js";
