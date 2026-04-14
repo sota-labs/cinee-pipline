@@ -5,7 +5,6 @@ import { schedulerRouter } from "./routes/scheduler.js";
 import { statusRouter } from "./routes/status.js";
 import { toolsRouter } from "./routes/tools.js";
 import { contentReviewRouter } from "./routes/contentReview.js";
-import { telegramRouter } from "./routes/telegram.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
 
@@ -41,7 +40,6 @@ app.use("/api/scheduler", schedulerRouter);
 app.use("/api", statusRouter);
 app.use("/api/tools", toolsRouter);
 app.use("/api/content-review", contentReviewRouter);
-app.use("/api/telegram", telegramRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
 app.use("/api/topic-config", topicConfigRouter);
 
