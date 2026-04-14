@@ -11,6 +11,7 @@
  *   - research_and_draft_evening
  */
 import { registerSingleJob, listJobs, getJobDefinitions } from "../services/schedulerService.js";
+import { connectDb, disconnectDb } from "../db/connection.js";
 
 async function main() {
   const jobName = process.argv[2];
@@ -26,20 +27,23 @@ async function main() {
     process.exit(1);
   }
 
+  await connectDb();
+
   console.log("╔══════════════════════════════════════════════════════╗");
   console.log(`║  Adding Job: ${jobName.padEnd(39)}║`);
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
   const result = await registerSingleJob(jobName);
-  const icon = result.status === "registered" ? "✅" : "❌";
+  const icon = result.status === "queued" ? "✅" : "❌";
   console.log(`${icon}  ${result.name}: ${result.status}`);
-  if (result.output) console.log(`   output: ${result.output}`);
+  if (result.taskId) console.log(`   taskId: ${result.taskId}`);
   if (result.error) console.log(`   error: ${result.error}`);
 
   console.log("\n── Current OpenClaw Cron Jobs ──");
   console.log(listJobs());
 
-  process.exit(result.status === "registered" ? 0 : 1);
+  await disconnectDb();
+  process.exit(result.status === "queued" ? 0 : 1);
 }
 
 main();

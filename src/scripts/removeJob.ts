@@ -10,13 +10,14 @@
  *   - research_and_draft_evening
  */
 import { removeSingleJob, listJobs, getJobDefinitions } from "../services/schedulerService.js";
+import { connectDb, disconnectDb } from "../db/connection.js";
 
 async function main() {
-  const jobName = process.argv[2];
+  const jobId = process.argv[2];
 
-  if (!jobName) {
-    console.error("❌ Error: Please provide a job name.\n");
-    console.log("Usage:  npx tsx src/scripts/removeJob.ts <job_name>\n");
+  if (!jobId) {
+    console.error("❌ Error: Please provide a job ID.\n");
+    console.log("Usage:  npx tsx src/scripts/removeJob.ts <job_id>\n");
     console.log("Available jobs:");
     const defs = await getJobDefinitions();
     for (const job of defs) {
@@ -25,20 +26,23 @@ async function main() {
     process.exit(1);
   }
 
+  await connectDb();
+
   console.log("╔══════════════════════════════════════════════════════╗");
-  console.log(`║  Removing Job: ${jobName.padEnd(37)}║`);
+  console.log(`║  Removing Job: ${jobId.padEnd(37)}║`);
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
-  const result = await removeSingleJob(jobName);
-  const icon = result.status === "removed" ? "✅" : "❌";
-  console.log(`${icon}  ${result.name}: ${result.status}`);
-  if (result.output) console.log(`   output: ${result.output}`);
+  const result = await removeSingleJob(jobId);
+  const icon = result.status === "queued" ? "✅" : "❌";
+  console.log(`${icon}  ${result.id}: ${result.status}`);
+  if (result.taskId) console.log(`   taskId: ${result.taskId}`);
   if (result.error) console.log(`   error: ${result.error}`);
 
   console.log("\n── Remaining OpenClaw Cron Jobs ──");
   console.log(listJobs());
 
-  process.exit(result.status === "removed" ? 0 : 1);
+  await disconnectDb();
+  process.exit(result.status === "queued" ? 0 : 1);
 }
 
 main();
