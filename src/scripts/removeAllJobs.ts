@@ -16,14 +16,16 @@ async function main() {
 
   console.log("── Results ──");
   for (const r of results) {
-    const icon = r.status === "queued" ? "✅" : "❌";
-    console.log(`${icon}  ${r.id}: ${r.status}`);
-    if (r.taskId) console.log(`   taskId: ${r.taskId}`);
-    if (r.error) console.log(`   error: ${r.error}`);
+    const icon = r.status === "removed" || r.status === "no_jobs" ? "✅" : "❌";
+    console.log(`${icon}  ${JSON.stringify(r)}`);
   }
 
   console.log("\n── Remaining OpenClaw Cron Jobs ──");
-  console.log(listJobs());
+  const { jobs, total } = await listJobs();
+  console.log(`Total: ${total}`);
+  for (const job of jobs) {
+    console.log(`  ${job.name} — ${job.status} (${job.createdAt})`);
+  }
 
   await disconnectDb();
   process.exit(0);

@@ -27,7 +27,11 @@ async function main() {
   }
 
   console.log("\n── Current OpenClaw Cron Jobs ──");
-  console.log(listJobs());
+  const { jobs, total } = await listJobs();
+  console.log(`Total: ${total}`);
+  for (const job of jobs) {
+    console.log(`  ${job.name} — ${job.status} (${job.createdAt})`);
+  }
 
   await disconnectDb();
   process.exit(0);

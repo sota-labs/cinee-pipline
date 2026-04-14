@@ -33,16 +33,19 @@ async function main() {
   console.log("╚══════════════════════════════════════════════════════╝\n");
 
   const result = await removeSingleJob(jobId);
-  const icon = result.status === "queued" ? "✅" : "❌";
+  const icon = result.status === "removed" ? "✅" : "❌";
   console.log(`${icon}  ${result.id}: ${result.status}`);
-  if (result.taskId) console.log(`   taskId: ${result.taskId}`);
   if (result.error) console.log(`   error: ${result.error}`);
 
   console.log("\n── Remaining OpenClaw Cron Jobs ──");
-  console.log(listJobs());
+  const { jobs, total } = await listJobs();
+  console.log(`Total: ${total}`);
+  for (const job of jobs) {
+    console.log(`  ${job.name} — ${job.status} (${job.createdAt})`);
+  }
 
   await disconnectDb();
-  process.exit(result.status === "queued" ? 0 : 1);
+  process.exit(result.status === "removed" ? 0 : 1);
 }
 
 main();

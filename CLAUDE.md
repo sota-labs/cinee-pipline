@@ -5,8 +5,8 @@
 - **Language**: TypeScript (Node.js)
 - **Database**: MongoDB (Mongoose) + Redis (ioredis)
 - **Web Server**: Express
-- **Automation Engine**: OpenClaw (via CLI / spawned processes)
-- **Task Scheduling**: OpenClaw isolated cron jobs (not node-cron)
+- **Automation Engine**: OpenClaw (via Task queue — cinee-worker executes CLI commands)
+- **Task Scheduling**: Task records in MongoDB (cinee-worker polls and executes)
 
 ## Directory Structure
 
@@ -28,8 +28,8 @@
 
 - **Dynamic Topics**: All prompts are built from the active `RoleConfig` — change `settings.ts`, a JSON file (`ROLE_CONFIG_PATH`), or activate a `TopicConfig` DB record via `POST /api/topic-config/:id/activate` to switch domains.
 - **Human-like Writing**: `getHumanStyleRules("moderate")` injects casual-writing rules into every content prompt (no `;`, no `...`, acronyms, occasional typos).
-- **OpenClaw Integration**: Browser automation agent invoked via `execSync("openclaw ...")` or `spawn`.
-- **Cron Jobs**: Registered in OpenClaw's isolated cron daemon via `npm run cron:add-all`.
+- **OpenClaw Integration**: This repo creates Task records in MongoDB with prompts/commands. The separate `cinee-worker` service polls these tasks and executes openclaw CLI commands. This repo never executes CLI commands directly.
+- **Cron Jobs**: Job definitions are registered as Task records in MongoDB via `npm run cron:add-all`.
 
 ## API Endpoints
 

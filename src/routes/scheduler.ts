@@ -15,7 +15,7 @@ schedulerRouter.post("/setup", async (_req: Request, res: Response) => {
 
 schedulerRouter.get("/jobs", async (_req: Request, res: Response) => {
   try {
-    const { jobs, total } = schedulerService.listJobs();
+    const { jobs, total } = await schedulerService.listJobs();
     res.json({ jobs, total });
   } catch (error: unknown) {
     res.status(500).json({ error: (error as Error).message });
@@ -49,9 +49,9 @@ schedulerRouter.post("/jobs/:jobId/trigger", async (req: Request, res: Response)
   }
 });
 
-schedulerRouter.get("/check", (_req: Request, res: Response) => {
+schedulerRouter.get("/check", async (_req: Request, res: Response) => {
   try {
-    const healthy = schedulerService.checkGateway();
+    const healthy = await schedulerService.checkGateway();
     res.json({ healthy });
   } catch (error: unknown) {
     res.status(500).json({ error: (error as Error).message });

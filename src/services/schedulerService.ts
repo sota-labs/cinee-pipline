@@ -1,8 +1,6 @@
 /** Scheduler service — OpenClaw isolated cron job management. */
-import { execSync } from "child_process";
 import { log } from "../utils/logger.js";
 import * as dotenv from "dotenv";
-import { settings } from "../config/settings.js";
 import { getActiveRoleConfig } from "./topicConfigService.js";
 import {
   buildResearchPrompt,
@@ -156,84 +154,35 @@ export interface ListedJob {
   id: string;
   name: string;
   description: string;
-  enabled: boolean;
-  nextRunAt: string | null; // ISO 8601 converted from nextRunAtMs
-  lastRunAt: string | null; // ISO 8601 converted from lastRunAtMs
+  status: string;
+  createdAt: string;
 }
-
-const LIST_CMD = `openclaw cron list --json | tr ',' '\\n' | grep -E '"id"|"name"|"description"|"enabled"|"nextRunAtMs"|"lastRunAtMs"' | tr -d '"{}'`;
 
 /**
- * Parse the key:value text output from the openclaw list pipeline.
- * Each job block starts with an `id:` line.
+ * List registered cron-job tasks from the database.
  */
-function parseJobsFromText(output: string): ListedJob[] {
-  const jobs: ListedJob[] = [];
-  let current: Partial<
-    ListedJob & { nextRunAtMs?: string; lastRunAtMs?: string }
-  > = {};
-
-  for (const raw of output.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const key = line.slice(0, colonIdx).trim();
-    const value = line.slice(colonIdx + 1).trim();
-
-    if (key === "id") {
-      // New job block — flush previous
-      if (current.id) {
-        jobs.push({
-          id: current.id,
-          name: current.name ?? "",
-          description: current.description ?? "",
-          enabled: current.enabled ?? true,
-          nextRunAt: current.nextRunAtMs
-            ? new Date(Number(current.nextRunAtMs)).toISOString()
-            : null,
-          lastRunAt: current.lastRunAtMs
-            ? new Date(Number(current.lastRunAtMs)).toISOString()
-            : null,
-        });
-      }
-      current = { id: value };
-    } else if (key === "name") current.name = value;
-    else if (key === "description") current.description = value;
-    else if (key === "enabled") current.enabled = value === "true";
-    else if (key === "nextRunAtMs") current.nextRunAtMs = value;
-    else if (key === "lastRunAtMs") current.lastRunAtMs = value;
-  }
-
-  // Flush last job
-  if (current.id) {
-    jobs.push({
-      id: current.id,
-      name: current.name ?? "",
-      description: current.description ?? "",
-      enabled: current.enabled ?? true,
-      nextRunAt: current.nextRunAtMs
-        ? new Date(Number(current.nextRunAtMs)).toISOString()
-        : null,
-      lastRunAt: current.lastRunAtMs
-        ? new Date(Number(current.lastRunAtMs)).toISOString()
-        : null,
-    });
-  }
-
-  return jobs;
-}
-
-export function listJobs(): { jobs: ListedJob[]; total: number } {
+export async function listJobs(): Promise<{ jobs: ListedJob[]; total: number }> {
   try {
-    const output = execSync(LIST_CMD, {
-      encoding: "utf-8",
-      timeout: 30_000,
-      shell: "/bin/sh",
-    }).trim();
-    const jobs = parseJobsFromText(output);
+    const tasks = await Task.find({
+      type: ETaskType.RUN_AGENT,
+      agent: "openclaw",
+      prompt: { $regex: /^cron add / },
+    })
+      .sort({ created_at: -1 })
+      .lean();
+
+    const jobs: ListedJob[] = tasks.map((t) => {
+      const nameMatch = t.prompt.match(/--name "([^"]+)"/);
+      const descMatch = t.prompt.match(/--description "([^"]+)"/);
+      return {
+        id: String(t._id),
+        name: nameMatch?.[1] ?? "unknown",
+        description: descMatch?.[1] ?? "",
+        status: t.status,
+        createdAt: t.created_at.toISOString(),
+      };
+    });
+
     return { jobs, total: jobs.length };
   } catch (err: unknown) {
     log.error(`[Scheduler] listJobs failed: ${(err as Error).message}`);
@@ -241,44 +190,25 @@ export function listJobs(): { jobs: ListedJob[]; total: number } {
   }
 }
 
-/**
- * Extract all job IDs using the same pipeline command.
- */
-function parseJobIds(): string[] {
-  try {
-    const output = execSync(LIST_CMD, {
-      encoding: "utf-8",
-      timeout: 30_000,
-      shell: "/bin/sh",
-    }).trim();
-    return parseJobsFromText(output).map((j) => j.id);
-  } catch (err: unknown) {
-    log.error(`[Scheduler] parseJobIds failed: ${(err as Error).message}`);
-    return [];
-  }
-}
-
 export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
-  const results: Record<string, unknown>[] = [];
-  const jobIds = parseJobIds();
+  try {
+    const result = await Task.deleteMany({
+      type: ETaskType.RUN_AGENT,
+      agent: "openclaw",
+      prompt: { $regex: /^cron add / },
+    });
 
-  if (jobIds.length === 0) {
-    log.info("[Scheduler] No jobs found to remove");
-    return [{ status: "no_jobs", message: "No cron jobs found" }];
-  }
-
-  for (const id of jobIds) {
-    try {
-      const task = await createOpenClawTask(`cron rm ${id}`);
-      log.info(`[Scheduler] Queued removal for job: ${id}`);
-      results.push({ id, status: "queued", taskId: task._id.toString() });
-    } catch (error: unknown) {
-      log.error(`[Scheduler] Failed to queue removal for job: ${id}`);
-      results.push({ id, status: "failed", error: (error as Error).message });
+    if (result.deletedCount === 0) {
+      log.info("[Scheduler] No jobs found to remove");
+      return [{ status: "no_jobs", message: "No cron jobs found" }];
     }
-  }
 
-  return results;
+    log.info(`[Scheduler] Removed ${result.deletedCount} job(s)`);
+    return [{ status: "removed", deletedCount: result.deletedCount }];
+  } catch (error: unknown) {
+    log.error(`[Scheduler] removeAllJobs failed: ${(error as Error).message}`);
+    return [{ status: "failed", error: (error as Error).message }];
+  }
 }
 
 export async function registerSingleJob(
@@ -312,8 +242,12 @@ export async function removeSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const task = await createOpenClawTask(`cron rm ${jobId}`);
-    return { id: jobId, status: "queued", taskId: task._id.toString() };
+    const result = await Task.findByIdAndDelete(jobId);
+    if (!result) {
+      return { id: jobId, status: "not_found", error: "Job not found" };
+    }
+    log.info(`[Scheduler] Removed job: ${jobId}`);
+    return { id: jobId, status: "removed" };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }
@@ -323,16 +257,21 @@ export async function triggerSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const task = await createOpenClawTask(`cron run ${jobId}`);
+    const existing = await Task.findById(jobId);
+    if (!existing) {
+      return { id: jobId, status: "not_found", error: "Job not found" };
+    }
+    // Re-queue with same prompt but fresh status
+    const task = await createOpenClawTask(existing.prompt);
     return { id: jobId, status: "queued", taskId: task._id.toString() };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }
 }
 
-export function checkGateway(): boolean {
+export async function checkGateway(): Promise<boolean> {
   try {
-    execSync("openclaw health", { encoding: "utf-8", timeout: 10_000 });
+    await Task.findOne().lean();
     return true;
   } catch {
     return false;
