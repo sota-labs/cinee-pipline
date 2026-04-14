@@ -31,9 +31,6 @@ export interface Settings {
   redisUrl: string;
   publicApiUrl: string;
   port: number;
-  cineeTelegramBotToken: string;
-  telegramChatId: string;
-  telegramWebhookUrl: string;
   openClawAgent: string;
   xUsername: string;
 }
@@ -160,9 +157,6 @@ export const settings: Settings = {
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379/0",
   publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
-  cineeTelegramBotToken: process.env.CINEE_TELEGRAM_BOT_TOKEN || "",
-  telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
-  telegramWebhookUrl: process.env.TELEGRAM_WEBHOOK_URL || "",
   openClawAgent: process.env.OPENCLAW_AGENT || "main",
   xUsername: process.env.X_USERNAME || "",
 };

@@ -1,8 +1,12 @@
 /** Content Review routes — manage drafts through the review flow. */
 import { Router, type Request, type Response } from "express";
 import { execSync } from "child_process";
-import { Post, EPostStatus, CurationSource, ECurationStatus } from "../db/index.js";
-import * as telegramService from "../services/telegramService.js";
+import {
+  Post,
+  EPostStatus,
+  CurationSource,
+  ECurationStatus,
+} from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { settings } from "../config/settings.js";
 import { runOpenClawAgentText } from "../services/openclawAgentService.js";
@@ -32,21 +36,6 @@ contentReviewRouter.post("/drafts", async (req: Request, res: Response) => {
       status: EPostStatus.PENDING_REVIEW,
       curation_source_id: metadata?.curation_source_id ?? null,
     });
-
-    if (telegramService.isConfigured()) {
-      try {
-        const teleMsg = await telegramService.sendDraftForReview(
-          draft._id.toString(),
-          draft.raw_content,
-          draft.research_source || "",
-        );
-        draft.telegram_message_id = teleMsg.message_id;
-        draft.telegram_chat_id = process.env.TELEGRAM_CHAT_ID || "";
-        await draft.save();
-      } catch (teleErr: any) {
-        log.error(`Failed to send draft to Telegram: ${teleErr.message}`);
-      }
-    }
 
     res.json({ success: true, id: draft._id, draft });
   } catch (e: any) {
@@ -120,19 +109,6 @@ contentReviewRouter.patch(
       draft.status = req.body.status || EPostStatus.EDITING;
 
       await draft.save();
-
-      if (telegramService.isConfigured() && req.body.raw_content) {
-        try {
-          await telegramService.sendUpdatedPreview(
-            draft._id.toString(),
-            draft.raw_content,
-            draft.edit_history.length + 1,
-            draft.telegram_chat_id,
-          );
-        } catch {
-          /* non-critical */
-        }
-      }
 
       res.json({ success: true, draft });
     } catch (e: any) {
@@ -275,9 +251,10 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
       } catch (err: any) {
         draft.status = EPostStatus.FAILED;
         await draft.save();
-        return res
-          .status(500)
-          .json({ success: false, error: `OpenClaw agent error: ${err.message}` });
+        return res.status(500).json({
+          success: false,
+          error: `OpenClaw agent error: ${err.message}`,
+        });
       }
 
       const postUrlMatch = result.match(
@@ -295,9 +272,13 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
             await CurationSource.findByIdAndUpdate(draft.curation_source_id, {
               $set: { status: ECurationStatus.USED, posted_at: new Date() },
             });
-            log.info(`CurationSource ${draft.curation_source_id} marked as used`);
+            log.info(
+              `CurationSource ${draft.curation_source_id} marked as used`,
+            );
           } catch (csErr: any) {
-            log.error(`Failed to update CurationSource status: ${csErr.message}`);
+            log.error(
+              `Failed to update CurationSource status: ${csErr.message}`,
+            );
           }
         }
 

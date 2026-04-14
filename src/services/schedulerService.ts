@@ -10,7 +10,11 @@ import {
   buildReplyPrompt,
   buildInteractPrompt,
 } from "../prompts/index.js";
-import { AUTO_LIKE_PROMPT, AUTO_BOOKMARK_PROMPT, SCRAPE_PROMPT } from "./schedulerPrompts.js";
+import {
+  AUTO_LIKE_PROMPT,
+  AUTO_BOOKMARK_PROMPT,
+  SCRAPE_PROMPT,
+} from "./schedulerPrompts.js";
 dotenv.config();
 
 const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
@@ -31,14 +35,17 @@ async function buildCronJobs(): Promise<CronJob[]> {
   const replyPrompt = buildReplyPrompt(role, API);
   const interactPrompt = buildInteractPrompt(role, API);
 
-  const topicSuffix = role.name ? role.name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase() : "default";
+  const topicSuffix = role.name
+    ? role.name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase()
+    : "default";
 
   return [
     {
       name: `scrape_x_notifications_${topicSuffix}`,
       schedule: "20 * * * *",
       message: SCRAPE_PROMPT,
-      description: "Scrape X notifications and store replies (every hour at :20)",
+      description:
+        "Scrape X notifications and store replies (every hour at :20)",
     },
     {
       name: `reply_x_notifications_${topicSuffix}`,
@@ -50,31 +57,36 @@ async function buildCronJobs(): Promise<CronJob[]> {
       name: `research_and_collect_${topicSuffix}`,
       schedule: "0 */6 * * *",
       message: researchPrompt,
-      description: "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
+      description:
+        "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
     },
     {
       name: `research_and_draft_morning_${topicSuffix}`,
       schedule: "0 9 * * *",
       message: draftPrompt,
-      description: "Read top research from DB and create draft for review (9 AM daily)",
+      description:
+        "Read top research from DB and create draft for review (9 AM daily)",
     },
     {
       name: `research_and_draft_evening_${topicSuffix}`,
       schedule: "0 21 * * *",
       message: draftPrompt,
-      description: "Read top research from DB and create draft for review (9 PM daily)",
+      description:
+        "Read top research from DB and create draft for review (9 PM daily)",
     },
     {
       name: `auto_interact_hot_posts_${topicSuffix}`,
       schedule: "0 */4 * * *",
       message: interactPrompt,
-      description: "Automatically post CEO-style comments on hot posts (every 4 hours)",
+      description:
+        "Automatically post CEO-style comments on hot posts (every 4 hours)",
     },
     {
       name: `auto_like_posts_${topicSuffix}`,
       schedule: "0 10,22 * * *",
       message: AUTO_LIKE_PROMPT,
-      description: "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
+      description:
+        "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
     },
     {
       name: `auto_bookmark_posts_${topicSuffix}`,
@@ -106,7 +118,9 @@ function buildAddCommand(job: CronJob): string {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-export async function registerIsolatedJobs(): Promise<Record<string, unknown>[]> {
+export async function registerIsolatedJobs(): Promise<
+  Record<string, unknown>[]
+> {
   const results: Record<string, unknown>[] = [];
   const jobs = await buildCronJobs();
 
@@ -118,7 +132,11 @@ export async function registerIsolatedJobs(): Promise<Record<string, unknown>[]>
       results.push({ name: job.name, status: "registered", output });
     } catch (error: unknown) {
       log.error(`Failed to register: ${job.name}`);
-      results.push({ name: job.name, status: "failed", error: (error as Error).message });
+      results.push({
+        name: job.name,
+        status: "failed",
+        error: (error as Error).message,
+      });
     }
   }
 
@@ -130,8 +148,8 @@ export interface ListedJob {
   name: string;
   description: string;
   enabled: boolean;
-  nextRunAt: string | null;   // ISO 8601 converted from nextRunAtMs
-  lastRunAt: string | null;   // ISO 8601 converted from lastRunAtMs
+  nextRunAt: string | null; // ISO 8601 converted from nextRunAtMs
+  lastRunAt: string | null; // ISO 8601 converted from lastRunAtMs
 }
 
 const LIST_CMD = `openclaw cron list --json | tr ',' '\\n' | grep -E '"id"|"name"|"description"|"enabled"|"nextRunAtMs"|"lastRunAtMs"' | tr -d '"{}'`;
@@ -142,7 +160,9 @@ const LIST_CMD = `openclaw cron list --json | tr ',' '\\n' | grep -E '"id"|"name
  */
 function parseJobsFromText(output: string): ListedJob[] {
   const jobs: ListedJob[] = [];
-  let current: Partial<ListedJob & { nextRunAtMs?: string; lastRunAtMs?: string }> = {};
+  let current: Partial<
+    ListedJob & { nextRunAtMs?: string; lastRunAtMs?: string }
+  > = {};
 
   for (const raw of output.split("\n")) {
     const line = raw.trim();
@@ -162,16 +182,20 @@ function parseJobsFromText(output: string): ListedJob[] {
           name: current.name ?? "",
           description: current.description ?? "",
           enabled: current.enabled ?? true,
-          nextRunAt: current.nextRunAtMs ? new Date(Number(current.nextRunAtMs)).toISOString() : null,
-          lastRunAt: current.lastRunAtMs ? new Date(Number(current.lastRunAtMs)).toISOString() : null,
+          nextRunAt: current.nextRunAtMs
+            ? new Date(Number(current.nextRunAtMs)).toISOString()
+            : null,
+          lastRunAt: current.lastRunAtMs
+            ? new Date(Number(current.lastRunAtMs)).toISOString()
+            : null,
         });
       }
       current = { id: value };
-    } else if (key === "name")        current.name = value;
-    else if (key === "description")   current.description = value;
-    else if (key === "enabled")       current.enabled = value === "true";
-    else if (key === "nextRunAtMs")   current.nextRunAtMs = value;
-    else if (key === "lastRunAtMs")   current.lastRunAtMs = value;
+    } else if (key === "name") current.name = value;
+    else if (key === "description") current.description = value;
+    else if (key === "enabled") current.enabled = value === "true";
+    else if (key === "nextRunAtMs") current.nextRunAtMs = value;
+    else if (key === "lastRunAtMs") current.lastRunAtMs = value;
   }
 
   // Flush last job
@@ -181,8 +205,12 @@ function parseJobsFromText(output: string): ListedJob[] {
       name: current.name ?? "",
       description: current.description ?? "",
       enabled: current.enabled ?? true,
-      nextRunAt: current.nextRunAtMs ? new Date(Number(current.nextRunAtMs)).toISOString() : null,
-      lastRunAt: current.lastRunAtMs ? new Date(Number(current.lastRunAtMs)).toISOString() : null,
+      nextRunAt: current.nextRunAtMs
+        ? new Date(Number(current.nextRunAtMs)).toISOString()
+        : null,
+      lastRunAt: current.lastRunAtMs
+        ? new Date(Number(current.lastRunAtMs)).toISOString()
+        : null,
     });
   }
 
@@ -191,7 +219,11 @@ function parseJobsFromText(output: string): ListedJob[] {
 
 export function listJobs(): { jobs: ListedJob[]; total: number } {
   try {
-    const output = execSync(LIST_CMD, { encoding: "utf-8", timeout: 30_000, shell: "/bin/sh" }).trim();
+    const output = execSync(LIST_CMD, {
+      encoding: "utf-8",
+      timeout: 30_000,
+      shell: "/bin/sh",
+    }).trim();
     const jobs = parseJobsFromText(output);
     return { jobs, total: jobs.length };
   } catch (err: unknown) {
@@ -205,14 +237,17 @@ export function listJobs(): { jobs: ListedJob[]; total: number } {
  */
 function parseJobIds(): string[] {
   try {
-    const output = execSync(LIST_CMD, { encoding: "utf-8", timeout: 30_000, shell: "/bin/sh" }).trim();
+    const output = execSync(LIST_CMD, {
+      encoding: "utf-8",
+      timeout: 30_000,
+      shell: "/bin/sh",
+    }).trim();
     return parseJobsFromText(output).map((j) => j.id);
   } catch (err: unknown) {
     log.error(`[Scheduler] parseJobIds failed: ${(err as Error).message}`);
     return [];
   }
 }
-
 
 export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
   const results: Record<string, unknown>[] = [];
@@ -237,7 +272,9 @@ export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
   return results;
 }
 
-export async function registerSingleJob(jobName: string): Promise<Record<string, unknown>> {
+export async function registerSingleJob(
+  jobName: string,
+): Promise<Record<string, unknown>> {
   const jobs = await buildCronJobs();
   const job = jobs.find((j) => j.name === jobName);
   if (!job) {
@@ -254,11 +291,17 @@ export async function registerSingleJob(jobName: string): Promise<Record<string,
     return { name: job.name, status: "registered", output };
   } catch (error: unknown) {
     log.error(`Failed to register: ${job.name}`);
-    return { name: job.name, status: "failed", error: (error as Error).message };
+    return {
+      name: job.name,
+      status: "failed",
+      error: (error as Error).message,
+    };
   }
 }
 
-export async function removeSingleJob(jobId: string): Promise<Record<string, unknown>> {
+export async function removeSingleJob(
+  jobId: string,
+): Promise<Record<string, unknown>> {
   try {
     const output = runOpenClaw(`cron rm ${jobId}`);
     return { id: jobId, status: "removed", output };
@@ -267,7 +310,9 @@ export async function removeSingleJob(jobId: string): Promise<Record<string, unk
   }
 }
 
-export async function triggerSingleJob(jobId: string): Promise<Record<string, unknown>> {
+export async function triggerSingleJob(
+  jobId: string,
+): Promise<Record<string, unknown>> {
   try {
     const output = runOpenClaw(`cron run ${jobId}`);
     return { id: jobId, status: "triggered", output };
@@ -291,7 +336,7 @@ export async function getJobDefinitions(): Promise<CronJob[]> {
 
 /**
  * Get the DRAFT prompt with the currently active role config.
- * Used by telegram.ts for NEXT_SOURCE action.
+ * Used by contentReview routes.
  */
 export async function getDraftPrompt(): Promise<string> {
   const role = await getActiveRoleConfig();

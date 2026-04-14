@@ -24,12 +24,10 @@ Edit `.env` and fill in:
 ```env
 MONGO_URI=mongodb://localhost:27017/cinee_pipeline
 REDIS_URL=redis://localhost:6379/0
+ALLOWED_ORIGINS=https://your-frontend.com,https://admin.your-frontend.com
 PUBLIC_API_URL=http://localhost:3000
 PORT=3000
 FOUNDER_NAME=YourName
-CINEE_TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-TELEGRAM_WEBHOOK_URL=https://yourdomain.com/api/telegram/webhook
 X_USERNAME=your_x_handle
 ```
 

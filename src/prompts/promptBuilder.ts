@@ -24,7 +24,10 @@ function brandBanLine(brands: string[]): string {
 
 function slangLine(slangExamples: string[]): string {
   if (!slangExamples || slangExamples.length === 0) return "";
-  return `- Language Style: Use casual/insider slang naturally (e.g., ${slangExamples.slice(0, 4).map((s) => `"${s}"`).join(", ")}).`;
+  return `- Language Style: Use casual/insider slang naturally (e.g., ${slangExamples
+    .slice(0, 4)
+    .map((s) => `"${s}"`)
+    .join(", ")}).`;
 }
 
 // ── Public builders ───────────────────────────────────────────────────────────
@@ -34,7 +37,8 @@ function slangLine(slangExamples: string[]): string {
  */
 export function buildResearchPrompt(role: RoleConfig, apiUrl: string): string {
   const keywords = role.searchKeywords ?? role.engagementKeywords;
-  const styleLevel: HumanStyleLevel = (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
+  const styleLevel: HumanStyleLevel =
+    (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
 
   return `You are an AI Agent with browser access. Your job is to research the ${topicList(role.topics)} space on X and save all discovered posts to a database.
 
@@ -95,8 +99,17 @@ ${getHumanStyleRules(styleLevel)}`;
  * Builds the DRAFT_PROMPT — reads DB research and creates a draft post.
  */
 export function buildDraftPrompt(role: RoleConfig, apiUrl: string): string {
-  const styleLevel: HumanStyleLevel = (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
-  const blacklist = role.blacklistedWords ?? ["revolutionizing", "game-changer", "delve", "unleash", "testament", "incredible", "groundbreaking"];
+  const styleLevel: HumanStyleLevel =
+    (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
+  const blacklist = role.blacklistedWords ?? [
+    "revolutionizing",
+    "game-changer",
+    "delve",
+    "unleash",
+    "testament",
+    "incredible",
+    "groundbreaking",
+  ];
   const slang = role.slangExamples ?? [];
   const brands = role.brandMentionBan ?? [];
 
@@ -191,7 +204,7 @@ Set the header "Content-Type: application/json" and send EXACTLY this JSON body 
   }
 }
 - Report the HTTP status and response body of the draft creation to confirm success.
-- Do NOT post to X directly. The content will be reviewed via Telegram before posting.
+- Do NOT post to X directly.
 - Do NOT mark the CurationSource as "used". It will be marked "used" automatically when the user approves and posts the draft.`;
 }
 
@@ -199,8 +212,17 @@ Set the header "Content-Type: application/json" and send EXACTLY this JSON body 
  * Builds the REPLY_PROMPT — composes and posts replies to X mentions.
  */
 export function buildReplyPrompt(role: RoleConfig, apiUrl: string): string {
-  const styleLevel: HumanStyleLevel = (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
-  const blacklist = role.blacklistedWords ?? ["revolutionizing", "game-changer", "delve", "unleash", "testament", "incredible", "groundbreaking"];
+  const styleLevel: HumanStyleLevel =
+    (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
+  const blacklist = role.blacklistedWords ?? [
+    "revolutionizing",
+    "game-changer",
+    "delve",
+    "unleash",
+    "testament",
+    "incredible",
+    "groundbreaking",
+  ];
   const slang = role.slangExamples ?? [];
   const brands = role.brandMentionBan ?? [];
 
@@ -238,11 +260,22 @@ Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
  * Builds the AUTO_INTERACT_PROMPT — auto-comments on hot posts.
  */
 export function buildInteractPrompt(role: RoleConfig, apiUrl: string): string {
-  const styleLevel: HumanStyleLevel = (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
-  const blacklist = role.blacklistedWords ?? ["revolutionizing", "game-changer", "delve", "unleash", "testament", "incredible", "groundbreaking"];
+  const styleLevel: HumanStyleLevel =
+    (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
+  const blacklist = role.blacklistedWords ?? [
+    "revolutionizing",
+    "game-changer",
+    "delve",
+    "unleash",
+    "testament",
+    "incredible",
+    "groundbreaking",
+  ];
   const slang = role.slangExamples ?? [];
   const brands = role.brandMentionBan ?? [];
-  const topicKeywords = (role.searchKeywords ?? role.engagementKeywords).slice(0, 5).join(", ");
+  const topicKeywords = (role.searchKeywords ?? role.engagementKeywords)
+    .slice(0, 5)
+    .join(", ");
 
   return `You are an AI Agent with browser access. ${role.persona}
 Your goal is to engage in high-level discourse on X in the ${topicList(role.topics)} space. Your comments must feel like a peer-to-peer "insider" observation, not a drive-by opinion.
@@ -305,15 +338,24 @@ Report result.`;
 }
 
 /**
- * Builds the AI rewrite prompt — used in contentReview and telegram routes.
+ * Builds the AI rewrite prompt — used in contentReview routes.
  */
 export function buildRewritePrompt(
   role: RoleConfig,
   currentContent: string,
   userInstruction: string,
 ): string {
-  const styleLevel: HumanStyleLevel = (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
-  const blacklist = role.blacklistedWords ?? ["revolutionizing", "game-changer", "delve", "unleash", "testament", "incredible", "groundbreaking"];
+  const styleLevel: HumanStyleLevel =
+    (role.humanStyleLevel as HumanStyleLevel) ?? "moderate";
+  const blacklist = role.blacklistedWords ?? [
+    "revolutionizing",
+    "game-changer",
+    "delve",
+    "unleash",
+    "testament",
+    "incredible",
+    "groundbreaking",
+  ];
   const slang = role.slangExamples ?? [];
   const brands = role.brandMentionBan ?? [];
 

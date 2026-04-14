@@ -1,6 +1,6 @@
 # Cinee Pipeline
 
-CEO automation pipeline for [cinee.com](https://cinee.com). Uses **OpenClaw** browser automation to run the founder's social media presence on X (Twitter) — researching AI filmmaking trends, drafting posts, replying to mentions — all autonomously with a human-in-the-loop review API.
+CEO automation pipeline for [cinee.com](https://cinee.com). Uses **OpenClaw** browser automation to run the founder's social media presence on X (Twitter) — researching AI filmmaking trends, drafting posts, and replying to mentions — all autonomously with a REST API human-in-the-loop review layer.
 
 ---
 
@@ -31,7 +31,6 @@ CEO automation pipeline for [cinee.com](https://cinee.com). Uses **OpenClaw** br
 │            Node.js / Express (port 3000)        │
 │                                                 │
 │  /api/content-review/*  ← Draft lifecycle       │
-│  /api/telegram/*        ← Bot status & webhook  │
 │  /api/tools/*           ← DB CRUD + memory      │
 │  /api/scheduler/*       ← Cron management       │
 │  /api/topic-config/*    ← Runtime topic switch  │
@@ -46,10 +45,10 @@ CEO automation pipeline for [cinee.com](https://cinee.com). Uses **OpenClaw** br
 
 **Content pipeline flow:**
 
-1. OpenClaw cron jobs run on schedule — opens a browser, searches X, scrapes trends, generates draft content.
-2. Drafts are saved via `POST /api/content-review/drafts` and a Telegram notification is sent for visibility.
-3. A human reviews the draft and calls the REST API to **post now**, **AI rewrite**, **edit**, **schedule**, **approve**, or **reject**.
-4. On `post-now`, OpenClaw opens the browser, posts to X, verifies the post, and marks the draft as `POSTED`.
+1. OpenClaw cron jobs run on schedule — opens a browser, searches X, scrapes trends, and generates draft content via AI.
+2. Drafts are saved to MongoDB via `POST /api/content-review/drafts` with status `pending_review`.
+3. A human reviews drafts via the REST API and calls **post-now**, **ai-rewrite**, **edit**, **schedule**, **approve**, or **reject**.
+4. On `post-now`, OpenClaw opens the browser, posts to X, verifies the post was published, then marks the draft as `posted`.
 
 ---
 
@@ -78,8 +77,7 @@ src/
 │   └── index.ts                   ← Barrel export
 ├── routes/
 │   ├── contentReview.ts           ← Draft CRUD + post-now / ai-rewrite / edit
-│   ├── telegram.ts                ← Telegram webhook + bot status
-│   ├── tools.ts                   ← DB CRUD for all collections + Redis memory
+│   ├── tools.ts                   ← DB CRUD for all collections
 │   ├── scheduler.ts               ← Register / list / remove OpenClaw cron jobs
 │   ├── priorityAccounts.ts        ← Priority account management
 │   ├── topicConfig.ts             ← Topic config CRUD + activation
@@ -93,11 +91,12 @@ src/
 │   └── scanAndPostCron.ts         ← Scan approved posts and post to X
 ├── services/
 │   ├── schedulerService.ts        ← OpenClaw cron job definitions + prompt builders
-│   ├── telegramService.ts         ← Telegram Bot API wrapper
+│   ├── schedulerPrompts.ts        ← Prompt templates for cron jobs
 │   ├── topicConfigService.ts      ← Topic config DB queries + activation logic
-│   └── openclawAgentService.ts    ← Wrapper for OpenClaw text agent
+│   ├── openclawAgentService.ts    ← Wrapper for OpenClaw text agent
+│   ├── priorityAccountService.ts  ← Priority account business logic
+│   └── statusService.ts           ← Quick stats from MongoDB
 ├── tools/
-│   ├── memoryTools.ts             ← Redis key-value memory helpers
 │   ├── contentTools.ts            ← Character count, formatting, sentiment
 │   └── rateLimiter.ts             ← Rate limiting utilities
 └── utils/
@@ -108,14 +107,13 @@ src/
 
 ## Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| **Node.js 18+** | Required for native ESM and `tsx` |
-| **MongoDB** | Local instance or Atlas — set `MONGO_URI` |
-| **Redis** | Local instance or managed — set `REDIS_URL` |
-| **OpenClaw CLI** | Install from [docs.openclaw.ai](https://docs.openclaw.ai), must be authenticated |
-| **Telegram Bot** (optional) | Create via [@BotFather](https://t.me/BotFather), needed for Telegram notifications |
-| **X / Twitter account** | Set `X_USERNAME` for the posting agent |
+| Requirement             | Notes                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| **Node.js 18+**         | Required for native ESM and `tsx`                                                |
+| **MongoDB**             | Local instance or Atlas — set `MONGO_URI`                                        |
+| **Redis**               | Local instance or managed — set `REDIS_URL`                                      |
+| **OpenClaw CLI**        | Install from [docs.openclaw.ai](https://docs.openclaw.ai), must be authenticated |
+| **X / Twitter account** | Set `X_USERNAME` for the posting agent                                           |
 
 ---
 
@@ -148,28 +146,25 @@ REDIS_URL=redis://localhost:6379/0
 PORT=3000
 NODE_ENV=development
 
-# Public URL of this server — used in OpenClaw prompts and webhook registration.
-# Use ngrok or a real domain for production / Telegram webhook.
+# Public URL of this server — used in OpenClaw prompts as the callback base URL.
 PUBLIC_API_URL=http://localhost:3000
 
 # ── Security ──────────────────────────────────────────────────────────────────
-# All API routes require this key via x-api-key header or Authorization: Bearer <key>
+# All API routes require this key via x-api-key header or Authorization: Bearer <key>.
 APP_API_KEY=your-secret-api-key
 
 # Comma-separated list of allowed frontend origins for CORS.
-# Leave empty to allow all origins (useful for local dev).
+# Leave empty to allow all origins (dev mode).
 ALLOWED_ORIGINS=https://your-frontend.com
 
 # ── X (Twitter) ───────────────────────────────────────────────────────────────
 X_USERNAME=your_x_handle_without_at
 
-# ── Telegram Bot (optional — for draft notifications) ─────────────────────────
-CINEE_TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-TELEGRAM_CHAT_ID=your_chat_id
-TELEGRAM_WEBHOOK_URL=https://your-domain.com/api/telegram/webhook
-
 # ── Persona ───────────────────────────────────────────────────────────────────
 FOUNDER_NAME=Your Name
+
+# ── OpenClaw Agent ────────────────────────────────────────────────────────────
+OPENCLAW_AGENT=main
 
 # ── Role Config Override (optional) ──────────────────────────────────────────
 # Path to a JSON file that overrides the built-in RoleConfig.
@@ -179,17 +174,15 @@ FOUNDER_NAME=Your Name
 
 ### 3. Start MongoDB & Redis
 
-Make sure both services are running before starting the app:
-
 ```bash
-# MongoDB (macOS / Linux)
+# MongoDB
 mongod --dbpath /data/db
 
 # Redis
 redis-server
 ```
 
-Or use Docker:
+Or using Docker:
 
 ```bash
 docker run -d --name mongo -p 27017:27017 mongo:7
@@ -212,13 +205,11 @@ openclaw auth login
 npm run dev
 ```
 
-Starts the server with `tsx watch`. Any file change will auto-restart.
-
 ### Production
 
 ```bash
-npm run build     # Compile TypeScript → dist/
-npm start         # Run compiled output with node
+npm run build   # Compile TypeScript → dist/
+npm start       # Run compiled output
 ```
 
 ### Verify the Server is Running
@@ -227,7 +218,8 @@ npm start         # Run compiled output with node
 curl http://localhost:3000/api/health
 ```
 
-Expected response:
+Expected:
+
 ```json
 { "status": "ok" }
 ```
@@ -236,7 +228,7 @@ Expected response:
 
 ## Registering Cron Jobs
 
-Cron jobs run inside OpenClaw's isolated scheduler daemon. After the server is up, register jobs:
+Cron jobs run inside OpenClaw's isolated scheduler daemon. After the server is up, register them:
 
 ### Register All Jobs at Once
 
@@ -244,10 +236,10 @@ Cron jobs run inside OpenClaw's isolated scheduler daemon. After the server is u
 npm run cron:add-all
 ```
 
-### Register or Remove Individual Jobs
+### Manage Individual Jobs
 
 ```bash
-# Add specific jobs
+# Add
 npm run cron:add:scrape            # scrape_x_notifications
 npm run cron:add:reply             # reply_x_notifications
 npm run cron:add:research-morning  # research_and_draft_morning
@@ -256,7 +248,7 @@ npm run cron:add:collect           # research_and_collect
 npm run cron:add:post              # post_approved_content
 npm run cron:add:auto-interact     # auto_interact_hot_posts
 
-# Remove specific jobs
+# Remove
 npm run cron:remove:scrape
 npm run cron:remove:reply
 npm run cron:remove:research-morning
@@ -264,21 +256,21 @@ npm run cron:remove:research-evening
 npm run cron:remove:post
 npm run cron:remove:auto-interact
 
-# Remove all jobs
+# Remove all
 npm run cron:remove-all
 ```
 
 ### Cron Job Schedule
 
-| Job Name | Schedule | Description |
-|---|---|---|
-| `scrape_x_notifications` | Every hour at :20 | Scrapes X notifications, evaluates and saves to DB |
-| `reply_x_notifications` | Every hour at :40 | Replies to resolved mentions as CEO (≤300 chars) |
-| `research_and_draft_morning` | 9:00 AM daily | Searches X for AI film trends, creates a draft |
-| `research_and_draft_evening` | 9:00 PM daily | Same as above, evening run |
-| `research_and_collect` | Configurable | Collects AI film content from curation sources |
-| `post_approved_content` | Configurable | Posts approved drafts to X automatically |
-| `auto_interact_hot_posts` | Configurable | Engages with trending posts in the AI film space |
+| Job Name                     | Schedule          | Description                                                |
+| ---------------------------- | ----------------- | ---------------------------------------------------------- |
+| `scrape_x_notifications`     | Every hour at :20 | Scrapes X notifications, evaluates and saves replies to DB |
+| `reply_x_notifications`      | Every hour at :40 | Replies to resolved mentions as CEO (≤300 chars)           |
+| `research_and_draft_morning` | 9:00 AM daily     | Searches X for AI film trends, creates a draft             |
+| `research_and_draft_evening` | 9:00 PM daily     | Same as above, evening run                                 |
+| `research_and_collect`       | Configurable      | Collects AI film content from curation sources             |
+| `post_approved_content`      | Configurable      | Posts approved drafts to X automatically                   |
+| `auto_interact_hot_posts`    | Configurable      | Engages with trending posts in the AI film space           |
 
 ### Verify Registered Jobs
 
@@ -288,131 +280,155 @@ openclaw cron list
 
 ---
 
-## Telegram Webhook Setup (Optional)
-
-If you want Telegram notifications when new drafts are created:
-
-1. Expose your local server to the internet (e.g., with [ngrok](https://ngrok.com)):
-   ```bash
-   ngrok http 3000
-   ```
-
-2. Register the webhook:
-   ```bash
-   curl -X POST http://localhost:3000/api/telegram/setup \
-     -H "Content-Type: application/json" \
-     -H "x-api-key: your-secret-api-key" \
-     -d '{ "webhook_url": "https://your-ngrok-url.ngrok.io/api/telegram/webhook" }'
-   ```
-
-3. Verify:
-   ```bash
-   curl http://localhost:3000/api/telegram/status \
-     -H "x-api-key: your-secret-api-key"
-   ```
+## API Reference
 
 ---
 
-## API Reference
-
-All endpoints require the `x-api-key` header (or `Authorization: Bearer <key>`).
-
 ### Health & Status
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Server health check |
-| `GET` | `/api/status` | Daily pipeline stats |
+| Method | Endpoint      | Description          |
+| ------ | ------------- | -------------------- |
+| `GET`  | `/api/health` | Server health check  |
+| `GET`  | `/api/status` | Daily pipeline stats |
+
+---
 
 ### Content Review — Draft Lifecycle
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/content-review/drafts` | Create a new draft (called by OpenClaw agent) |
-| `GET` | `/api/content-review/drafts` | List drafts — `?status=pending_review,draft&limit=20&skip=0` |
-| `GET` | `/api/content-review/drafts/:id` | Get a single draft |
-| `PATCH` | `/api/content-review/drafts/:id` | Update draft fields (`raw_content`, `scheduled_at`, `status`) |
-| `PATCH` | `/api/content-review/drafts/:id/approve` | Approve a draft |
-| `PATCH` | `/api/content-review/drafts/:id/reject` | Reject a draft |
-| `PATCH` | `/api/content-review/drafts/:id/schedule` | Schedule — body: `{ "scheduled_at": "2026-04-20T09:00:00Z" }` |
-| `POST` | `/api/content-review/drafts/:id/post-now` | Post to X immediately via OpenClaw and mark as `POSTED` |
-| `POST` | `/api/content-review/drafts/:id/ai-rewrite` | AI rewrite — body: `{ "prompt": "make it shorter and more punchy" }` |
-| `POST` | `/api/content-review/drafts/:id/edit` | Manual edit — body: `{ "content": "New post text here" }` |
+| Method  | Endpoint                                    | Body                                    | Description                                            |
+| ------- | ------------------------------------------- | --------------------------------------- | ------------------------------------------------------ |
+| `POST`  | `/api/content-review/drafts`                | draft fields                            | Create a new draft (called by OpenClaw agent)          |
+| `GET`   | `/api/content-review/drafts`                | —                                       | List drafts — `?status=pending_review&limit=20&skip=0` |
+| `GET`   | `/api/content-review/drafts/:id`            | —                                       | Get a single draft                                     |
+| `PATCH` | `/api/content-review/drafts/:id`            | `raw_content`, `status`, `scheduled_at` | Update draft fields                                    |
+| `PATCH` | `/api/content-review/drafts/:id/approve`    | —                                       | Approve a draft                                        |
+| `PATCH` | `/api/content-review/drafts/:id/reject`     | —                                       | Reject a draft                                         |
+| `PATCH` | `/api/content-review/drafts/:id/schedule`   | `{ "scheduled_at": "ISO8601" }`         | Schedule a draft                                       |
+| `POST`  | `/api/content-review/drafts/:id/post-now`   | —                                       | Post to X immediately via OpenClaw, mark as `posted`   |
+| `POST`  | `/api/content-review/drafts/:id/ai-rewrite` | `{ "prompt": "..." }`                   | AI rewrite with optional instruction                   |
+| `POST`  | `/api/content-review/drafts/:id/edit`       | `{ "content": "..." }`                  | Replace content, reset to `pending_review`             |
 
-**Example — Post a draft immediately:**
-```bash
-curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/post-now \
-  -H "x-api-key: your-secret-api-key"
+**Draft status flow:**
+
+```
+draft → pending_review → approved → posted
+                       ↘ rejected
+                       ↘ scheduled → posted
 ```
 
-**Example — AI rewrite:**
+**Examples:**
+
 ```bash
-curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/ai-rewrite \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-secret-api-key" \
+# List all pending review drafts
+curl "http://localhost:3000/api/content-review/drafts?status=pending_review"
+
+# Post a draft immediately
+curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/post-now
+
+# AI rewrite with instruction
+curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/ai-rewrite
   -d '{ "prompt": "make it shorter and add a question at the end" }'
+
+# Manual content edit
+curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/edit
+  -d '{ "content": "Updated post text here." }'
+
+# Schedule a draft
+curl -X PATCH http://localhost:3000/api/content-review/drafts/DRAFT_ID/schedule
+  -d '{ "scheduled_at": "2026-04-20T09:00:00Z" }'
 ```
 
-**Example — Manual edit:**
-```bash
-curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/edit \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-secret-api-key" \
-  -d '{ "content": "Updated post content goes here." }'
-```
-
-### Telegram
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/telegram/setup` | Register Telegram webhook — body: `{ "webhook_url": "..." }` |
-| `POST` | `/api/telegram/webhook` | Receives Telegram updates (used by Telegram servers) |
-| `GET` | `/api/telegram/status` | Telegram bot + webhook status |
-
-### Topic Config (Dynamic Persona Switching)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/topic-config` | List all topic configs |
-| `GET` | `/api/topic-config/active` | Get the currently active RoleConfig |
-| `POST` | `/api/topic-config` | Create a new topic config |
-| `PATCH` | `/api/topic-config/:id` | Update a topic config |
-| `DELETE` | `/api/topic-config/:id` | Delete a topic config |
-| `POST` | `/api/topic-config/:id/activate` | Switch active topic (deactivates all others) |
-| `POST` | `/api/topic-config/deactivate-all` | Revert to `settings.ts` default |
-
-### Database Tools (`/api/tools/`)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/tools/db/posts` | Create a post record |
-| `GET` | `/api/tools/db/posts` | List posts — `?status=&content_type=&limit=&skip=` |
-| `PATCH` | `/api/tools/db/posts/:id` | Update post (status, metadata) |
-| `POST` | `/api/tools/db/replies` | Create a reply record |
-| `GET` | `/api/tools/db/replies` | List replies — `?status=draft,resolved&platform=x` |
-| `PATCH` | `/api/tools/db/replies/:id` | Update reply (e.g., mark as replied) |
-| `POST` | `/api/tools/db/persona` | Upsert a CEO topic stance |
-| `GET` | `/api/tools/db/stats` | Today's pipeline statistics |
-| `GET` | `/api/tools/memory/:key` | Read a Redis memory key |
-| `POST` | `/api/tools/memory/:key` | Write a Redis memory key |
-| `DELETE` | `/api/tools/memory/:key` | Delete a Redis memory key |
-
-### Priority Accounts
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/priority-accounts` | List all priority accounts |
-| `POST` | `/api/priority-accounts` | Add a priority account |
-| `PATCH` | `/api/priority-accounts/:id` | Update a priority account |
-| `DELETE` | `/api/priority-accounts/:id` | Remove a priority account |
+---
 
 ### Scheduler
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/scheduler/jobs` | List registered OpenClaw cron jobs |
-| `POST` | `/api/scheduler/jobs` | Register a new cron job |
-| `DELETE` | `/api/scheduler/jobs/:name` | Remove a cron job by name |
+| Method   | Endpoint                             | Description                         |
+| -------- | ------------------------------------ | ----------------------------------- |
+| `POST`   | `/api/scheduler/setup`               | Register all cron jobs in OpenClaw  |
+| `GET`    | `/api/scheduler/jobs`                | List registered cron jobs           |
+| `DELETE` | `/api/scheduler/jobs`                | Remove all cron jobs                |
+| `DELETE` | `/api/scheduler/jobs/:jobId`         | Remove a single job by ID           |
+| `POST`   | `/api/scheduler/jobs/:jobId/trigger` | Manually trigger a job              |
+| `GET`    | `/api/scheduler/check`               | Check OpenClaw gateway connectivity |
+
+---
+
+### Topic Config — Dynamic Persona Switching
+
+| Method   | Endpoint                           | Description                                  |
+| -------- | ---------------------------------- | -------------------------------------------- |
+| `GET`    | `/api/topic-config`                | List all topic configs                       |
+| `GET`    | `/api/topic-config/active`         | Get the currently active RoleConfig          |
+| `POST`   | `/api/topic-config`                | Create a new topic config                    |
+| `PATCH`  | `/api/topic-config/:id`            | Update a topic config                        |
+| `DELETE` | `/api/topic-config/:id`            | Delete a topic config                        |
+| `POST`   | `/api/topic-config/:id/activate`   | Switch active topic (deactivates all others) |
+| `POST`   | `/api/topic-config/deactivate-all` | Revert to `settings.ts` default              |
+
+---
+
+### Database Tools (`/api/tools/`)
+
+#### Posts
+
+| Method  | Endpoint                              | Description                                                  |
+| ------- | ------------------------------------- | ------------------------------------------------------------ |
+| `POST`  | `/api/tools/db/posts`                 | Create a post record                                         |
+| `GET`   | `/api/tools/db/posts`                 | List posts — `?status=&content_type=&platform=&limit=&skip=` |
+| `GET`   | `/api/tools/db/posts/:id`             | Get a single post                                            |
+| `PATCH` | `/api/tools/db/posts/:id`             | Update post fields                                           |
+| `GET`   | `/api/tools/db/posts/duplicate-check` | Check for duplicate — `?content=...&hours=48`                |
+
+#### Replies
+
+| Method   | Endpoint                    | Description                                                        |
+| -------- | --------------------------- | ------------------------------------------------------------------ |
+| `POST`   | `/api/tools/db/replies`     | Create reply records (single or array, default status: `resolved`) |
+| `GET`    | `/api/tools/db/replies`     | List replies — `?status=draft,resolved&platform=x&limit=&skip=`    |
+| `GET`    | `/api/tools/db/replies/:id` | Get a single reply                                                 |
+| `PATCH`  | `/api/tools/db/replies/:id` | Mark reply as `replied` (must be in `resolved` status)             |
+| `DELETE` | `/api/tools/db/replies/:id` | Delete a reply                                                     |
+
+#### Curation Sources
+
+| Method  | Endpoint                                     | Description                                                |
+| ------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `POST`  | `/api/tools/db/curation`                     | Batch upsert sources (deduplicated by `source_url`)        |
+| `GET`   | `/api/tools/db/curation`                     | List sources — `?status=&keyword_searched=&limit=&skip=`   |
+| `GET`   | `/api/tools/db/curation/top`                 | Top N by engagement — `?hours=24&limit=5&status=new`       |
+| `GET`   | `/api/tools/db/curation/interact-candidates` | Uninteracted sources for auto-engage — `?hours=24&limit=1` |
+| `GET`   | `/api/tools/db/curation/:id`                 | Get a single source                                        |
+| `PATCH` | `/api/tools/db/curation/:id`                 | Update source fields                                       |
+
+#### Interactions
+
+| Method | Endpoint                     | Description              |
+| ------ | ---------------------------- | ------------------------ |
+| `POST` | `/api/tools/db/interactions` | Record a new interaction |
+
+#### Persona Knowledge
+
+| Method | Endpoint                | Description                  |
+| ------ | ----------------------- | ---------------------------- |
+| `POST` | `/api/tools/db/persona` | Upsert a CEO topic stance    |
+| `GET`  | `/api/tools/db/persona` | List stances — `?topic=defi` |
+
+#### Stats
+
+| Method | Endpoint              | Description                 |
+| ------ | --------------------- | --------------------------- |
+| `GET`  | `/api/tools/db/stats` | Today's pipeline statistics |
+
+---
+
+### Priority Accounts
+
+| Method   | Endpoint                     | Description                |
+| -------- | ---------------------------- | -------------------------- |
+| `GET`    | `/api/priority-accounts`     | List all priority accounts |
+| `POST`   | `/api/priority-accounts`     | Add a priority account     |
+| `PATCH`  | `/api/priority-accounts/:id` | Update a priority account  |
+| `DELETE` | `/api/priority-accounts/:id` | Remove a priority account  |
 
 ---
 
@@ -420,46 +436,52 @@ curl -X POST http://localhost:3000/api/content-review/drafts/DRAFT_ID/edit \
 
 The pipeline's persona and content topics can be switched at runtime without restarting the server.
 
-**Option 1 — Via API (persisted in MongoDB):**
+**Via API (persisted in MongoDB):**
+
 ```bash
 # Create a new topic config
-curl -X POST http://localhost:3000/api/topic-config \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-secret-api-key" \
+curl -X POST http://localhost:3000/api/topic-config
   -d '{
     "name": "Crypto Founder",
     "brand": "MyProtocol",
     "founderName": "Alice",
-    "topics": ["DeFi", "Layer 2", "Web3"],
-    ...
+    "topics": ["DeFi", "Layer 2", "Web3"]
   }'
 
-# Activate it
-curl -X POST http://localhost:3000/api/topic-config/CONFIG_ID/activate \
-  -H "x-api-key: your-secret-api-key"
+# Activate it (all other configs are deactivated automatically)
+curl -X POST http://localhost:3000/api/topic-config/CONFIG_ID/activate
+
+# Revert to settings.ts default
+curl -X POST http://localhost:3000/api/topic-config/deactivate-all
 ```
 
-**Option 2 — Via JSON file (env override):**
+**Via JSON file (env override, applied on server start):**
+
 ```bash
 # In .env
 ROLE_CONFIG_PATH=/path/to/my-role.json
 ```
 
-The JSON file should contain any subset of `RoleConfig` fields — missing fields fall back to the default in `settings.ts`.
+The JSON file accepts any subset of `RoleConfig` fields. Missing fields fall back to the default in `settings.ts`.
 
 ---
 
 ## Scripts Reference
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start dev server with hot reload |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm start` | Run compiled server |
-| `npm test` | Run test suite with Vitest |
-| `npm run typecheck` | Type-check without emitting files |
-| `npm run cron:add-all` | Register all cron jobs in OpenClaw |
-| `npm run cron:remove-all` | Remove all cron jobs from OpenClaw |
-| `npm run cron:add <name>` | Register a single job by name |
-| `npm run cron:remove <name>` | Remove a single job by name |
-| `npm run scan-post` | Run the scan-and-post script manually |
+| Command                             | Description                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `npm run dev`                       | Start dev server with hot reload (`tsx watch`) |
+| `npm run build`                     | Compile TypeScript to `dist/`                  |
+| `npm start`                         | Run compiled server (`node dist/index.js`)     |
+| `npm test`                          | Run test suite with Vitest                     |
+| `npm run typecheck`                 | Type-check without emitting files              |
+| `npm run cron:add-all`              | Register all cron jobs in OpenClaw             |
+| `npm run cron:remove-all`           | Remove all cron jobs from OpenClaw             |
+| `npm run cron:add:scrape`           | Register `scrape_x_notifications`              |
+| `npm run cron:add:reply`            | Register `reply_x_notifications`               |
+| `npm run cron:add:research-morning` | Register morning research job                  |
+| `npm run cron:add:research-evening` | Register evening research job                  |
+| `npm run cron:add:collect`          | Register `research_and_collect`                |
+| `npm run cron:add:post`             | Register `post_approved_content`               |
+| `npm run cron:add:auto-interact`    | Register `auto_interact_hot_posts`             |
+| `npm run scan-post`                 | Run the scan-and-post script manually          |
