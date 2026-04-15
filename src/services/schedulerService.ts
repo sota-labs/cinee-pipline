@@ -102,10 +102,13 @@ async function buildCronJobs(): Promise<CronJob[]> {
  * Enqueue an openclaw command as a pending Task record.
  * The actual execution is handled by the task worker process.
  */
-async function createOpenClawTask(args: string): Promise<ITask> {
+async function createOpenClawTask(
+  type: ETaskType.CRON_JOB_ADD | ETaskType.CRON_JOB_REMOVE,
+  args: string,
+): Promise<ITask> {
   try {
     const task = await Task.create({
-      type: ETaskType.CRON_JOB,
+      type,
       agent: "openclaw",
       prompt: args,
       status: ETaskStatus.PENDING,
@@ -123,6 +126,10 @@ function buildAddCommand(job: CronJob): string {
   return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session isolated --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
 }
 
+function buildRemoveCommand(jobId: string): string {
+  return `cron rm ${jobId}`;
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function registerIsolatedJobs(): Promise<
@@ -134,7 +141,7 @@ export async function registerIsolatedJobs(): Promise<
   for (const job of jobs) {
     try {
       const cmd = buildAddCommand(job);
-      const task = await createOpenClawTask(cmd);
+      const task = await createOpenClawTask(ETaskType.CRON_JOB_ADD, cmd);
       log.info(`Registered: ${job.name} (${job.schedule})`);
       results.push({
         name: job.name,
@@ -165,10 +172,13 @@ export interface ListedJob {
 /**
  * List registered cron-job tasks from the database.
  */
-export async function listJobs(): Promise<{ jobs: ListedJob[]; total: number }> {
+export async function listJobs(): Promise<{
+  jobs: ListedJob[];
+  total: number;
+}> {
   try {
     const tasks = await Task.find({
-      type: ETaskType.RUN_AGENT,
+      type: ETaskType.CRON_JOB_ADD,
       agent: "openclaw",
       prompt: { $regex: /^cron add / },
     })
@@ -196,19 +206,42 @@ export async function listJobs(): Promise<{ jobs: ListedJob[]; total: number }> 
 
 export async function removeAllJobs(): Promise<Record<string, unknown>[]> {
   try {
-    const result = await Task.deleteMany({
-      type: ETaskType.RUN_AGENT,
+    const tasks = await Task.find({
+      type: ETaskType.CRON_JOB_ADD,
       agent: "openclaw",
       prompt: { $regex: /^cron add / },
-    });
-
-    if (result.deletedCount === 0) {
+    }).lean();
+    if (tasks.length === 0) {
       log.info("[Scheduler] No jobs found to remove");
       return [{ status: "no_jobs", message: "No cron jobs found" }];
     }
 
-    log.info(`[Scheduler] Removed ${result.deletedCount} job(s)`);
-    return [{ status: "removed", deletedCount: result.deletedCount }];
+    const removableJobs = tasks.filter(
+      (job) => job.status === ETaskStatus.COMPLETED,
+    );
+
+    for (const job of removableJobs) {
+      await createOpenClawTask(
+        ETaskType.CRON_JOB_REMOVE,
+        buildRemoveCommand(job.completed_job_id!),
+      );
+    }
+
+    const result = await Task.deleteMany({
+      _id: { $in: tasks.map((job) => job._id) },
+    });
+
+    log.info(
+      `[Scheduler] Queued ${removableJobs.length} removal command(s) and removed ${result.deletedCount} cron add task(s)`,
+    );
+    return [
+      {
+        status: "removed",
+        removedCount: result.deletedCount,
+        removalQueuedCount: removableJobs.length,
+        removalSkippedCount: tasks.length - removableJobs.length,
+      },
+    ];
   } catch (error: unknown) {
     log.error(`[Scheduler] removeAllJobs failed: ${(error as Error).message}`);
     return [{ status: "failed", error: (error as Error).message }];
@@ -229,7 +262,7 @@ export async function registerSingleJob(
   }
   try {
     const cmd = buildAddCommand(job);
-    const task = await createOpenClawTask(cmd);
+    const task = await createOpenClawTask(ETaskType.CRON_JOB_ADD, cmd);
     log.info(`Registered: ${job.name} (${job.schedule})`);
     return { name: job.name, status: "queued", taskId: task._id.toString() };
   } catch (error: unknown) {
@@ -246,12 +279,22 @@ export async function removeSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const result = await Task.findByIdAndDelete(jobId);
+    const existing = await Task.findOne({ completed_job_id: jobId });
+    if (!existing) {
+      return { id: jobId, status: "not_found", error: "Job not found" };
+    }
+
+    await createOpenClawTask(
+      ETaskType.CRON_JOB_REMOVE,
+      buildRemoveCommand(existing.completed_job_id!),
+    );
+    const result = await Task.findOneAndDelete({ completed_job_id: jobId });
     if (!result) {
       return { id: jobId, status: "not_found", error: "Job not found" };
     }
+
     log.info(`[Scheduler] Removed job: ${jobId}`);
-    return { id: jobId, status: "removed" };
+    return { id: jobId, status: "removed", removalQueued: true };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }
@@ -261,13 +304,11 @@ export async function triggerSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const existing = await Task.findById(jobId);
+    const existing = await Task.findOne({ completed_job_id: jobId });
     if (!existing) {
       return { id: jobId, status: "not_found", error: "Job not found" };
     }
-    // Re-queue with same prompt but fresh status
-    const task = await createOpenClawTask(existing.prompt);
-    return { id: jobId, status: "queued", taskId: task._id.toString() };
+    return { id: jobId, status: "queued", taskId: existing._id.toString() };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
   }

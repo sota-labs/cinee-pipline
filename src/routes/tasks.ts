@@ -17,7 +17,10 @@ tasksRouter.get("/", async (req: Request, res: Response) => {
     const filter: Record<string, unknown> = {};
 
     if (status) {
-      const statuses = (status as string).split(",").map((s) => s.trim()).filter(Boolean);
+      const statuses = (status as string)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
     if (type) filter.type = type;
@@ -104,6 +107,9 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     task.status = ETaskStatus.COMPLETED;
     task.result = req.body.result ?? "";
     task.completed_at = new Date();
+
+    const result_json = JSON.parse(task.result ?? "{}");
+    task.completed_job_id = result_json.id ?? "";
     await task.save();
 
     log.info(`Task ${task._id} (${task.type}) → completed`);

@@ -12,7 +12,8 @@ export enum ETaskType {
   POST_NOW = "post_now",
   AI_REWRITE = "ai_rewrite",
   SCAN_AND_POST = "scan_and_post",
-  CRON_JOB = "cron_job",
+  CRON_JOB_ADD = "cron_job_add",
+  CRON_JOB_REMOVE = "cron_job_remove",
 }
 
 export interface ITask extends Document {
@@ -35,6 +36,7 @@ export interface ITask extends Document {
   error_log?: string;
   started_at?: Date;
   completed_at?: Date;
+  completed_job_id?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -57,6 +59,7 @@ const taskSchema = new Schema<ITask>(
     error_log: { type: String },
     started_at: { type: Date },
     completed_at: { type: Date },
+    completed_job_id: { type: String },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
