@@ -14,6 +14,7 @@ export enum ETaskType {
   SCAN_AND_POST = "scan_and_post",
   CRON_JOB_ADD = "cron_job_add",
   CRON_JOB_REMOVE = "cron_job_remove",
+  CRON_JOB_TRIGGER = "cron_job_trigger",
 }
 
 export interface ITask extends Document {

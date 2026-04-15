@@ -103,7 +103,10 @@ async function buildCronJobs(): Promise<CronJob[]> {
  * The actual execution is handled by the task worker process.
  */
 async function createOpenClawTask(
-  type: ETaskType.CRON_JOB_ADD | ETaskType.CRON_JOB_REMOVE,
+  type:
+    | ETaskType.CRON_JOB_ADD
+    | ETaskType.CRON_JOB_REMOVE
+    | ETaskType.CRON_JOB_TRIGGER,
   args: string,
 ): Promise<ITask> {
   try {
@@ -128,6 +131,10 @@ function buildAddCommand(job: CronJob): string {
 
 function buildRemoveCommand(jobId: string): string {
   return `cron rm ${jobId}`;
+}
+
+function buildTriggerCommand(jobId: string): string {
+  return `cron run ${jobId}`;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -282,7 +289,7 @@ export async function removeSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const existing = await Task.findOne({ completed_job_id: jobId });
+    const existing = await Task.findById(jobId);
     if (!existing) {
       return { id: jobId, status: "not_found", error: "Job not found" };
     }
@@ -291,7 +298,7 @@ export async function removeSingleJob(
       ETaskType.CRON_JOB_REMOVE,
       buildRemoveCommand(existing.completed_job_id!),
     );
-    const result = await Task.findOneAndDelete({ completed_job_id: jobId });
+    const result = await Task.findByIdAndDelete(jobId);
     if (!result) {
       return { id: jobId, status: "not_found", error: "Job not found" };
     }
@@ -307,10 +314,15 @@ export async function triggerSingleJob(
   jobId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const existing = await Task.findOne({ completed_job_id: jobId });
+    const existing = await Task.findById(jobId);
     if (!existing) {
       return { id: jobId, status: "not_found", error: "Job not found" };
     }
+    await createOpenClawTask(
+      ETaskType.CRON_JOB_TRIGGER,
+      buildTriggerCommand(existing.completed_job_id!),
+    );
+
     return { id: jobId, status: "queued", taskId: existing._id.toString() };
   } catch (error: unknown) {
     return { id: jobId, status: "failed", error: (error as Error).message };
