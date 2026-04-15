@@ -12,7 +12,7 @@ export enum ETaskType {
   POST_NOW = "post_now",
   AI_REWRITE = "ai_rewrite",
   SCAN_AND_POST = "scan_and_post",
-  RUN_AGENT = "run_agent",
+  CRON_JOB = "cron_job",
 }
 
 export interface ITask extends Document {

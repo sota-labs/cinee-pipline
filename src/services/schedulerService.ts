@@ -105,7 +105,7 @@ async function buildCronJobs(): Promise<CronJob[]> {
 async function createOpenClawTask(args: string): Promise<ITask> {
   try {
     const task = await Task.create({
-      type: ETaskType.RUN_AGENT,
+      type: ETaskType.CRON_JOB,
       agent: "openclaw",
       prompt: args,
       status: ETaskStatus.PENDING,
@@ -136,7 +136,11 @@ export async function registerIsolatedJobs(): Promise<
       const cmd = buildAddCommand(job);
       const task = await createOpenClawTask(cmd);
       log.info(`Registered: ${job.name} (${job.schedule})`);
-      results.push({ name: job.name, status: "queued", taskId: task._id.toString() });
+      results.push({
+        name: job.name,
+        status: "queued",
+        taskId: task._id.toString(),
+      });
     } catch (error: unknown) {
       log.error(`Failed to register: ${job.name}`);
       results.push({

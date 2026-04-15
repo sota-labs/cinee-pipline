@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { ETaskStatus, ETaskType } from "../db/models/Task.js";
-import { ECurationStatus, ECurationMediaType } from "../db/models/CurationSource.js";
+import {
+  ECurationStatus,
+  ECurationMediaType,
+} from "../db/models/CurationSource.js";
 
 describe("ETaskStatus", () => {
   it("has all four expected values", () => {
@@ -20,7 +23,7 @@ describe("ETaskType", () => {
     expect(ETaskType.POST_NOW).toBe("post_now");
     expect(ETaskType.AI_REWRITE).toBe("ai_rewrite");
     expect(ETaskType.SCAN_AND_POST).toBe("scan_and_post");
-    expect(ETaskType.RUN_AGENT).toBe("run_agent");
+    expect(ETaskType.CRON_JOB).toBe("run_agent");
   });
 
   it("contains exactly 4 entries", () => {

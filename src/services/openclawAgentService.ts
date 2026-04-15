@@ -26,7 +26,7 @@ export interface CreateTaskOptions {
  */
 export async function createAgentTask(opts: CreateTaskOptions): Promise<ITask> {
   const task = await Task.create({
-    type: opts.type ?? ETaskType.RUN_AGENT,
+    type: opts.type ?? ETaskType.CRON_JOB,
     agent: settings.openClawAgent,
     prompt: opts.prompt,
     ref_id: opts.ref_id,
