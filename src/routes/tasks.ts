@@ -113,7 +113,7 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
       id: resultJson.id,
       name: resultJson.name,
       description: resultJson.description,
-      state: resultJson.state,
+      state: resultJson.state
     });
     task.result = resultString;
     await task.save();
