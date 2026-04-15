@@ -23,7 +23,9 @@ describe("ETaskType", () => {
     expect(ETaskType.POST_NOW).toBe("post_now");
     expect(ETaskType.AI_REWRITE).toBe("ai_rewrite");
     expect(ETaskType.SCAN_AND_POST).toBe("scan_and_post");
-    expect(ETaskType.CRON_JOB).toBe("run_agent");
+    expect(ETaskType.CRON_JOB_ADD).toBe("cron_job_add");
+    expect(ETaskType.CRON_JOB_REMOVE).toBe("cron_job_remove");
+    expect(ETaskType.CRON_JOB_TRIGGER).toBe("cron_job_trigger");
   });
 
   it("contains exactly 4 entries", () => {
