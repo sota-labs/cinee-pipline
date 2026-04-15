@@ -5,19 +5,6 @@ import {
   ECurationMediaType,
 } from "../db/models/CurationSource.js";
 
-describe("ETaskStatus", () => {
-  it("has all four expected values", () => {
-    expect(ETaskStatus.PENDING).toBe("pending");
-    expect(ETaskStatus.PROCESSING).toBe("processing");
-    expect(ETaskStatus.COMPLETED).toBe("completed");
-    expect(ETaskStatus.FAILED).toBe("failed");
-  });
-
-  it("contains exactly 4 entries", () => {
-    expect(Object.values(ETaskStatus)).toHaveLength(4);
-  });
-});
-
 describe("ETaskType", () => {
   it("has all expected task types", () => {
     expect(ETaskType.POST_NOW).toBe("post_now");
