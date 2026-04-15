@@ -167,6 +167,7 @@ export interface ListedJob {
   description: string;
   status: string;
   createdAt: string;
+  nextRunAt?: string;
 }
 
 /**
@@ -179,8 +180,7 @@ export async function listJobs(): Promise<{
   try {
     const tasks = await Task.find({
       type: ETaskType.CRON_JOB_ADD,
-      agent: "openclaw",
-      prompt: { $regex: /^cron add / },
+      status: ETaskStatus.COMPLETED,
     })
       .sort({ created_at: -1 })
       .lean();
@@ -188,12 +188,15 @@ export async function listJobs(): Promise<{
     const jobs: ListedJob[] = tasks.map((t) => {
       const nameMatch = t.prompt.match(/--name "([^"]+)"/);
       const descMatch = t.prompt.match(/--description "([^"]+)"/);
+      const result_json = JSON.parse(t.result ?? "{}");
+      const nextRunAt = result_json.state?.nextRunAtMs;
       return {
         id: String(t._id),
         name: nameMatch?.[1] ?? "unknown",
         description: descMatch?.[1] ?? "",
         status: t.status,
         createdAt: t.created_at.toISOString(),
+        nextRunAt: nextRunAt ? new Date(nextRunAt).toISOString() : undefined,
       };
     });
 
