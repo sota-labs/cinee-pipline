@@ -16,7 +16,7 @@ describe("ETaskType", () => {
   });
 
   it("contains exactly 4 entries", () => {
-    expect(Object.values(ETaskType)).toHaveLength(4);
+    expect(Object.values(ETaskType)).toHaveLength(6);
   });
 });
 
