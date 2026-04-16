@@ -1,11 +1,6 @@
 /** Content Review routes — manage drafts through the review flow. */
 import { Router, type Request, type Response } from "express";
-import {
-  Post,
-  EPostStatus,
-  Task,
-  ETaskType,
-} from "../db/index.js";
+import { Post, EPostStatus, Task, ETaskType } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { settings } from "../config/settings.js";
 import { buildRewritePrompt } from "../prompts/index.js";
@@ -228,7 +223,9 @@ contentReviewRouter.post(
         });
       }
 
-      const prompt = buildPostNowPrompt(draft.raw_content, settings.xUsername);
+      const message = buildPostNowPrompt(draft.raw_content, settings.xUsername);
+      const escaped = message.replace(/'/g, "'\\''");
+      const prompt = `agent --agent ${settings.openClawAgent} --message '${escaped}'`;
 
       const task = await Task.create({
         type: ETaskType.POST_NOW,
@@ -270,7 +267,13 @@ contentReviewRouter.post(
       const userInstruction: string =
         req.body.prompt || "Rewrite this to be more punchy and engaging";
       const role = await getActiveRoleConfig();
-      const prompt = buildRewritePrompt(role, draft.raw_content, userInstruction);
+      const message = buildRewritePrompt(
+        role,
+        draft.raw_content,
+        userInstruction,
+      );
+      const escaped = message.replace(/'/g, "'\\''");
+      const prompt = `agent --agent ${settings.openClawAgent} --message '${escaped}'`;
 
       const task = await Task.create({
         type: ETaskType.AI_REWRITE,

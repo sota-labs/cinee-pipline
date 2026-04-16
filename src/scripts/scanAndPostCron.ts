@@ -56,7 +56,9 @@ async function scanAndCreateTasks() {
     log.info(`Found ${posts.length} posts ready to publish.`);
 
     for (const post of posts) {
-      log.info(`Creating task for post ${post._id} (scheduled_at: ${post.scheduled_at})`);
+      log.info(
+        `Creating task for post ${post._id} (scheduled_at: ${post.scheduled_at})`,
+      );
 
       // Skip if a pending/processing task already exists for this post
       const existing = await Task.findOne({
@@ -66,12 +68,16 @@ async function scanAndCreateTasks() {
       });
 
       if (existing) {
-        log.info(`Task already exists (${existing._id}) for post ${post._id} — skipping`);
+        log.info(
+          `Task already exists (${existing._id}) for post ${post._id} — skipping`,
+        );
         lastProcessedCursorId = post._id.toString();
         continue;
       }
 
-      const prompt = buildPostNowPrompt(post.raw_content, settings.xUsername);
+      const message = buildPostNowPrompt(post.raw_content, settings.xUsername);
+      const escaped = message.replace(/'/g, "'\\''");
+      const prompt = `agent --agent ${settings.openClawAgent} --message '${escaped}'`;
 
       const task = await Task.create({
         type: ETaskType.SCAN_AND_POST,
@@ -86,7 +92,9 @@ async function scanAndCreateTasks() {
         },
       });
 
-      log.info(`Task created: ${task._id} (scan_and_post) for post ${post._id}`);
+      log.info(
+        `Task created: ${task._id} (scan_and_post) for post ${post._id}`,
+      );
       lastProcessedCursorId = post._id.toString();
     }
   } catch (err) {
@@ -104,7 +112,9 @@ async function startDaemon() {
     await scanAndCreateTasks();
   }, INTERVAL_MS);
 
-  log.info("Scan daemon initialized: will check for scheduled posts every 1.5 hours.");
+  log.info(
+    "Scan daemon initialized: will check for scheduled posts every 1.5 hours.",
+  );
 }
 
 startDaemon().catch((err) => {
