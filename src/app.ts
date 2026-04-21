@@ -10,6 +10,7 @@ import { topicConfigRouter } from "./routes/topicConfig.js";
 import { tasksRouter } from "./routes/tasks.js";
 import kolsRouter from "./routes/kols.js";
 import kolPostsRouter from "./routes/kolPosts.js";
+import kolSettingsRouter from "./routes/kolSettings.js";
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -24,6 +25,7 @@ app.use("/api/topic-config", topicConfigRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/kols", kolsRouter);
 app.use("/api/kol-posts", kolPostsRouter);
+app.use("/api/kol-settings", kolSettingsRouter);
 
 app.get("/", (_req, res) => {
   res.json({

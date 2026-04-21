@@ -209,8 +209,11 @@ export class ReplyEngineService {
       // Route based on mode
       if (suggestion.mode === EReplyMode.AFK) {
         await this.processAFKMode(suggestion);
+      } else {
+        // Manual mode: Send Telegram notification
+        const { sendSuggestionForReview } = await import("../telegram/kolTelegramBotNative.js");
+        await sendSuggestionForReview(suggestion);
       }
-      // Manual mode: Telegram notification will be handled by separate service
 
       return true;
     } catch (error) {
