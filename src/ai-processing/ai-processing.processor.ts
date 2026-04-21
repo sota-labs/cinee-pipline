@@ -2,7 +2,8 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
-import { PrismaService } from '../prisma/prisma.service';
+import { findKolById, updateKolStyle, analyzeKolStyle, findSimilarKolExamples, appendWritingSamples } from '../services/kolService.js';
+import { findKolPostById, updateKolPost, findKolPostProcessing, upsertKolPostProcessing, createPendingComment, updatePendingComment } from '../services/kolPostService.js';
 import { AiProcessingService, TopComment } from './ai-processing.service';
 import { BULL_QUEUES, KOL_CONSTANTS } from '../common/constants/kol.constants';
 import Redis from 'ioredis';
@@ -18,7 +19,6 @@ export class AiProcessingProcessor {
   private readonly redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly aiService: AiProcessingService,
     @InjectQueue(BULL_QUEUES.TELEGRAM_APPROVAL) private readonly telegramQueue: Queue,
     @InjectQueue(BULL_QUEUES.ENGAGEMENT) private readonly engagementQueue: Queue,
@@ -30,11 +30,11 @@ export class AiProcessingProcessor {
     this.logger.log(`Processing post ${kolPostId}`);
 
     // Mark post as processing
-    await this.prisma.kolPost.update({ where: { id: kolPostId }, data: { status: 'PROCESSING' } });
+    await updateKolPost(kolPostId, { status: 'PROCESSING' });
 
     const [kolPost, kol] = await Promise.all([
-      this.prisma.kolPost.findUnique({ where: { id: kolPostId } }),
-      this.prisma.kol.findUnique({ where: { id: kolId } }),
+      findKolPostById(kolPostId),
+      findKolById(kolId),
     ]);
 
     if (!kolPost || !kol) {
@@ -43,9 +43,7 @@ export class AiProcessingProcessor {
     }
 
     // Get top comments from processing record if they exist (scraped by OpenClaw callback)
-    const existingProcessing = await this.prisma.kolPostProcessing.findUnique({
-      where: { kolPostId },
-    });
+    const existingProcessing = await findKolPostProcessing(kolPostId);
 
     const topComments: TopComment[] = existingProcessing
       ? (existingProcessing.topComments as unknown as TopComment[])
@@ -60,41 +58,35 @@ export class AiProcessingProcessor {
     });
 
     // Save processing result
-    await this.prisma.kolPostProcessing.upsert({
-      where: { kolPostId },
-      create: {
-        kolPostId,
-        summary: result.summary,
-        topComments: topComments as object[],
-        sentimentJson: result.sentiment as object,
-        trendSummary: result.sentiment.trend_summary,
-      },
-      update: {
-        summary: result.summary,
-        sentimentJson: result.sentiment as object,
-        trendSummary: result.sentiment.trend_summary,
-      },
+    await upsertKolPostProcessing(kolPostId, {
+      summary: result.summary,
+      topComments: topComments as object[],
+      sentimentJson: result.sentiment as object,
+      trendSummary: result.sentiment.trend_summary,
     });
 
     // Save all 3 candidates as PendingComment records
-    const savedComments = await Promise.all(
-      result.candidates.map((c, i) =>
-        this.prisma.pendingComment.create({
-          data: {
-            kolPostId,
-            kolId,
-            content: c.content,
-            alignment: c.alignment,
-            rationale: c.rationale,
-            candidateIndex: i,
-            status: 'PENDING_REVIEW',
-          },
-        }),
-      ),
-    );
+    const savedComments: { id: string }[] = [];
+    for (let i = 0; i < result.candidates.length; i++) {
+      const c = result.candidates[i];
+      const updatedPost = await createPendingComment(kolPostId, {
+        kolPostId,
+        kolId,
+        content: c.content,
+        alignment: c.alignment,
+        rationale: c.rationale,
+        candidateIndex: i,
+        status: 'PENDING_REVIEW',
+        isAutoSelected: false,
+      });
+      if (updatedPost?.pendingComments) {
+        const newComment = updatedPost.pendingComments[updatedPost.pendingComments.length - 1];
+        savedComments.push({ id: newComment._id!.toString() });
+      }
+    }
 
     // Mark post as processed
-    await this.prisma.kolPost.update({ where: { id: kolPostId }, data: { status: 'PROCESSED' } });
+    await updateKolPost(kolPostId, { status: 'PROCESSED' });
 
     // Check mode from Redis
     const mode = (await this.redis.get('bot:mode')) ?? 'manual';
@@ -103,10 +95,7 @@ export class AiProcessingProcessor {
       const best = this.aiService.selectAfkCandidate(result.candidates, result.sentiment);
       const bestRecord = savedComments[result.candidates.indexOf(best)];
 
-      await this.prisma.pendingComment.update({
-        where: { id: bestRecord.id },
-        data: { status: 'AUTO_SELECTED', isAutoSelected: true },
-      });
+      await updatePendingComment(bestRecord.id, { status: 'AUTO_SELECTED', isAutoSelected: true });
 
       // Random delay 1-3 min before posting (anti-ban)
       const delayMs = this.randomDelay(

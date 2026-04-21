@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { PrismaService } from '../prisma/prisma.service';
+import { findPendingCommentById, updatePendingComment } from '../services/kolPostService.js';
 import { KOL_CONSTANTS, BULL_QUEUES } from '../common/constants/kol.constants';
 
 export type VisibilityStatus = 'visible' | 'collapsed' | 'flagged' | 'unknown';
@@ -17,7 +17,6 @@ export class EngagementService {
   private readonly logger = new Logger(EngagementService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     @InjectQueue(BULL_QUEUES.ENGAGEMENT) private readonly engagementQueue: Queue,
   ) {}
 
@@ -50,7 +49,7 @@ export class EngagementService {
     commentId: string,
     result: VisibilityCheckResult,
   ): Promise<void> {
-    const comment = await this.prisma.pendingComment.findUnique({ where: { id: commentId } });
+    const comment = await findPendingCommentById(commentId);
     if (!comment) return;
 
     let finalStatus: string | undefined;
@@ -65,10 +64,7 @@ export class EngagementService {
     }
 
     if (finalStatus) {
-      await this.prisma.pendingComment.update({
-        where: { id: commentId },
-        data: { status: finalStatus as never },
-      });
+      await updatePendingComment(commentId, { status: finalStatus as never });
       this.logger.log(
         `Comment ${commentId} final status: ${finalStatus} (visibility: ${result.status})`,
       );
@@ -81,16 +77,15 @@ export class EngagementService {
   }
 
   async getCommentStatus(commentId: string) {
-    return this.prisma.pendingComment.findUnique({
-      where: { id: commentId },
-      select: {
-        id: true,
-        status: true,
-        postedAt: true,
-        postedUrl: true,
-        content: true,
-      },
-    });
+    const comment = await findPendingCommentById(commentId);
+    if (!comment) return null;
+    return {
+      id: comment._id?.toString(),
+      status: comment.status,
+      postedAt: comment.postedAt,
+      postedUrl: comment.postedUrl,
+      content: comment.content,
+    };
   }
 
   computeRandomDelay(minMinutes: number, maxMinutes: number): number {

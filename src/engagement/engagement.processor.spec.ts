@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { EngagementProcessor } from './engagement.processor';
-import { PrismaService } from '../prisma/prisma.service';
+import { KolDbService } from '../kol/kol-db.service';
 import { OpenClawService } from '../openclaw/openclaw.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { EngagementService } from './engagement.service';
 
-const mockPrisma = {
-  pendingComment: { findUnique: jest.fn() },
+const mockKolDb = {
+  findPendingCommentById: jest.fn(),
 };
 
 const mockOpenClaw = {
@@ -22,7 +22,7 @@ describe('EngagementProcessor', () => {
     const module = await Test.createTestingModule({
       providers: [
         EngagementProcessor,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: KolDbService, useValue: mockKolDb },
         { provide: OpenClawService, useValue: mockOpenClaw },
         { provide: TelegramService, useValue: mockTelegram },
         { provide: EngagementService, useValue: mockEngagementService },
@@ -34,7 +34,7 @@ describe('EngagementProcessor', () => {
 
   describe('handlePostComment', () => {
     it('calls OpenClaw executeAgent for APPROVED comment', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.findPendingCommentById.mockResolvedValue({
         id: 'c1',
         content: 'great post!',
         status: 'APPROVED',
@@ -49,7 +49,7 @@ describe('EngagementProcessor', () => {
     });
 
     it('calls OpenClaw for AUTO_SELECTED comment', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.findPendingCommentById.mockResolvedValue({
         id: 'c1',
         content: 'nice!',
         status: 'AUTO_SELECTED',
@@ -63,7 +63,7 @@ describe('EngagementProcessor', () => {
     });
 
     it('skips posting for REJECTED comment', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.findPendingCommentById.mockResolvedValue({
         id: 'c1',
         content: 'skip me',
         status: 'REJECTED',
@@ -77,7 +77,7 @@ describe('EngagementProcessor', () => {
     });
 
     it('skips when comment not found', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue(null);
+      mockKolDb.findPendingCommentById.mockResolvedValue(null);
 
       await processor.handlePostComment({
         data: { pendingCommentId: 'bad-id', kolPostId: 'p1', postUrl: 'https://x.com/kol/1' },
@@ -89,7 +89,7 @@ describe('EngagementProcessor', () => {
 
   describe('handleVisibilityCheck', () => {
     it('calls OpenClaw with visibility check prompt when postedUrl exists', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.findPendingCommentById.mockResolvedValue({
         id: 'c1',
         postedUrl: 'https://x.com/u/status/123',
         status: 'APPROVED',
@@ -104,7 +104,7 @@ describe('EngagementProcessor', () => {
     });
 
     it('skips when no postedUrl', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.findPendingCommentById.mockResolvedValue({
         id: 'c1',
         postedUrl: null,
         status: 'APPROVED',

@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { PrismaService } from '../prisma/prisma.service';
+import { findKols, updateKol, findKolById, appendWritingSamples, MIN_SAMPLES_FOR_STYLE_LEARN } from '../services/kolService.js';
+import { createKolPost, countKolPosts, upsertKolPostProcessing, updatePendingComment, findKolPostById, countKolPostsByKolId } from '../services/kolPostService.js';
 import { KOL_CONSTANTS, BULL_QUEUES } from '../common/constants/kol.constants';
 import { TopComment } from '../ai-processing/ai-processing.service';
 
@@ -24,7 +25,6 @@ export class ToolsService {
   private readonly logger = new Logger(ToolsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     @InjectQueue(BULL_QUEUES.KOL_CRAWL) private readonly crawlQueue: Queue,
     @InjectQueue(BULL_QUEUES.AI_PIPELINE) private readonly aiQueue: Queue,
     @InjectQueue(BULL_QUEUES.ENGAGEMENT) private readonly engagementQueue: Queue,
@@ -39,36 +39,28 @@ export class ToolsService {
       writing_samples?: string[];
     };
 
-    await this.prisma.kol.update({
-      where: { id: kolId },
-      data: {
-        ...(style_summary && { styleSummary: style_summary }),
-        ...(personality_notes && { personalityNotes: personality_notes }),
-        ...(slang_vocab && { slangVocab: slang_vocab }),
-        styleLastLearnedAt: new Date(),
-      },
-    });
+    const updateData: Record<string, unknown> = { styleLastLearnedAt: new Date() };
+    if (style_summary) updateData.styleSummary = style_summary;
+    if (personality_notes) updateData.personalityNotes = personality_notes;
+    if (slang_vocab) updateData.slangVocab = slang_vocab;
+    await updateKol(kolId, updateData);
 
     if (writing_samples?.length) {
-      const kol = await this.prisma.kol.findUnique({
-        where: { id: kolId },
-        select: { writingSamples: true },
-      });
-      const merged = [...(kol?.writingSamples ?? []), ...writing_samples].slice(-50);
-      await this.prisma.kol.update({ where: { id: kolId }, data: { writingSamples: merged } });
+      await appendWritingSamples(kolId, writing_samples, 50);
     }
 
     return { success: true };
   }
 
   async getCrawlTargets(limit: number, offset: number) {
-    const kols = await this.prisma.kol.findMany({
-      where: { isActive: true },
-      select: { id: true, handle: true, platform: true, lastCrawledAt: true, profileUrl: true },
-      take: limit,
-      skip: offset,
-      orderBy: { lastCrawledAt: 'asc' },
-    });
+    const result = await findKols({ isActive: true, limit, skip: offset });
+    const kols = result.data.map(kol => ({
+      id: kol._id!.toString(),
+      handle: kol.handle,
+      platform: kol.platform,
+      lastCrawledAt: kol.lastCrawledAt,
+      profileUrl: kol.profileUrl,
+    }));
     return { success: true, data: kols };
   }
 
@@ -88,29 +80,28 @@ export class ToolsService {
         (p.shares ?? 0) * KOL_CONSTANTS.ENGAGEMENT_WEIGHTS.share;
 
       try {
-        const kolPost = await this.prisma.kolPost.create({
-          data: {
-            kolId,
-            postUrl: p.post_url,
-            externalPostId: p.external_post_id,
-            content: p.content,
-            likes: p.likes ?? 0,
-            comments: p.comments ?? 0,
-            shares: p.shares ?? 0,
-            engagementScore,
-            postedAt: new Date(p.posted_at),
-            status: 'NEW',
-          },
+        const kolPost = await createKolPost({
+          kolId,
+          postUrl: p.post_url,
+          externalPostId: p.external_post_id,
+          content: p.content,
+          likes: p.likes ?? 0,
+          comments: p.comments ?? 0,
+          shares: p.shares ?? 0,
+          engagementScore,
+          postedAt: new Date(p.posted_at),
+          status: 'NEW',
         });
         created++;
         // Trigger AI processing pipeline for each new post
         await this.aiQueue.add(
           'process-post',
-          { kolPostId: kolPost.id, kolId },
+          { kolPostId: kolPost._id!.toString(), kolId },
           { attempts: 2, backoff: 30_000 },
         );
       } catch (e: unknown) {
-        if ((e as { code?: string }).code === 'P2002') {
+        // Check for duplicate key error (MongoDB error code 11000)
+        if ((e as { code?: number }).code === 11000) {
           duplicates++; // unique constraint on postUrl
         } else {
           throw e;
@@ -119,17 +110,10 @@ export class ToolsService {
     }
 
     // Check if we should re-run style learning
-    const kol = await this.prisma.kol.findUnique({
-      where: { id: kolId },
-      select: {
-        writingSamples: true,
-        styleLastLearnedAt: true,
-        stylePostCountAtLastLearn: true,
-      },
-    });
+    const kol = await findKolById(kolId);
 
     if (kol) {
-      const newPostCount = await this.prisma.kolPost.count({ where: { kolId } });
+      const newPostCount = await countKolPosts({ kolId });
       const shouldLearn =
         !kol.styleLastLearnedAt ||
         newPostCount - kol.stylePostCountAtLastLearn >= KOL_CONSTANTS.MIN_SAMPLES_FOR_STYLE_LEARN;
@@ -154,23 +138,15 @@ export class ToolsService {
     const { top_comments } = body as { top_comments?: TopComment[] };
 
     if (top_comments?.length) {
-      await this.prisma.kolPostProcessing.upsert({
-        where: { kolPostId },
-        create: {
-          kolPostId,
-          topComments: top_comments as object[],
-          sentimentJson: {},
-          trendSummary: '',
-        },
-        update: { topComments: top_comments as object[] },
+      await upsertKolPostProcessing(kolPostId, {
+        topComments: top_comments as object[],
+        sentimentJson: {},
+        trendSummary: '',
       });
     }
 
     // Re-trigger AI pipeline now that comments are available
-    const kolPost = await this.prisma.kolPost.findUnique({
-      where: { id: kolPostId },
-      select: { kolId: true, status: true },
-    });
+    const kolPost = await findKolPostById(kolPostId);
 
     if (kolPost && kolPost.status !== 'PROCESSED') {
       await this.aiQueue.add(
@@ -191,18 +167,11 @@ export class ToolsService {
       this.logger.warn(
         `Comment ${commentId} post callback: success=${success}, url=${posted_url}`,
       );
-      await this.prisma.pendingComment.update({
-        where: { id: commentId },
-        data: { status: 'FAILED' as never },
-      });
+      await updatePendingComment(commentId, { status: 'FAILED' as never });
       return { success: false };
     }
 
-    await this.prisma.pendingComment.update({
-      where: { id: commentId },
-      data: { postedAt: new Date(), postedUrl: posted_url },
-      // status stays APPROVED/AUTO_SELECTED until visibility confirmed
-    });
+    await updatePendingComment(commentId, { postedAt: new Date(), postedUrl: posted_url });
 
     // Schedule first visibility check in 5 min
     await this.engagementQueue.add(
@@ -238,10 +207,7 @@ export class ToolsService {
     }
 
     if (finalStatus) {
-      await this.prisma.pendingComment.update({
-        where: { id: commentId },
-        data: { status: finalStatus as never },
-      });
+      await updatePendingComment(commentId, { status: finalStatus as never });
       this.logger.log(
         `Comment ${commentId} finalized: ${finalStatus} (visibility: ${status})`,
       );

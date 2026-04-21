@@ -1,16 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { TelegramApprovalProcessor } from './telegram-approval.processor';
 import { TelegramService } from './telegram.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { KolDbService } from '../kol/kol-db.service';
 import { getQueueToken } from '@nestjs/bull';
 import { BULL_QUEUES, KOL_CONSTANTS } from '../common/constants/kol.constants';
 
-const mockPrisma = {
-  pendingComment: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    updateMany: jest.fn(),
-  },
+const mockKolDb = {
+  findPendingCommentById: jest.fn(),
+  updatePendingComment: jest.fn(),
+  updatePendingCommentsByKolPostId: jest.fn(),
 };
 
 const mockTelegramService = {
@@ -34,7 +32,7 @@ describe('TelegramApprovalProcessor', () => {
     const module = await Test.createTestingModule({
       providers: [
         TelegramApprovalProcessor,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: KolDbService, useValue: mockKolDb },
         { provide: TelegramService, useValue: mockTelegramService },
         { provide: getQueueToken(BULL_QUEUES.TELEGRAM_APPROVAL), useValue: mockApprovalQueue },
         { provide: getQueueToken(BULL_QUEUES.ENGAGEMENT), useValue: mockEngagementQueue },
@@ -100,7 +98,7 @@ describe('TelegramApprovalProcessor', () => {
 
     it('saves telegramMessageId to all pending comments for the post', async () => {
       await processor.handleSendApproval(baseJob as any);
-      expect(mockPrisma.pendingComment.updateMany).toHaveBeenCalledWith({
+      expect(mockKolDb.pendingComment.updateMany).toHaveBeenCalledWith({
         where: { kolPostId: 'p1', status: 'PENDING_REVIEW' },
         data: { telegramMessageId: '99' },
       });
@@ -125,7 +123,7 @@ describe('TelegramApprovalProcessor', () => {
 
   describe('handleTimeoutFallback', () => {
     it('auto-posts and notifies when comment still pending', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.pendingComment.findUnique.mockResolvedValue({
         id: 'c1',
         status: 'PENDING_REVIEW',
         content: 'ok cool',
@@ -135,7 +133,7 @@ describe('TelegramApprovalProcessor', () => {
         data: { pendingCommentId: 'c1', kolPostId: 'p1', postUrl: 'https://x.com/k/1' },
       } as any);
 
-      expect(mockPrisma.pendingComment.update).toHaveBeenCalledWith(
+      expect(mockKolDb.pendingComment.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'AUTO_SELECTED', isAutoSelected: true }),
         }),
@@ -151,7 +149,7 @@ describe('TelegramApprovalProcessor', () => {
     });
 
     it('rejects sibling pending comments', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.pendingComment.findUnique.mockResolvedValue({
         id: 'c1',
         status: 'PENDING_REVIEW',
         content: 'ok cool',
@@ -161,14 +159,14 @@ describe('TelegramApprovalProcessor', () => {
         data: { pendingCommentId: 'c1', kolPostId: 'p1', postUrl: 'https://x.com/k/1' },
       } as any);
 
-      expect(mockPrisma.pendingComment.updateMany).toHaveBeenCalledWith({
+      expect(mockKolDb.pendingComment.updateMany).toHaveBeenCalledWith({
         where: { kolPostId: 'p1', id: { not: 'c1' }, status: 'PENDING_REVIEW' },
         data: { status: 'REJECTED' },
       });
     });
 
     it('skips when comment already handled (APPROVED)', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.pendingComment.findUnique.mockResolvedValue({
         id: 'c1',
         status: 'APPROVED',
         content: 'ok',
@@ -179,12 +177,12 @@ describe('TelegramApprovalProcessor', () => {
       } as any);
 
       expect(mockEngagementQueue.add).not.toHaveBeenCalled();
-      expect(mockPrisma.pendingComment.update).not.toHaveBeenCalled();
+      expect(mockKolDb.pendingComment.update).not.toHaveBeenCalled();
       expect(mockTelegramService.sendNotification).not.toHaveBeenCalled();
     });
 
     it('skips when comment not found', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue(null);
+      mockKolDb.pendingComment.findUnique.mockResolvedValue(null);
 
       await processor.handleTimeoutFallback({
         data: { pendingCommentId: 'c1', kolPostId: 'p1', postUrl: 'https://x.com/k/1' },
@@ -194,7 +192,7 @@ describe('TelegramApprovalProcessor', () => {
     });
 
     it('enqueues post-comment with delay within rate limit range', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.pendingComment.findUnique.mockResolvedValue({
         id: 'c1',
         status: 'PENDING_REVIEW',
         content: 'ok',
@@ -212,7 +210,7 @@ describe('TelegramApprovalProcessor', () => {
     });
 
     it('includes comment content in notification message', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({
+      mockKolDb.pendingComment.findUnique.mockResolvedValue({
         id: 'c1',
         status: 'PENDING_REVIEW',
         content: 'this is the comment content',

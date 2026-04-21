@@ -19,12 +19,6 @@
 npm install
 ```
 
-Generate the Prisma client (required before first run):
-
-```bash
-npx prisma generate
-```
-
 ---
 
 ## 2. Configure environment
@@ -230,6 +224,6 @@ EngagementProcessor
 | `openclaw: command not found` | Install OpenClaw and ensure it's in PATH |
 | Telegram bot not responding | Check `TELEGRAM_BOT_TOKEN` and that bot is started (`/start`) |
 | Comments not posting | Check `PUBLIC_API_URL` is reachable from OpenClaw's machine |
-| Prisma errors on startup | Run `npx prisma generate` then restart |
+| MongoDB connection errors | Check `MONGO_URI` in `.env` and ensure MongoDB is running |
 | Redis connection refused | Start Redis: `redis-server` |
 | OpenAI 429 errors | GPT-4o rate limit — reduce active KOL count or increase crawl interval |

@@ -1,7 +1,7 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import { PrismaService } from '../prisma/prisma.service';
+import { findPendingCommentById, updatePendingComment } from '../services/kolPostService.js';
 import { OpenClawService } from '../openclaw/openclaw.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { EngagementService } from './engagement.service';
@@ -24,7 +24,6 @@ export class EngagementProcessor {
   private readonly logger = new Logger(EngagementProcessor.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly openClaw: OpenClawService,
     private readonly telegramService: TelegramService,
     private readonly engagementService: EngagementService,
@@ -35,9 +34,7 @@ export class EngagementProcessor {
     const { pendingCommentId, postUrl } = job.data;
     const apiUrl = getApiUrl();
 
-    const comment = await this.prisma.pendingComment.findUnique({
-      where: { id: pendingCommentId },
-    });
+    const comment = await findPendingCommentById(pendingCommentId);
 
     if (!comment) {
       this.logger.warn(`Comment ${pendingCommentId} not found`);
@@ -67,10 +64,7 @@ export class EngagementProcessor {
     const { commentId, checkIndex } = job.data;
     const apiUrl = getApiUrl();
 
-    const comment = await this.prisma.pendingComment.findUnique({
-      where: { id: commentId },
-      select: { id: true, postedUrl: true, status: true },
-    });
+    const comment = await findPendingCommentById(commentId);
 
     if (!comment?.postedUrl) {
       this.logger.warn(

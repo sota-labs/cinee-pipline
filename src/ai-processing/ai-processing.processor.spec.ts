@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AiProcessingProcessor } from './ai-processing.processor';
 import { AiProcessingService } from './ai-processing.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { KolDbService } from '../kol/kol-db.service';
 import { getQueueToken } from '@nestjs/bull';
 import { BULL_QUEUES } from '../common/constants/kol.constants';
 
@@ -17,20 +17,14 @@ jest.mock('ioredis', () => {
   return MockRedis;
 });
 
-const mockPrisma = {
-  kolPost: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
-  kol: { findUnique: jest.fn() },
-  kolPostProcessing: {
-    findUnique: jest.fn().mockResolvedValue(null),
-    upsert: jest.fn(),
-  },
-  pendingComment: {
-    create: jest.fn(),
-    update: jest.fn(),
-  },
+const mockKolDb = {
+  findKolPostById: jest.fn(),
+  updateKolPost: jest.fn(),
+  findKolById: jest.fn(),
+  findKolPostProcessing: jest.fn().mockResolvedValue(null),
+  upsertKolPostProcessing: jest.fn(),
+  createPendingComment: jest.fn(),
+  updatePendingComment: jest.fn(),
 };
 
 const mockAiService = {
@@ -48,7 +42,7 @@ describe('AiProcessingProcessor', () => {
     const module = await Test.createTestingModule({
       providers: [
         AiProcessingProcessor,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: KolDbService, useValue: mockKolDb },
         { provide: AiProcessingService, useValue: mockAiService },
         { provide: getQueueToken(BULL_QUEUES.TELEGRAM_APPROVAL), useValue: mockTelegramQueue },
         { provide: getQueueToken(BULL_QUEUES.ENGAGEMENT), useValue: mockEngagementQueue },
@@ -63,23 +57,23 @@ describe('AiProcessingProcessor', () => {
     // Override redis.get on the processor instance after construction
     (processor as any).redis = { get: jest.fn().mockResolvedValue('manual') };
 
-    mockPrisma.kolPost.findUnique.mockResolvedValue({
+    mockKolDb.kolPost.findUnique.mockResolvedValue({
       id: 'p1',
       content: 'post',
       postUrl: 'https://x.com/k/1',
       kolId: 'k1',
       status: 'NEW',
     });
-    mockPrisma.kol.findUnique.mockResolvedValue({
+    mockKolDb.kol.findUnique.mockResolvedValue({
       id: 'k1',
       handle: 'alice',
       styleSummary: '',
       personalityNotes: '',
       slangVocab: [],
     });
-    mockPrisma.kolPost.update.mockResolvedValue({});
-    mockPrisma.kolPostProcessing.upsert.mockResolvedValue({});
-    mockPrisma.pendingComment.create
+    mockKolDb.kolPost.update.mockResolvedValue({});
+    mockKolDb.kolPostProcessing.upsert.mockResolvedValue({});
+    mockKolDb.pendingComment.create
       .mockResolvedValueOnce({ id: 'c1', content: 'ok', alignment: 'positive' })
       .mockResolvedValueOnce({ id: 'c2', content: 'hmm', alignment: 'neutral' })
       .mockResolvedValueOnce({ id: 'c3', content: 'nope', alignment: 'negative' });
@@ -113,27 +107,27 @@ describe('AiProcessingProcessor', () => {
   it('routes to engagement queue in afk mode with correct alignment', async () => {
     (processor as any).redis = { get: jest.fn().mockResolvedValue('afk') };
 
-    mockPrisma.kolPost.findUnique.mockResolvedValue({
+    mockKolDb.kolPost.findUnique.mockResolvedValue({
       id: 'p1',
       content: 'post',
       postUrl: 'https://x.com/k/1',
       kolId: 'k1',
       status: 'NEW',
     });
-    mockPrisma.kol.findUnique.mockResolvedValue({
+    mockKolDb.kol.findUnique.mockResolvedValue({
       id: 'k1',
       handle: 'alice',
       styleSummary: '',
       personalityNotes: '',
       slangVocab: [],
     });
-    mockPrisma.kolPost.update.mockResolvedValue({});
-    mockPrisma.kolPostProcessing.upsert.mockResolvedValue({});
-    mockPrisma.pendingComment.create
+    mockKolDb.kolPost.update.mockResolvedValue({});
+    mockKolDb.kolPostProcessing.upsert.mockResolvedValue({});
+    mockKolDb.pendingComment.create
       .mockResolvedValueOnce({ id: 'c1', content: 'ok', alignment: 'positive' })
       .mockResolvedValueOnce({ id: 'c2', content: 'hmm', alignment: 'neutral' })
       .mockResolvedValueOnce({ id: 'c3', content: 'nope', alignment: 'negative' });
-    mockPrisma.pendingComment.update.mockResolvedValue({});
+    mockKolDb.pendingComment.update.mockResolvedValue({});
 
     const candidates = [
       { content: 'ok', alignment: 'positive', rationale: '' },

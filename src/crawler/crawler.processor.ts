@@ -2,9 +2,8 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { OpenClawService } from '../openclaw/openclaw.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { KolStyleService } from '../kol/kol-style.service';
-import { KolService } from '../kol/kol.service';
+import { markKolCrawled, findKolById, updateManyKols, analyzeKolStyle, updateKol, storeKolEmbedding } from '../services/kolService.js';
+import { createKolPost } from '../services/kolPostService.js';
 import { BULL_QUEUES, getApiUrl } from '../common/constants/kol.constants';
 import { buildKolCrawlPrompt, buildKolStyleLearnPrompt } from '../prompts/kol-prompts';
 
@@ -28,10 +27,7 @@ export class CrawlerProcessor {
   private readonly logger = new Logger(CrawlerProcessor.name);
 
   constructor(
-    private readonly openClaw: OpenClawService,
-    private readonly prisma: PrismaService,
-    private readonly kolStyleService: KolStyleService,
-    private readonly kolService: KolService,
+    private readonly openclaw: OpenClawService,
   ) {}
 
   @Process('crawl-batch')
@@ -41,13 +37,13 @@ export class CrawlerProcessor {
     this.logger.log(`Processing crawl-batch: ${kols.map((k) => k.handle).join(', ')}`);
 
     const prompt = buildKolCrawlPrompt(kols, apiUrl);
-    await this.openClaw.executeAgent(prompt);
+    await this.openclaw.executeAgent(prompt);
 
     // Update lastCrawledAt for all KOLs in this batch
-    await this.prisma.kol.updateMany({
-      where: { id: { in: kols.map((k) => k.id) } },
-      data: { lastCrawledAt: new Date() },
-    });
+    await updateManyKols(
+      kols.map((k) => k.id),
+      { lastCrawledAt: new Date() }
+    );
   }
 
   @Process('style-learn')
@@ -56,7 +52,7 @@ export class CrawlerProcessor {
     this.logger.log(`Running style learn for KOL ${kolId}`);
     const apiUrl = getApiUrl();
 
-    const kol = await this.prisma.kol.findUnique({ where: { id: kolId } });
+    const kol = await findKolById(kolId);
     if (!kol) {
       this.logger.warn(`KOL ${kolId} not found — skipping style learn`);
       return;
@@ -67,26 +63,23 @@ export class CrawlerProcessor {
         `KOL ${kolId} has < 3 writing samples — triggering OpenClaw to scrape profile first`,
       );
       const prompt = buildKolStyleLearnPrompt(kol, apiUrl);
-      await this.openClaw.executeAgent(prompt);
+      await this.openclaw.executeAgent(prompt);
       return;
     }
 
     // Have samples — run local OpenAI analysis
-    const result = await this.kolStyleService.analyzeStyle(kolId, kol.writingSamples);
-    await this.prisma.kol.update({
-      where: { id: kolId },
-      data: {
-        styleSummary: result.style_summary,
-        personalityNotes: result.personality_notes,
-        slangVocab: result.slang_vocab,
-        styleLastLearnedAt: new Date(),
-        stylePostCountAtLastLearn: kol.writingSamples.length,
-      },
+    const result = await analyzeKolStyle(kolId, kol.writingSamples);
+    await updateKol(kolId, {
+      styleSummary: result.style_summary,
+      personalityNotes: result.personality_notes,
+      slangVocab: result.slang_vocab,
+      styleLastLearnedAt: new Date(),
+      stylePostCountAtLastLearn: kol.writingSamples.length,
     });
 
     // Store embeddings for few-shot retrieval
     for (const sample of kol.writingSamples.slice(-20)) {
-      await this.kolStyleService.storeEmbedding(kolId, sample, new Date());
+      await storeKolEmbedding(kolId, sample, new Date());
     }
 
     this.logger.log(`Style learn complete for KOL ${kolId}`);

@@ -1,14 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { EngagementService } from './engagement.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { KolDbService } from '../kol/kol-db.service';
 import { getQueueToken } from '@nestjs/bull';
 import { BULL_QUEUES, KOL_CONSTANTS } from '../common/constants/kol.constants';
 
-const mockPrisma = {
-  pendingComment: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
+const mockKolDb = {
+  findPendingCommentById: jest.fn(),
+  updatePendingComment: jest.fn(),
 };
 
 const mockQueue = { add: jest.fn().mockResolvedValue({ id: 'j1' }) };
@@ -20,7 +18,7 @@ describe('EngagementService', () => {
     const module = await Test.createTestingModule({
       providers: [
         EngagementService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: KolDbService, useValue: mockKolDb },
         { provide: getQueueToken(BULL_QUEUES.ENGAGEMENT), useValue: mockQueue },
       ],
     }).compile();
@@ -49,7 +47,7 @@ describe('EngagementService', () => {
 
   describe('recordVisibilityResult', () => {
     beforeEach(() => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+      mockKolDb.findPendingCommentById.mockResolvedValue({ _id: 'c1', status: 'APPROVED' });
     });
 
     it('sets status POSTED when visible', async () => {
@@ -58,8 +56,8 @@ describe('EngagementService', () => {
         checkIndex: 1,
         checkedAt: new Date(),
       });
-      expect(mockPrisma.pendingComment.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'POSTED' }) }),
+      expect(mockKolDb.updatePendingComment).toHaveBeenCalledWith(
+        'c1', expect.objectContaining({ status: 'POSTED' }),
       );
     });
 
@@ -69,8 +67,8 @@ describe('EngagementService', () => {
         checkIndex: 1,
         checkedAt: new Date(),
       });
-      expect(mockPrisma.pendingComment.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+      expect(mockKolDb.updatePendingComment).toHaveBeenCalledWith(
+        'c1', expect.objectContaining({ status: 'FAILED' }),
       );
     });
 
@@ -81,7 +79,7 @@ describe('EngagementService', () => {
         checkedAt: new Date(),
       });
       expect(mockQueue.add).toHaveBeenCalled();
-      expect(mockPrisma.pendingComment.update).not.toHaveBeenCalled();
+      expect(mockKolDb.updatePendingComment).not.toHaveBeenCalled();
     });
 
     it('finalizes POSTED after exhausting all checks with unknown status', async () => {
@@ -90,19 +88,19 @@ describe('EngagementService', () => {
         checkIndex: KOL_CONSTANTS.VISIBILITY_CHECK_COUNT,
         checkedAt: new Date(),
       });
-      expect(mockPrisma.pendingComment.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'POSTED' }) }),
+      expect(mockKolDb.updatePendingComment).toHaveBeenCalledWith(
+        'c1', expect.objectContaining({ status: 'POSTED' }),
       );
     });
 
     it('returns early when comment not found', async () => {
-      mockPrisma.pendingComment.findUnique.mockResolvedValue(null);
+      mockKolDb.findPendingCommentById.mockResolvedValue(null);
       await service.recordVisibilityResult('missing', {
         status: 'visible',
         checkIndex: 1,
         checkedAt: new Date(),
       });
-      expect(mockPrisma.pendingComment.update).not.toHaveBeenCalled();
+      expect(mockKolDb.updatePendingComment).not.toHaveBeenCalled();
     });
   });
 

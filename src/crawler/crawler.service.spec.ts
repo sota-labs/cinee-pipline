@@ -1,14 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { CrawlerService } from './crawler.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { KolDbService } from '../kol/kol-db.service';
 import { getQueueToken } from '@nestjs/bull';
 import { BULL_QUEUES } from '../common/constants/kol.constants';
 
-const mockPrisma = {
-  kol: {
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-  },
+const mockKolDb = {
+  findKolsDueForCrawl: jest.fn(),
+  findKolById: jest.fn(),
 };
 
 const mockQueue = {
@@ -22,7 +20,7 @@ describe('CrawlerService', () => {
     const module = await Test.createTestingModule({
       providers: [
         CrawlerService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: KolDbService, useValue: mockKolDb },
         { provide: getQueueToken(BULL_QUEUES.KOL_CRAWL), useValue: mockQueue },
       ],
     }).compile();
@@ -32,7 +30,7 @@ describe('CrawlerService', () => {
 
   describe('scheduleCrawl', () => {
     it('does nothing when no KOLs are due', async () => {
-      mockPrisma.kol.findMany.mockResolvedValue([]);
+      mockKolDb.findKolsDueForCrawl.mockResolvedValue([]);
       await service.scheduleCrawl();
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
@@ -45,7 +43,7 @@ describe('CrawlerService', () => {
         profileUrl: '',
         lastCrawledAt: null,
       }));
-      mockPrisma.kol.findMany.mockResolvedValue(kols);
+      mockKolDb.findKolsDueForCrawl.mockResolvedValue(kols);
       await service.scheduleCrawl();
       expect(mockQueue.add).toHaveBeenCalledTimes(1);
       expect(mockQueue.add).toHaveBeenCalledWith(
@@ -63,7 +61,7 @@ describe('CrawlerService', () => {
         profileUrl: '',
         lastCrawledAt: null,
       }));
-      mockPrisma.kol.findMany.mockResolvedValue(kols);
+      mockKolDb.findKolsDueForCrawl.mockResolvedValue(kols);
       await service.scheduleCrawl();
       expect(mockQueue.add).toHaveBeenCalledTimes(3); // batches of 10: 10+10+5
       const calls = mockQueue.add.mock.calls;
@@ -76,7 +74,7 @@ describe('CrawlerService', () => {
   describe('triggerManualCrawl', () => {
     it('queues a single KOL when kolId is provided', async () => {
       const kol = { id: 'k1', handle: 'alice', platform: 'x', profileUrl: '', lastCrawledAt: null };
-      mockPrisma.kol.findUnique.mockResolvedValue(kol);
+      mockKolDb.findKolById.mockResolvedValue(kol);
       const result = await service.triggerManualCrawl('k1');
       expect(mockQueue.add).toHaveBeenCalledWith(
         'crawl-batch',
@@ -87,12 +85,12 @@ describe('CrawlerService', () => {
     });
 
     it('throws when kolId not found', async () => {
-      mockPrisma.kol.findUnique.mockResolvedValue(null);
+      mockKolDb.findKolById.mockResolvedValue(null);
       await expect(service.triggerManualCrawl('bad-id')).rejects.toThrow('KOL bad-id not found');
     });
 
     it('triggers full scheduleCrawl when no kolId given', async () => {
-      mockPrisma.kol.findMany.mockResolvedValue([]);
+      mockKolDb.findKolsDueForCrawl.mockResolvedValue([]);
       const result = await service.triggerManualCrawl();
       expect(result).toEqual({ triggered: true });
     });

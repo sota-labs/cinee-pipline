@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Context } from 'telegraf';
-import { PrismaService } from '../prisma/prisma.service';
+import { findPendingCommentById, updatePendingComment, updatePendingCommentsByKolPostId, countPendingComments, findKolPostById, findPendingCommentsByKolPostId } from '../services/kolPostService.js';
 import { TelegramService } from './telegram.service';
 import { BULL_QUEUES, KOL_CONSTANTS } from '../common/constants/kol.constants';
 
@@ -13,7 +13,6 @@ export class TelegramUpdate {
 
   constructor(
     private readonly telegramService: TelegramService,
-    private readonly prisma: PrismaService,
     @InjectQueue(BULL_QUEUES.ENGAGEMENT) private readonly engagementQueue: Queue,
     @InjectQueue(BULL_QUEUES.TELEGRAM_APPROVAL) private readonly approvalQueue: Queue,
     @InjectQueue(BULL_QUEUES.AI_PIPELINE) private readonly aiQueue: Queue,
@@ -47,9 +46,7 @@ export class TelegramUpdate {
   @Command('status')
   async onStatus(@Ctx() ctx: Context): Promise<void> {
     const mode = await this.telegramService.getMode();
-    const pending = await this.prisma.pendingComment.count({
-      where: { status: 'PENDING_REVIEW' },
-    });
+    const pending = await countPendingComments({ status: 'PENDING_REVIEW' });
     await ctx.reply(
       `📊 Status:\nMode: <b>${mode.toUpperCase()}</b>\nPending approvals: <b>${pending}</b>`,
       { parse_mode: 'HTML' },
@@ -63,10 +60,7 @@ export class TelegramUpdate {
     const callbackData = (ctx as unknown as { callbackQuery: { data: string } }).callbackQuery?.data;
     const pendingCommentId = callbackData.replace('approve:', '');
 
-    const comment = await this.prisma.pendingComment.findUnique({
-      where: { id: pendingCommentId },
-      include: { kolPost: true },
-    });
+    const comment = await findPendingCommentById(pendingCommentId);
 
     if (!comment || comment.status !== 'PENDING_REVIEW') {
       await ctx.answerCbQuery('Already handled.');
@@ -77,20 +71,10 @@ export class TelegramUpdate {
     await this.telegramService.cancelTimeoutJob(pendingCommentId);
 
     // Mark approved
-    await this.prisma.pendingComment.update({
-      where: { id: pendingCommentId },
-      data: { status: 'APPROVED', reviewedAt: new Date(), reviewedBy: 'telegram' },
-    });
+    await updatePendingComment(pendingCommentId, { status: 'APPROVED', reviewedAt: new Date(), reviewedBy: 'telegram' });
 
     // Reject other candidates for this post
-    await this.prisma.pendingComment.updateMany({
-      where: {
-        kolPostId: comment.kolPostId,
-        id: { not: pendingCommentId },
-        status: 'PENDING_REVIEW',
-      },
-      data: { status: 'REJECTED' },
-    });
+    await updatePendingCommentsByKolPostId(comment.kolPostId, { status: 'PENDING_REVIEW' }, { status: 'REJECTED' });
 
     // Enqueue engagement with anti-ban delay
     const delayMs = this.randomDelay(
@@ -122,10 +106,7 @@ export class TelegramUpdate {
     const callbackData = (ctx as unknown as { callbackQuery: { data: string } }).callbackQuery?.data;
     const kolPostId = callbackData.replace('reject:', '');
 
-    await this.prisma.pendingComment.updateMany({
-      where: { kolPostId, status: 'PENDING_REVIEW' },
-      data: { status: 'REJECTED', reviewedAt: new Date(), reviewedBy: 'telegram' },
-    });
+    await updatePendingCommentsByKolPostId(kolPostId, { status: 'PENDING_REVIEW' }, { status: 'REJECTED', reviewedAt: new Date(), reviewedBy: 'telegram' });
 
     const msgId = (ctx as unknown as { callbackQuery: { message: { message_id: number } } })
       .callbackQuery?.message?.message_id?.toString();
@@ -143,21 +124,16 @@ export class TelegramUpdate {
     const kolPostId = callbackData.replace('regenerate:', '');
 
     // Cancel existing timeout jobs for all pending comments on this post
-    const pending = await this.prisma.pendingComment.findMany({
-      where: { kolPostId, status: 'PENDING_REVIEW' },
-    });
+    const pending = await findPendingCommentsByKolPostId(kolPostId, { status: 'PENDING_REVIEW' });
     for (const c of pending) {
-      await this.telegramService.cancelTimeoutJob(c.id);
+      await this.telegramService.cancelTimeoutJob(c._id!.toString());
     }
 
     // Reject current candidates
-    await this.prisma.pendingComment.updateMany({
-      where: { kolPostId, status: 'PENDING_REVIEW' },
-      data: { status: 'REJECTED' },
-    });
+    await updatePendingCommentsByKolPostId(kolPostId, { status: 'PENDING_REVIEW' }, { status: 'REJECTED' });
 
     // Re-queue AI pipeline for this post
-    const kolPost = await this.prisma.kolPost.findUnique({ where: { id: kolPostId } });
+    const kolPost = await findKolPostById(kolPostId);
     if (kolPost) {
       await this.aiQueue.add(
         'process-post',

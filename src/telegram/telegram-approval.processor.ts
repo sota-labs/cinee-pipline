@@ -2,7 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
-import { PrismaService } from '../prisma/prisma.service';
+import { findPendingCommentById, updatePendingComment, updatePendingCommentsByKolPostId } from '../services/kolPostService.js';
 import { TelegramService, ApprovalPayload } from './telegram.service';
 import { BULL_QUEUES, KOL_CONSTANTS } from '../common/constants/kol.constants';
 
@@ -28,7 +28,6 @@ export class TelegramApprovalProcessor {
   private readonly logger = new Logger(TelegramApprovalProcessor.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService,
     @InjectQueue(BULL_QUEUES.TELEGRAM_APPROVAL) private readonly approvalQueue: Queue,
     @InjectQueue(BULL_QUEUES.ENGAGEMENT) private readonly engagementQueue: Queue,
@@ -42,10 +41,7 @@ export class TelegramApprovalProcessor {
     const messageId = await this.telegramService.sendApprovalMessage(job.data);
 
     // Save messageId to each PendingComment so we can remove buttons later
-    await this.prisma.pendingComment.updateMany({
-      where: { kolPostId, status: 'PENDING_REVIEW' },
-      data: { telegramMessageId: messageId },
-    });
+    await this.kolDb.updatePendingCommentsByKolPostId(kolPostId, { status: 'PENDING_REVIEW' }, { telegramMessageId: messageId });
 
     // Register a 5-min timeout fallback for EACH candidate
     // (any one of them could be approved — we cancel others on approval)
@@ -75,9 +71,7 @@ export class TelegramApprovalProcessor {
     const { pendingCommentId, kolPostId, postUrl } = job.data;
     this.logger.log(`Timeout fallback triggered for comment ${pendingCommentId}`);
 
-    const comment = await this.prisma.pendingComment.findUnique({
-      where: { id: pendingCommentId },
-    });
+    const comment = await this.kolDb.findPendingCommentById(pendingCommentId);
 
     // Only act if still pending (another candidate may have already been approved)
     if (!comment || comment.status !== 'PENDING_REVIEW') {
@@ -88,16 +82,10 @@ export class TelegramApprovalProcessor {
     }
 
     // Auto-select this candidate (manager was AFK)
-    await this.prisma.pendingComment.update({
-      where: { id: pendingCommentId },
-      data: { status: 'AUTO_SELECTED', isAutoSelected: true },
-    });
+    await this.kolDb.updatePendingComment(pendingCommentId, { status: 'AUTO_SELECTED', isAutoSelected: true });
 
     // Reject remaining PENDING_REVIEW siblings
-    await this.prisma.pendingComment.updateMany({
-      where: { kolPostId, id: { not: pendingCommentId }, status: 'PENDING_REVIEW' },
-      data: { status: 'REJECTED' },
-    });
+    await this.kolDb.updatePendingCommentsByKolPostId(kolPostId, { status: 'PENDING_REVIEW' }, { status: 'REJECTED' });
 
     // Enqueue posting with anti-ban delay
     const delayMs = this.randomDelay(
