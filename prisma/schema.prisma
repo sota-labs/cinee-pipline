@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+}
+
+model Kol {
+  id                        String    @id @default(auto()) @map("_id") @db.ObjectId
+  handle                    String
+  platform                  String    @default("x")
+  displayName               String    @default("")
+  profileUrl                String    @default("")
+  followersCount            Int       @default(0)
+  isActive                  Boolean   @default(true)
+  writingSamples            String[]
+  styleSummary              String    @default("")
+  personalityNotes          String    @default("")
+  slangVocab                String[]
+  styleLastLearnedAt        DateTime?
+  stylePostCountAtLastLearn Int       @default(0)
+  lastCrawledAt             DateTime?
+  notes                     String    @default("")
+  posts                     KolPost[]
+  embeddings                KolEmbedding[]
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@unique([platform, handle])
+  @@index([isActive, lastCrawledAt])
+}
+
+model KolPost {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  kolId           String         @db.ObjectId
+  kol             Kol            @relation(fields: [kolId], references: [id])
+  platform        String         @default("x")
+  postUrl         String         @unique
+  externalPostId  String
+  content         String
+  likes           Int            @default(0)
+  comments        Int            @default(0)
+  shares          Int            @default(0)
+  engagementScore Int            @default(0)
+  postedAt        DateTime
+  status          KolPostStatus  @default(NEW)
+  processing      KolPostProcessing?
+  pendingComments PendingComment[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([kolId, postedAt])
+  @@index([status, createdAt])
+}
+
+enum KolPostStatus {
+  NEW
+  PROCESSING
+  PROCESSED
+  SKIPPED
+  FAILED
+}
+
+model KolPostProcessing {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  kolPostId     String   @unique @db.ObjectId
+  kolPost       KolPost  @relation(fields: [kolPostId], references: [id])
+  summary       String   @default("")
+  topComments   Json
+  sentimentJson Json
+  trendSummary  String   @default("")
+  processedAt   DateTime @default(now())
+}
+
+model PendingComment {
+  id                String               @id @default(auto()) @map("_id") @db.ObjectId
+  kolPostId         String               @db.ObjectId
+  kolPost           KolPost              @relation(fields: [kolPostId], references: [id])
+  kolId             String               @db.ObjectId
+  content           String
+  alignment         String
+  rationale         String               @default("")
+  candidateIndex    Int
+  isAutoSelected    Boolean              @default(false)
+  status            PendingCommentStatus @default(PENDING_REVIEW)
+  telegramMessageId String?
+  postedAt          DateTime?
+  postedUrl         String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([kolPostId])
+}
+
+enum PendingCommentStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  POSTED
+  FAILED
+  AUTO_SELECTED
+}
+
+model KolEmbedding {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  kolId     String   @db.ObjectId
+  kol       Kol      @relation(fields: [kolId], references: [id])
+  content   String
+  embedding Float[]
+  postedAt  DateTime
+  createdAt DateTime @default(now())
+
+  @@index([kolId])
+}
