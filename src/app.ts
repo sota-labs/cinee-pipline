@@ -8,6 +8,8 @@ import { contentReviewRouter } from "./routes/contentReview.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
 import { tasksRouter } from "./routes/tasks.js";
+import kolsRouter from "./routes/kols.js";
+import kolPostsRouter from "./routes/kolPosts.js";
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -20,6 +22,8 @@ app.use("/api/content-review", contentReviewRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
 app.use("/api/topic-config", topicConfigRouter);
 app.use("/api/tasks", tasksRouter);
+app.use("/api/kols", kolsRouter);
+app.use("/api/kol-posts", kolPostsRouter);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -35,6 +39,8 @@ app.get("/", (_req, res) => {
       priority_accounts: "/api/priority-accounts/*",
       topic_config: "/api/topic-config/*",
       tasks: "/api/tasks/*",
+      kols: "/api/kols/*",
+      kol_posts: "/api/kol-posts/*",
     },
   });
 });
