@@ -2,9 +2,8 @@
   "apps": [
     {
       "name": "cinee-dev",
-      "script": "tsx",
+      "script": "node_modules/.bin/tsx",
       "args": "watch src/index.ts",
-      "interpreter": "none",
       "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
       "env_file": ".env",
       "watch": false,
@@ -14,9 +13,8 @@
     },
     {
       "name": "cinee-scan-post",
-      "script": "tsx",
+      "script": "node_modules/.bin/tsx",
       "args": "src/scripts/scanAndPostCron.ts",
-      "interpreter": "none",
       "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
       "env_file": ".env",
       "watch": false,
@@ -26,9 +24,8 @@
     },
     {
       "name": "cinee-kol-crawl",
-      "script": "tsx",
+      "script": "node_modules/.bin/tsx",
       "args": "src/scripts/kolCrawlCron.ts",
-      "interpreter": "none",
       "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
       "env_file": ".env",
       "watch": false,
@@ -38,9 +35,8 @@
     },
     {
       "name": "cinee-kol-analyze",
-      "script": "tsx",
+      "script": "node_modules/.bin/tsx",
       "args": "src/scripts/kolAnalyzeCron.ts",
-      "interpreter": "none",
       "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
       "env_file": ".env",
       "watch": false,
