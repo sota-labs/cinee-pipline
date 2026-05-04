@@ -1,5 +1,6 @@
 /** ReplyEngineService — Generate suggestions and manage reply execution (AFK + Manual modes) */
 import { log } from "../utils/logger.js";
+import { settings as appSettings } from "../config/settings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { KolPost, EKolPostStatus } from "../db/models/KolPost.js";
 import {
@@ -71,11 +72,11 @@ async function queueReplyExecution(
     .replace("{{reply_content}}", escapedContent);
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+  const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
-    agent: "openclaw",
+    agent: appSettings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
     payload: { suggestionId, action: "execute_reply" },
@@ -128,11 +129,11 @@ export class ReplyEngineService {
 
     // Queue generation task via OpenClaw
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+    const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
 
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
-      agent: "openclaw",
+      agent: appSettings.openClawAgent,
       prompt: command,
       status: ETaskStatus.PENDING,
       payload: {

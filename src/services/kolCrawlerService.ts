@@ -5,6 +5,7 @@ import { KolPost, type IKolPost, EKolPostStatus } from "../db/models/KolPost.js"
 import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
+import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
 
 // Get Redis client
@@ -104,8 +105,102 @@ Constraints:
 - Skip posts older than 24 hours
 - Respect rate limits: 5 second delay between actions`;
 
+const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `You are KolCrawler. Your task is to crawl posts from MULTIPLE KOLs sequentially.
+
+KOLs TO CRAWL ({{kolCount}} total):
+{{kolList}}
+
+For EACH KOL:
+1. Navigate to https://x.com/{handle}
+2. Collect recent posts since their last crawl time (if provided) or last 24 hours
+3. For each post, extract:
+   - post_url (full URL)
+   - content (text content)
+   - posted_at (ISO timestamp)
+   - likes, comments, retweets, views (numbers)
+   - media_urls (array of image/video URLs if any)
+4. For posts with > 10 comments, collect top 10 most-liked comments:
+   - content (comment text)
+   - author_handle (without @)
+   - likes (number)
+   - reply_count (number)
+
+CRITICAL: Wait 10-15 seconds between each KOL to respect rate limits.
+
+Return JSON format:
+{
+  "results": [
+    {
+      "handle": "username1",
+      "posts": [
+        {
+          "post_url": "...",
+          "content": "...",
+          "posted_at": "2026-01-01T00:00:00Z",
+          "likes": 100,
+          "comments": 50,
+          "retweets": 20,
+          "views": 1000,
+          "media_urls": [],
+          "top_comments": [
+            {"content": "...", "author_handle": "...", "likes": 10, "reply_count": 2}
+          ]
+        }
+      ],
+      "crawledAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+
+Constraints:
+- Max {{limit}} posts per KOL
+- Skip posts older than 24 hours
+- Respect rate limits: 10-15 second delay BETWEEN KOLs
+- Stop immediately if rate limited by X/Twitter`;
+
+interface IKolCrawlInfo {
+  handle: string;
+  since: string; // ISO timestamp
+  limit: number;
+}
+
 /**
- * Create a Task record for OpenClaw to execute crawling.
+ * Create a single batch task to crawl multiple KOLs.
+ * Much more efficient than creating separate tasks for each KOL.
+ */
+async function createBatchCrawlTask(
+  kols: IKolCrawlInfo[],
+): Promise<string> {
+  const kolListFormatted = kols.map(k => 
+    `- @${k.handle} (since: ${k.since}, max: ${k.limit} posts)`
+  ).join("\n");
+
+  const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE
+    .replace(/\{\{kolCount\}\}/g, String(kols.length))
+    .replace(/\{\{kolList\}\}/g, kolListFormatted)
+    .replace(/\{\{limit\}\}/g, String(Math.max(...kols.map(k => k.limit))));
+
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+
+  const task = await Task.create({
+    type: ETaskType.CRON_JOB_TRIGGER,
+    agent: settings.openClawAgent,
+    prompt: command,
+    status: ETaskStatus.PENDING,
+    payload: { 
+      action: "batch_crawl",
+      kolCount: kols.length,
+      handles: kols.map(k => k.handle),
+    },
+  });
+
+  log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${task._id}`);
+  return String(task._id);
+}
+
+/**
+ * Create a Task record for OpenClaw to execute crawling (single KOL - legacy).
  * The actual browser automation runs in isolated session.
  */
 async function createCrawlTask(
@@ -120,11 +215,11 @@ async function createCrawlTask(
     .replace(/\{\{limit\}\}/g, String(limit));
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
-    agent: "openclaw",
+    agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
   });
@@ -413,101 +508,98 @@ export interface ISequentialCrawlOptions {
 }
 
 /**
- * Crawl all KOLs sequentially (one at a time) to avoid rate limits.
- * Waits for each KOL to complete before moving to next.
+ * Crawl all KOLs using a SINGLE batch task.
+ * OpenClaw will crawl sequentially to avoid rate limits.
+ * Much more efficient than creating 200 separate tasks.
  */
 export async function crawlAllKolsSequential(
   options: ISequentialCrawlOptions = {},
 ): Promise<ICrawlResult[]> {
-  const settings = await KolSettings.getSettings();
-  const minTrustScore = settings.safety.min_kol_trust_score;
+  const kolSettings = await KolSettings.getSettings();
+  const minTrustScore = kolSettings.safety.min_kol_trust_score;
 
   const kols = await KolProfile.find({
     is_active: true,
     reputation_score: { $gte: minTrustScore },
   });
 
-  log.info(`[KolCrawler] Starting sequential crawl for ${kols.length} KOLs`);
+  if (kols.length === 0) {
+    log.info("[KolCrawler] No active KOLs to crawl");
+    return [];
+  }
 
-  const results: ICrawlResult[] = [];
-  const delayBetweenKols = options.delayBetweenKolsMs ?? 10000; // 10s default
-  const maxWaitPerKol = options.maxWaitPerKolMs ?? 300000; // 5 min default
+  log.info(`[KolCrawler] Starting batch crawl for ${kols.length} KOLs in SINGLE task`);
 
+  // Build KOL info list with their last crawled times
+  const kolInfos: IKolCrawlInfo[] = [];
   for (const kol of kols) {
+    const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
+    const since = cachedLastCrawled ?? kol.last_crawled_at ?? getDefaultSinceDate();
+    kolInfos.push({
+      handle: kol.handle,
+      since: since.toISOString(),
+      limit: kolSettings.max_posts_per_crawl,
+    });
+  }
+
+  // Create SINGLE batch task for all KOLs
+  const taskId = await createBatchCrawlTask(kolInfos);
+  const maxWait = options.maxWaitPerKolMs ?? 600000; // 10 min default per KOL, so 200 KOLs = ~33 min max
+
+  log.info(`[KolCrawler] Waiting for batch task ${taskId} to complete...`);
+
+  // Wait for completion (poll every 10s)
+  const taskResult = await waitForTaskCompletion(taskId, maxWait * kols.length, 10000);
+
+  if (!taskResult.success) {
+    log.error(`[KolCrawler] Batch task failed: ${taskResult.error}`);
+    // Return empty results for all KOLs
+    return kols.map(kol => ({
+      kolId: kol._id,
+      handle: kol.handle,
+      postsFound: 0,
+      postsSaved: 0,
+      errors: [taskResult.error || "Batch task failed"],
+    }));
+  }
+
+  // Process batch results
+  const results: ICrawlResult[] = [];
+
+  if (taskResult.result) {
     try {
-      log.info(`[KolCrawler] Crawling @${kol.handle}...`);
+      const parsed = JSON.parse(taskResult.result);
+      if (parsed.results && Array.isArray(parsed.results)) {
+        for (const kolResult of parsed.results) {
+          const kol = kols.find(k => k.handle === kolResult.handle);
+          if (!kol) continue;
 
-      // 1. Create task - use Redis cache first, fallback to DB
-      const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-      const since = cachedLastCrawled ?? kol.last_crawled_at ?? getDefaultSinceDate();
-      const limit = settings.max_posts_per_crawl;
-      const taskId = await createCrawlTask(kol.handle, since, limit);
+          const posts = kolResult.posts || [];
+          const { saved, skipped } = await processCrawlResults(kol._id, posts);
 
-      // 2. Wait for completion
-      const taskResult = await waitForTaskCompletion(taskId, maxWaitPerKol);
+          // Update last_crawled_at
+          const crawledAt = kolResult.crawledAt ? new Date(kolResult.crawledAt) : new Date();
+          kol.last_crawled_at = crawledAt;
+          await kol.save();
+          await setCachedLastCrawled(kol.handle, crawledAt);
 
-      if (!taskResult.success) {
-        log.error(`[KolCrawler] Task failed for @${kol.handle}: ${taskResult.error}`);
-        results.push({
-          kolId: kol._id,
-          handle: kol.handle,
-          postsFound: 0,
-          postsSaved: 0,
-          errors: [taskResult.error || "Unknown error"],
-        });
-        continue;
-      }
+          results.push({
+            kolId: kol._id,
+            handle: kol.handle,
+            postsFound: posts.length,
+            postsSaved: saved,
+            errors: [],
+          });
 
-      // 3. Process results immediately
-      let postsFound = 0;
-      let postsSaved = 0;
-
-      if (taskResult.result) {
-        try {
-          const parsed = JSON.parse(taskResult.result);
-          if (parsed.posts && Array.isArray(parsed.posts)) {
-            postsFound = parsed.posts.length;
-            const { saved, skipped } = await processCrawlResults(kol._id, parsed.posts);
-            postsSaved = saved;
-            log.info(`[KolCrawler] @${kol.handle}: ${postsFound} found, ${saved} saved, ${skipped} skipped`);
-          }
-        } catch (parseError) {
-          log.error(`[KolCrawler] Failed to parse results for @${kol.handle}: ${(parseError as Error).message}`);
+          log.info(`[KolCrawler] @${kol.handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped`);
         }
       }
-
-      // 4. Update last_crawled_at in both DB and Redis cache
-      const now = new Date();
-      kol.last_crawled_at = now;
-      await kol.save();
-      await setCachedLastCrawled(kol.handle, now);
-
-      results.push({
-        kolId: kol._id,
-        handle: kol.handle,
-        postsFound,
-        postsSaved,
-        errors: [],
-      });
-
-      // 5. Rate limiting: wait before next KOL
-      if (kols.indexOf(kol) < kols.length - 1) {
-        log.info(`[KolCrawler] Waiting ${delayBetweenKols}ms before next KOL...`);
-        await delay(delayBetweenKols);
-      }
-    } catch (error) {
-      log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(error as Error).message}`);
-      results.push({
-        kolId: kol._id,
-        handle: kol.handle,
-        postsFound: 0,
-        postsSaved: 0,
-        errors: [(error as Error).message],
-      });
+    } catch (parseError) {
+      log.error(`[KolCrawler] Failed to parse batch results: ${(parseError as Error).message}`);
     }
   }
 
-  log.info(`[KolCrawler] Sequential crawl completed: ${results.length} KOLs processed`);
+  log.info(`[KolCrawler] Batch crawl completed: ${results.length}/${kols.length} KOLs processed`);
   return results;
 }
 

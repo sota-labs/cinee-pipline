@@ -1,5 +1,6 @@
  /** KolAnalyzerService — AI-powered analysis for KOL posts and personality learning */
 import { log } from "../utils/logger.js";
+import { settings } from "../config/settings.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus, ESentiment } from "../db/models/KolPost.js";
 import {
@@ -66,11 +67,11 @@ async function queueAnalysisTask(
   relatedId: string,
 ): Promise<string> {
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
-    agent: "openclaw",
+    agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
     payload: { analysisType: type, relatedId },
