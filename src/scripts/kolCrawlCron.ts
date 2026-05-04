@@ -1,5 +1,5 @@
-/** KolCrawlCron — Periodic crawl job for all KOLs */
-import { kolCrawlerService } from "../services/kolCrawlerService.js";
+/** KolCrawlCron — Periodic crawl job for all KOLs (Sequential) */
+import { crawlAllKolsSequential } from "../services/kolCrawlerService.js";
 import { connectDb, disconnectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
 
@@ -11,13 +11,17 @@ import { log } from "../utils/logger.js";
 async function main(): Promise<void> {
   try {
     await connectDb();
-    log.info("[KolCrawlCron] Connected to DB. Starting scheduled crawl...");
+    log.info("[KolCrawlCron] Connected to DB. Starting sequential crawl...");
 
-    const results = await kolCrawlerService.crawlAllKols();
+    // Crawl one KOL at a time to avoid rate limits
+    const results = await crawlAllKolsSequential({
+      delayBetweenKolsMs: 15000, // 15 seconds between KOLs
+      maxWaitPerKolMs: 300000,   // 5 minutes max per KOL
+    });
 
-    const totalPostsFound = results.reduce((sum, r) => sum + r.postsFound, 0);
-    const totalPostsSaved = results.reduce((sum, r) => sum + r.postsSaved, 0);
-    const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+    const totalPostsFound = results.reduce((sum: number, r) => sum + r.postsFound, 0);
+    const totalPostsSaved = results.reduce((sum: number, r) => sum + r.postsSaved, 0);
+    const totalErrors = results.reduce((sum: number, r) => sum + r.errors.length, 0);
 
     log.info(
       `[KolCrawlCron] Completed: ${results.length} KOLs, ` +

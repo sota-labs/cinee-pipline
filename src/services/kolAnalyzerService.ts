@@ -1,4 +1,4 @@
-/** KolAnalyzerService — AI-powered analysis for KOL posts and personality learning */
+ /** KolAnalyzerService — AI-powered analysis for KOL posts and personality learning */
 import { log } from "../utils/logger.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus, ESentiment } from "../db/models/KolPost.js";
@@ -66,7 +66,7 @@ async function queueAnalysisTask(
   relatedId: string,
 ): Promise<string> {
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `message --session isolated --content '${escapedPrompt}' --no-deliver`;
+  const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,

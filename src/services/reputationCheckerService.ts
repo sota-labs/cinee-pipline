@@ -132,7 +132,7 @@ export class ReputationCheckerService {
     );
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `message --session isolated --content '${escapedPrompt}' --no-deliver`;
+    const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
 
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
@@ -270,7 +270,7 @@ export class ReputationCheckerService {
       .replace("{{content_preview}}", contentPreview.substring(0, 100));
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `message --session isolated --content '${escapedPrompt}' --no-deliver`;
+    const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
 
     await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
