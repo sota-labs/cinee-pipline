@@ -1,5 +1,6 @@
 /** KolAFKReplyCron — Execute scheduled AFK replies */
 import { replyEngineService } from "../services/replyEngineService.js";
+import { connectDb, disconnectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
 
 /**
@@ -8,7 +9,8 @@ import { log } from "../utils/logger.js";
  */
 async function main(): Promise<void> {
   try {
-    log.info("[KolAFKReplyCron] Starting AFK reply job...");
+    await connectDb();
+    log.info("[KolAFKReplyCron] Connected to DB. Starting AFK reply job...");
 
     const result = await replyEngineService.runScheduledAFKReplies();
 
@@ -17,9 +19,11 @@ async function main(): Promise<void> {
         `${result.succeeded} succeeded, ${result.failed} failed`,
     );
 
+    await disconnectDb();
     process.exit(0);
   } catch (error) {
     log.error(`[KolAFKReplyCron] Fatal error: ${(error as Error).message}`);
+    await disconnectDb().catch(() => {});
     process.exit(1);
   }
 }

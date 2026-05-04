@@ -1,5 +1,6 @@
 /** KolCrawlCron — Periodic crawl job for all KOLs */
 import { kolCrawlerService } from "../services/kolCrawlerService.js";
+import { connectDb, disconnectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
 
 /**
@@ -9,7 +10,8 @@ import { log } from "../utils/logger.js";
  */
 async function main(): Promise<void> {
   try {
-    log.info("[KolCrawlCron] Starting scheduled crawl...");
+    await connectDb();
+    log.info("[KolCrawlCron] Connected to DB. Starting scheduled crawl...");
 
     const results = await kolCrawlerService.crawlAllKols();
 
@@ -22,10 +24,11 @@ async function main(): Promise<void> {
         `${totalPostsFound} posts found, ${totalPostsSaved} saved, ${totalErrors} errors`,
     );
 
-    // Exit successfully
+    await disconnectDb();
     process.exit(0);
   } catch (error) {
     log.error(`[KolCrawlCron] Fatal error: ${(error as Error).message}`);
+    await disconnectDb().catch(() => {});
     process.exit(1);
   }
 }
