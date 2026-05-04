@@ -1,0 +1,52 @@
+{
+  "apps": [
+    {
+      "name": "cinee-dev",
+      "script": "tsx",
+      "args": "watch src/index.ts",
+      "interpreter": "none",
+      "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
+      "env_file": ".env",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-scan-post",
+      "script": "tsx",
+      "args": "src/scripts/scanAndPostCron.ts",
+      "interpreter": "none",
+      "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
+      "env_file": ".env",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-kol-crawl",
+      "script": "tsx",
+      "args": "src/scripts/kolCrawlCron.ts",
+      "interpreter": "none",
+      "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
+      "env_file": ".env",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-kol-analyze",
+      "script": "tsx",
+      "args": "src/scripts/kolAnalyzeCron.ts",
+      "interpreter": "none",
+      "cwd": "/home/sotatek/Documents/cinee-openclaw/cinee-pipline",
+      "env_file": ".env",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    }
+  ]
+}

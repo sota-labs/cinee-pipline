@@ -11,6 +11,10 @@ import { tasksRouter } from "./routes/tasks.js";
 import kolsRouter from "./routes/kols.js";
 import kolPostsRouter from "./routes/kolPosts.js";
 import kolSettingsRouter from "./routes/kolSettings.js";
+import {
+  handleCallbackQuery,
+  handleCommand,
+} from "./telegram/kolTelegramBotNative.js";
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -45,6 +49,19 @@ app.get("/", (_req, res) => {
       kol_posts: "/api/kol-posts/*",
     },
   });
+});
+
+app.post("/webhook/kol-bot", async (req, res) => {
+  const { callback_query, message } = req.body;
+
+  if (callback_query) {
+    await handleCallbackQuery(callback_query);
+  }
+  if (message?.text?.startsWith("/")) {
+    await handleCommand(message);
+  }
+
+  res.sendStatus(200);
 });
 
 export { app };
