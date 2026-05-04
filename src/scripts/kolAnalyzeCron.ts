@@ -1,5 +1,6 @@
 /** KolAnalyzeCron — Periodic analysis job for new posts */
 import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
+import { connectDb, disconnectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
 
 /**
@@ -8,7 +9,8 @@ import { log } from "../utils/logger.js";
  */
 async function main(): Promise<void> {
   try {
-    log.info("[KolAnalyzeCron] Starting analysis job...");
+    await connectDb();
+    log.info("[KolAnalyzeCron] Connected to DB. Starting analysis job...");
 
     const result = await kolAnalyzerService.analyzePendingPosts();
 
@@ -16,9 +18,11 @@ async function main(): Promise<void> {
       `[KolAnalyzeCron] Completed: ${result.queued} posts queued for analysis, ${result.errors} errors`,
     );
 
+    await disconnectDb();
     process.exit(0);
   } catch (error) {
     log.error(`[KolAnalyzeCron] Fatal error: ${(error as Error).message}`);
+    await disconnectDb().catch(() => {});
     process.exit(1);
   }
 }
