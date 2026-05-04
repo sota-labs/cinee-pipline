@@ -1,5 +1,6 @@
 /** ReputationCheckerService — Check KOL and commenter reputation for safety */
 import { log } from "../utils/logger.js";
+import { settings } from "../config/settings.js";
 import {
   KolReputationCache,
   EReputationRecommendation,
@@ -132,11 +133,11 @@ export class ReputationCheckerService {
     );
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+    const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
-      agent: "openclaw",
+      agent: settings.openClawAgent,
       prompt: command,
       status: ETaskStatus.PENDING,
       payload: { action: "reputation_check", handle: normalizedHandle },
@@ -270,11 +271,11 @@ export class ReputationCheckerService {
       .replace("{{content_preview}}", contentPreview.substring(0, 100));
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `cron run --session isolated '${escapedPrompt}' --no-deliver`;
+    const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
     await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
-      agent: "openclaw",
+      agent: settings.openClawAgent,
       prompt: command,
       status: ETaskStatus.PENDING,
       payload: { action: "post_quality_check", postUrl },
