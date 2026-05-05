@@ -1,5 +1,6 @@
 /** ReplyEngineService — Generate suggestions and manage reply execution (AFK + Manual modes) */
 import { log } from "../utils/logger.js";
+import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { settings as appSettings } from "../config/settings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { KolPost, EKolPostStatus } from "../db/models/KolPost.js";
@@ -56,7 +57,8 @@ Or if failed:
 Constraints:
 - Wait 2-3 seconds between actions
 - If rate limited, wait and retry once
-- If post is deleted/hidden, report error`;
+- If post is deleted/hidden, report error
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 /**
  * Queue reply execution task via OpenClaw.

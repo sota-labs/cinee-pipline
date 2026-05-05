@@ -4,6 +4,7 @@ import { Post, EPostStatus, Task, ETaskType } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { settings } from "../config/settings.js";
 import { buildRewritePrompt } from "../prompts/index.js";
+import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { getActiveRoleConfig } from "../services/topicConfigService.js";
 
 export const contentReviewRouter = Router();
@@ -39,7 +40,8 @@ STEP 2 — VERIFY BY CLICKING INTO THE POST:
     - Read the current browser URL (it should match /${xUser}/status/<id>).
     - Report on its own line: POST_SUCCESS_VERIFIED: <current_browser_url>
 12. If EITHER check fails:
-    - Report on its own line: POST_FAILED: <reason>`;
+    - Report on its own line: POST_FAILED: <reason>
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────

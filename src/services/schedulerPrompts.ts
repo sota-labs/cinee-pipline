@@ -1,4 +1,5 @@
 /** Static prompts that do not depend on topic/persona config. */
+import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 
 const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
 
@@ -66,7 +67,8 @@ Step 9: For each unique handle in the grouped list:
     "comments": <total_comments>,
     "shares": <total_shares>
   }
-- Report total number of inc-stats calls made at the end.`;
+- Report total number of inc-stats calls made at the end.
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 export const AUTO_LIKE_PROMPT = `You are an AI Agent with browser access. Your goal is to organically like posts on X from our inner circle and hot industry topics.
 
@@ -96,7 +98,8 @@ PHASE 2: LIKE HOT POSTS (2-3 posts)
    d. Click the Like button.
    e. Wait 5 seconds.
 
-Report the total number of posts liked.`;
+Report the total number of posts liked.
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 export const AUTO_BOOKMARK_PROMPT = `You are an AI Agent with browser access. Your goal is to occasionally bookmark a valuable post on X.
 
@@ -112,4 +115,5 @@ PHASE 1: BOOKMARK A HOT POST
 5. Locate the Bookmark button for the main post ([data-testid="bookmark"]).
 6. Click the Bookmark button to save it.
 7. Wait 5 seconds to confirm.
-8. Report the URL of the bookmarked post.`;
+8. Report the URL of the bookmarked post.
+${OUTPUT_FORMAT_INSTRUCTION}`;

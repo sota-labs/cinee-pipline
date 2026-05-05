@@ -1,4 +1,5 @@
 /** KOL Analysis Prompts — AI prompts for personality learning and reply generation */
+import { OUTPUT_FORMAT_INSTRUCTION } from "./outputFormat.js";
 
 // ── Post Analysis Prompts ─────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ Respond in this exact JSON format:
   "trending_topics": ["topic1", "topic2", "topic3"],
   "virality_score": 75
 }
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 export const COMMENT_PATTERN_PROMPT = `
 Analyze these top comments to identify engagement patterns.
@@ -50,7 +51,7 @@ Respond in this exact JSON format:
   "question_ratio": 0.3,
   "successful_reply_types": "short witty responses|detailed explanations|agreement with added value"
 }
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 // ── Personality Learning Prompts ─────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ Respond in this exact JSON format:
   "engagement_tone": "bullish and supportive but calls out BS",
   "avg_post_length": 25
 }
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 // ── Reply Generation Prompts ─────────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ Respond in this exact JSON format:
 }
 
 Confidence should be 70-95 for high-quality matches, 50-69 for decent matches, below 50 for uncertain.
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 // ── Self-Reply Generation Prompt ────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ REPLY GUIDELINES:
 7. Use emojis sparingly but naturally
 
 Respond with just the reply text (no JSON, no quotes, max 50 words):
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 // ── Safety Check Prompts ───────────────────────────────────────────────────
 
@@ -193,7 +194,7 @@ Respond in this exact JSON format:
   "risk_factors": ["none"],
   "recommendation": "proceed"
 }
-`;
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 // ── Prompt Builders ─────────────────────────────────────────────────────────
 

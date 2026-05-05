@@ -1,5 +1,6 @@
 /** KolCrawlerService — Crawl posts from tracked KOLs with Redis caching */
 import { log } from "../utils/logger.js";
+import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus } from "../db/models/KolPost.js";
 import { KolReputationCache } from "../db/models/KolReputationCache.js";
@@ -103,7 +104,8 @@ Return JSON format:
 Constraints:
 - Max {{limit}} posts
 - Skip posts older than 24 hours
-- Respect rate limits: 5 second delay between actions`;
+- Respect rate limits: 5 second delay between actions
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `You are KolCrawler. Your task is to crawl posts from MULTIPLE KOLs sequentially.
 
@@ -156,7 +158,8 @@ Constraints:
 - Max {{limit}} posts per KOL
 - Skip posts older than 24 hours
 - Respect rate limits: 10-15 second delay BETWEEN KOLs
-- Stop immediately if rate limited by X/Twitter`;
+- Stop immediately if rate limited by X/Twitter
+${OUTPUT_FORMAT_INSTRUCTION}`;
 
 interface IKolCrawlInfo {
   handle: string;

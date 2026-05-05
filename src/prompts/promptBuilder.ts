@@ -1,6 +1,7 @@
 /** Central prompt template engine — all content-generating prompts are built here. */
 import { RoleConfig } from "../config/settings.js";
 import { getHumanStyleRules, HumanStyleLevel } from "./humanStyleRules.js";
+import { OUTPUT_FORMAT_INSTRUCTION } from "./outputFormat.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,8 @@ Send a single POST request to ${apiUrl}/api/tools/db/curation (Content-Type: app
 Do NOT calculate the engagement score yourself (the database will automatically calculate and sort them).
 Report success/failure.
 
-${getHumanStyleRules(styleLevel)}`;
+${getHumanStyleRules(styleLevel)}
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
 /**
@@ -205,7 +207,8 @@ Set the header "Content-Type: application/json" and send EXACTLY this JSON body 
 }
 - Report the HTTP status and response body of the draft creation to confirm success.
 - Do NOT post to X directly.
-- Do NOT mark the CurationSource as "used". It will be marked "used" automatically when the user approves and posts the draft.`;
+- Do NOT mark the CurationSource as "used". It will be marked "used" automatically when the user approves and posts the draft.
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
 /**
@@ -253,7 +256,8 @@ ${getHumanStyleRules(styleLevel)}
   d) Wait 5 seconds before processing the next reply.
   e) After successfully replying, call PATCH ${apiUrl}/api/tools/db/replies
      with JSON body: { "_id": "<the reply _id>", "status": "replied" }.
-Process all matching replies sequentially with 5-second gaps. Do not skip any.`;
+Process all matching replies sequentially with 5-second gaps. Do not skip any.
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
 /**
@@ -334,7 +338,8 @@ After posting, send a POST request to ${apiUrl}/api/tools/db/interactions:
   "source_url": "<source_url>",
   "bot_comment_content": "<your exact text>"
 }
-Report result.`;
+Report result.
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
 /**
@@ -380,5 +385,6 @@ ${brandBanLine(brands)}
 - Tone: ${role.tone} — like a real person's tweet, not a press release.
 - Output ONLY the rewritten post, nothing else.
 
-${getHumanStyleRules(styleLevel)}`;
+${getHumanStyleRules(styleLevel)}
+${OUTPUT_FORMAT_INSTRUCTION}`;
 }
