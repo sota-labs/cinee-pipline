@@ -29,6 +29,12 @@
     "cron:remove:post": "tsx src/scripts/removeJob.ts post_approved_content",
     "cron:remove:auto-interact": "tsx src/scripts/removeJob.ts auto_interact_hot_posts",
     "cron:add:daily-rolling": "tsx src/scripts/dailyRollingWindowCron.ts",
+    "cron:add:kol-crawl": "tsx src/scripts/kolCrawlCron.ts",
+    "cron:add:kol-analyze": "tsx src/scripts/kolAnalyzeCron.ts",
+    "cron:add:kol-afk": "tsx src/scripts/kolAFKReplyCron.ts",
+    "cron:add:self-reply": "tsx src/scripts/selfReplyCron.ts",
+    "kol:crawl": "tsx src/scripts/kolCrawlCron.ts",
+    "kol:analyze": "tsx src/scripts/kolAnalyzeCron.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,0 +1,44 @@
+{
+  "apps": [
+    {
+      "name": "cinee-dev",
+      "script": "node",
+      "args": "./dist/index.js",
+      "log_date_format": "YYYY-MM-DD hh:mm:ss",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-scan-post",
+      "script": "node",
+      "args": "./dist/scripts/scanAndPostCron.js",
+      "log_date_format": "YYYY-MM-DD hh:mm:ss",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-kol-crawl",
+      "script": "node",
+      "args": "./dist/scripts/kolCrawlCron.js",
+      "log_date_format": "YYYY-MM-DD hh:mm:ss",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    },
+    {
+      "name": "cinee-kol-analyze",
+      "script": "node",
+      "args": "./dist/scripts/kolAnalyzeCron.js",
+      "log_date_format": "YYYY-MM-DD hh:mm:ss",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "restart_delay": 3000
+    }
+  ]
+}

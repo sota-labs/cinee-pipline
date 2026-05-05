@@ -8,6 +8,13 @@ import { contentReviewRouter } from "./routes/contentReview.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
 import { tasksRouter } from "./routes/tasks.js";
+import kolsRouter from "./routes/kols.js";
+import kolPostsRouter from "./routes/kolPosts.js";
+import kolSettingsRouter from "./routes/kolSettings.js";
+import {
+  handleCallbackQuery,
+  handleCommand,
+} from "./telegram/kolTelegramBotNative.js";
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -20,6 +27,9 @@ app.use("/api/content-review", contentReviewRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
 app.use("/api/topic-config", topicConfigRouter);
 app.use("/api/tasks", tasksRouter);
+app.use("/api/kols", kolsRouter);
+app.use("/api/kol-posts", kolPostsRouter);
+app.use("/api/kol-settings", kolSettingsRouter);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -35,8 +45,23 @@ app.get("/", (_req, res) => {
       priority_accounts: "/api/priority-accounts/*",
       topic_config: "/api/topic-config/*",
       tasks: "/api/tasks/*",
+      kols: "/api/kols/*",
+      kol_posts: "/api/kol-posts/*",
     },
   });
+});
+
+app.post("/webhook/kol-bot", async (req, res) => {
+  const { callback_query, message } = req.body;
+
+  if (callback_query) {
+    await handleCallbackQuery(callback_query);
+  }
+  if (message?.text?.startsWith("/")) {
+    await handleCommand(message);
+  }
+
+  res.sendStatus(200);
 });
 
 export { app };
