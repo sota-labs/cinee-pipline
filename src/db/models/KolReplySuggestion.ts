@@ -60,6 +60,10 @@ export interface IKolReplySuggestion extends Document {
   admin_edited_content?: string;
   admin_decided_at?: Date;
 
+  regeneration_instruction?: string;
+  regeneration_count: number;
+  parent_suggestion_id?: Types.ObjectId;
+
   execution_status: EReplyExecutionStatus;
   sent_comment_id?: string;
   sent_at?: Date;
@@ -98,6 +102,10 @@ const kolReplySuggestionSchema = new Schema<IKolReplySuggestion>(
     admin_edited_content: { type: String },
     admin_decided_at: { type: Date },
 
+    regeneration_instruction: { type: String },
+    regeneration_count: { type: Number, default: 0 },
+    parent_suggestion_id: { type: Schema.Types.ObjectId, ref: "KolReplySuggestion" },
+
     execution_status: {
       type: String,
       enum: Object.values(EReplyExecutionStatus),
@@ -118,6 +126,7 @@ kolReplySuggestionSchema.index({ kol_post_id: 1 });
 kolReplySuggestionSchema.index({ mode: 1, execution_status: 1 });
 kolReplySuggestionSchema.index({ execution_status: 1, auto_reply_scheduled_at: 1 });
 kolReplySuggestionSchema.index({ created_at: -1 });
+kolReplySuggestionSchema.index({ telegram_message_id: 1 }, { sparse: true });
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 

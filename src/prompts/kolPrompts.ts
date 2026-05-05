@@ -141,6 +141,70 @@ Respond in this exact JSON format:
 Confidence should be 70-95 for high-quality matches, 50-69 for decent matches, below 50 for uncertain.
 `;
 
+// ── Reply Regeneration Prompt ────────────────────────────────────────────────
+
+export const REPLY_REGENERATION_PROMPT = `
+Generate 3 reply suggestions for this KOL's post. Your replies should match their personality and resonate with their audience.
+
+KOL PROFILE:
+Handle: @{{handle}}
+Writing Style: {{writing_style}}
+Common Topics: {{topics}}
+Frequent Slangs: {{slangs}}
+Typical Tone: {{tone}}
+
+POST TO REPLY TO:
+{{post_content}}
+
+ENGAGEMENT CONTEXT:
+Dominant Tone in Comments: {{dominant_tone}}
+Common Phrases Used: {{common_phrases}}
+Popular Emojis: {{emoji_trend}}
+
+ADMIN INSTRUCTION:
+The admin has requested regeneration with this guidance:
+"{{user_instruction}}"
+Incorporate this instruction into your suggestions while following all other requirements.
+
+REQUIREMENTS:
+1. Match the KOL's personality and posting style
+2. Use similar slang/phrasing when appropriate
+3. Add genuine value or humor
+4. Avoid generic responses like "Great post!" or "Thanks for sharing"
+5. Keep replies between 5-30 words
+6. If the post asks a question, answer it or add perspective
+7. If the post shares news, add commentary or reaction
+
+Respond in this exact JSON format:
+{
+  "suggestions": [
+    {
+      "content": "First reply option...",
+      "tone": "casual",
+      "confidence": 85,
+      "reasoning": "Matches their meme style while adding value",
+      "expected_engagement": 8
+    },
+    {
+      "content": "Second reply option...",
+      "tone": "witty",
+      "confidence": 75,
+      "reasoning": "Playful banter that fits their tone",
+      "expected_engagement": 6
+    },
+    {
+      "content": "Third reply option...",
+      "tone": "supportive",
+      "confidence": 70,
+      "reasoning": "Genuine agreement with added insight",
+      "expected_engagement": 5
+    }
+  ]
+}
+
+Confidence should be 70-95 for high-quality matches, 50-69 for decent matches, below 50 for uncertain.
+`;
+
 // ── Self-Reply Generation Prompt ────────────────────────────────────────────
 
 export const SELF_REPLY_GENERATION_PROMPT = `
@@ -283,4 +347,37 @@ export function buildSelfReplyPrompt(params: {
 
 export function buildPostQualityCheckPrompt(postContent: string): string {
   return POST_QUALITY_CHECK_PROMPT.replace("{{post_content}}", postContent);
+}
+
+export interface IReplyGenerationParams {
+  handle: string;
+  writingStyle: string;
+  topics: string[];
+  slangs: string[];
+  tone: string;
+  postContent: string;
+  dominantTone: string;
+  commonPhrases: string[];
+  emojiTrend: string[];
+}
+
+export function buildReplyRegenerationPrompt(
+  params: IReplyGenerationParams,
+  userInstruction: string,
+): string {
+  if (!userInstruction) {
+    return buildReplyGenerationPrompt(params);
+  }
+
+  return REPLY_REGENERATION_PROMPT
+    .replace("{{handle}}", params.handle)
+    .replace("{{writing_style}}", params.writingStyle)
+    .replace("{{topics}}", params.topics.join(", "))
+    .replace("{{slangs}}", params.slangs.join(", "))
+    .replace("{{tone}}", params.tone)
+    .replace("{{post_content}}", params.postContent)
+    .replace("{{dominant_tone}}", params.dominantTone)
+    .replace("{{common_phrases}}", params.commonPhrases.join(", "))
+    .replace("{{emoji_trend}}", params.emojiTrend.join(", "))
+    .replace("{{user_instruction}}", userInstruction);
 }

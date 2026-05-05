@@ -94,6 +94,11 @@ function buildSuggestionKeyboard(suggestionId: string, suggestionCount: number) 
     { text: "❌ Reject", callback_data: `kol_reject:${suggestionId}` },
   ]);
 
+  // Regenerate
+  buttons.push([
+    { text: "🔄 Regenerate", callback_data: `kol_regen:${suggestionId}` },
+  ]);
+
   // View post
   buttons.push([
     { text: "🔗 View Post", callback_data: `kol_view:${suggestionId}` },
@@ -333,6 +338,9 @@ export async function handleCallbackQuery(callbackQuery: {
   } else if (data.startsWith("kol_reject:")) {
     const [, suggestionId] = data.split(":");
     await handleReject(chatId, messageId, suggestionId);
+  } else if (data.startsWith("kol_regen:")) {
+    const [, suggestionId] = data.split(":");
+    await handleRegenerate(chatId, messageId, suggestionId);
   } else if (data === "kol_pending") {
     await sendPendingList();
   } else if (data === "kol_list") {
@@ -381,6 +389,80 @@ async function handleReject(
       parse_mode: "MarkdownV2",
     });
   }
+}
+
+async function handleRegenerate(
+  chatId: string,
+  messageId: number | undefined,
+  suggestionId: string,
+): Promise<void> {
+  const result = await replyEngineService.regenerateSuggestions(suggestionId);
+
+  if (!result) {
+    if (messageId) {
+      await callTelegram("editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: "⚠️ *Cannot Regenerate*\n\nThis suggestion was already superseded or not found\.",
+        parse_mode: "MarkdownV2",
+      });
+    }
+    return;
+  }
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: "🔄 *Regenerating suggestions\\.\\.\\.*\n\nNew suggestions will arrive shortly\.",
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+export async function handleReplyToSuggestion(message: {
+  text?: string;
+  chat: { id: number };
+  reply_to_message?: { message_id: number };
+}): Promise<void> {
+  const replyToMessageId = message.reply_to_message?.message_id;
+  if (!replyToMessageId || !message.text) return;
+
+  const suggestion = await KolReplySuggestion.findOne({
+    telegram_message_id: replyToMessageId,
+  });
+  if (!suggestion) return;
+
+  const userInstruction = message.text.trim();
+  if (!userInstruction) return;
+
+  const chatId = String(message.chat.id);
+  const result = await replyEngineService.regenerateSuggestions(
+    String(suggestion._id),
+    userInstruction,
+  );
+
+  if (!result) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "⚠️ Could not regenerate\\. Suggestion may already be superseded\\.",
+      parse_mode: "MarkdownV2",
+    });
+    return;
+  }
+
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `🔄 *Regenerating with:* "${escapeMarkdown(userInstruction)}"\n\nNew suggestions will arrive shortly\\.`,
+    parse_mode: "MarkdownV2",
+    reply_to_message_id: replyToMessageId,
+  });
+
+  await callTelegram("editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: replyToMessageId,
+    reply_markup: { inline_keyboard: [] },
+  });
 }
 
 async function sendSettings(chatId: string): Promise<void> {
@@ -436,7 +518,12 @@ export async function handleCommand(message: {
 
 export async function setupWebhook(webhookUrl: string): Promise<void> {
   try {
-    await callTelegram("setWebhook", { url: webhookUrl });
+    const params: Record<string, unknown> = { url: webhookUrl };
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (secret) {
+      params.secret_token = secret;
+    }
+    await callTelegram("setWebhook", params);
     log.info(`[KolTelegramBot] Webhook set to ${webhookUrl}`);
   } catch (error) {
     log.error(`[KolTelegramBot] Failed to set webhook: ${(error as Error).message}`);

@@ -10,3 +10,6 @@ scripts/venv/
 # ADF local settings
 .claude/settings.local.json
 .claude/config/adf-config.json
+
+docs/
+.claude/

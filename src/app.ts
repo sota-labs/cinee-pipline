@@ -14,6 +14,7 @@ import kolSettingsRouter from "./routes/kolSettings.js";
 import {
   handleCallbackQuery,
   handleCommand,
+  handleReplyToSuggestion,
 } from "./telegram/kolTelegramBotNative.js";
 
 const app = express();
@@ -52,6 +53,14 @@ app.get("/", (_req, res) => {
 });
 
 app.post("/webhook/kol-bot", async (req, res) => {
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const incomingToken = req.headers["x-telegram-bot-api-secret-token"];
+    if (incomingToken !== webhookSecret) {
+      return res.sendStatus(403);
+    }
+  }
+
   const { callback_query, message } = req.body;
 
   if (callback_query) {
@@ -59,6 +68,8 @@ app.post("/webhook/kol-bot", async (req, res) => {
   }
   if (message?.text?.startsWith("/")) {
     await handleCommand(message);
+  } else if (message?.reply_to_message && message?.text) {
+    await handleReplyToSuggestion(message);
   }
 
   res.sendStatus(200);

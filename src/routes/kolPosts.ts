@@ -254,6 +254,32 @@ router.post("/replies/:id/reject", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/replies/:id/regenerate — Regenerate suggestions with optional instruction
+ */
+router.post("/replies/:id/regenerate", async (req: Request, res: Response) => {
+  try {
+    const { instruction } = req.body as { instruction?: string };
+
+    const result = await replyEngineService.regenerateSuggestions(
+      String(req.params.id),
+      instruction,
+    );
+
+    if (!result) {
+      return res.status(400).json({ error: "Could not regenerate suggestions" });
+    }
+
+    res.json({
+      message: "Regeneration queued",
+      data: { suggestionId: result._id },
+    });
+  } catch (error) {
+    log.error(`[KolPostsRoute] Regenerate error: ${(error as Error).message}`);
+    res.status(500).json({ error: "Failed to regenerate suggestions" });
+  }
+});
+
+/**
  * POST /api/replies/:id/skip — Skip a reply (mark as done without sending)
  */
 router.post("/replies/:id/skip", async (req: Request, res: Response) => {

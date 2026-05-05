@@ -13,7 +13,7 @@ import {
 } from "../db/models/KolReplySuggestion.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { KolReputationCache } from "../db/models/KolReputationCache.js";
-import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
+import { buildReplyGenerationPrompt, buildReplyRegenerationPrompt } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import type { Types } from "mongoose";
 
@@ -161,6 +161,101 @@ export class ReplyEngineService {
     );
 
     return suggestion;
+  }
+
+  /**
+   * Regenerate reply suggestions for a post, optionally with user instructions.
+   */
+  async regenerateSuggestions(
+    suggestionId: string,
+    userInstruction?: string,
+  ): Promise<IKolReplySuggestion | null> {
+    const sanitizedInstruction = userInstruction?.trim().slice(0, 500) || undefined;
+
+    const MAX_REGENERATION_COUNT = 5;
+
+    const original = await KolReplySuggestion.findOneAndUpdate(
+      {
+        _id: suggestionId,
+        error_message: { $ne: "Superseded by regeneration" },
+        regeneration_count: { $lt: MAX_REGENERATION_COUNT },
+      },
+      {
+        $set: {
+          execution_status: EReplyExecutionStatus.FAILED,
+          error_message: "Superseded by regeneration",
+        },
+      },
+      { new: false },
+    );
+
+    if (!original) {
+      log.warn(`[ReplyEngine] Suggestion ${suggestionId} not found, already superseded, or max regenerations reached`);
+      return null;
+    }
+
+    const post = await KolPost.findById(original.kol_post_id);
+    if (!post) {
+      log.error(`[ReplyEngine] Post for suggestion ${suggestionId} not found`);
+      return null;
+    }
+
+    const kol = await KolProfile.findById(post.kol_id);
+    if (!kol) {
+      log.error(`[ReplyEngine] KOL for suggestion ${suggestionId} not found`);
+      return null;
+    }
+
+    const promptParams = {
+      handle: kol.handle,
+      writingStyle: kol.personality_profile.writing_style,
+      topics: kol.personality_profile.common_topics,
+      slangs: kol.personality_profile.slang_words,
+      tone: kol.personality_profile.engagement_tone,
+      postContent: post.content,
+      dominantTone: post.engagement_pattern.dominant_tone,
+      commonPhrases: post.engagement_pattern.common_phrases,
+      emojiTrend: post.engagement_pattern.emoji_trend,
+    };
+
+    const prompt = sanitizedInstruction
+      ? buildReplyRegenerationPrompt(promptParams, sanitizedInstruction)
+      : buildReplyGenerationPrompt(promptParams);
+
+    const settings = await KolSettings.getSettings();
+
+    const escapedPrompt = prompt.replace(/'/g, "'\\''");
+    const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
+
+    const newSuggestion = await KolReplySuggestion.create({
+      kol_post_id: original.kol_post_id,
+      suggestions: [],
+      mode: settings.default_mode,
+      execution_status: EReplyExecutionStatus.PENDING,
+      regeneration_instruction: sanitizedInstruction,
+      regeneration_count: (original.regeneration_count ?? 0) + 1,
+      parent_suggestion_id: original._id as Types.ObjectId,
+    });
+
+    await Task.create({
+      type: ETaskType.CRON_JOB_TRIGGER,
+      agent: appSettings.openClawAgent,
+      prompt: command,
+      status: ETaskStatus.PENDING,
+      payload: {
+        action: "generate_suggestions",
+        postId: String(original.kol_post_id),
+        suggestionId: String(newSuggestion._id),
+        mode: settings.default_mode,
+      },
+    });
+
+    log.info(
+      `[ReplyEngine] Regeneration queued for suggestion ${suggestionId} → ${newSuggestion._id}` +
+        (sanitizedInstruction ? ` (instruction: "${sanitizedInstruction}")` : ""),
+    );
+
+    return newSuggestion;
   }
 
   /**
