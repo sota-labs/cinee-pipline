@@ -2,6 +2,7 @@
 import { Router, type Request, type Response } from "express";
 import { Task, ETaskStatus } from "../db/index.js";
 import { log } from "../utils/logger.js";
+import { extractResponse } from "../utils/extractResponse.js";
 
 export const tasksRouter = Router();
 
@@ -107,7 +108,7 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     task.status = ETaskStatus.COMPLETED;
     task.completed_at = new Date();
 
-    const rawResult = req.body?.result ?? "";
+    const rawResult = extractResponse(req.body?.result ?? "");
     try {
       const parsed = JSON.parse(rawResult);
       task.completed_job_id = parsed.id ?? "";
