@@ -114,18 +114,37 @@ KOLs TO CRAWL ({{kolCount}} total):
 
 For EACH KOL:
 1. Navigate to https://x.com/{handle}
-2. Collect recent posts since their last crawl time (if provided) or last 24 hours
-3. For each post, extract:
-   - post_url (full URL)
-   - content (text content)
-   - posted_at (ISO timestamp)
-   - likes, comments, retweets, views (numbers)
-   - media_urls (array of image/video URLs if any)
-4. For posts with > 10 comments, collect top 10 most-liked comments:
-   - content (comment text)
-   - author_handle (without @)
-   - likes (number)
-   - reply_count (number)
+2. Wait 10s for page load
+3. DATA EXTRACTION (DOM-FIRST MAPPING):
+   For each post in the timeline, extract using these exact selectors:
+   
+   PRIMARY DOM Selectors (use these first):
+   | Field | Selector | Fallback if null |
+   |-------|----------|----------------|
+   | Container | [data-testid="tweet"] | first <article> element |
+   | Content | [data-testid="tweetText"] | largest text block in container |
+   | Likes | [data-testid="like"] | aria-label containing "likes" |
+   | Comments | [data-testid="reply"] | aria-label containing "replies" |
+   | Retweets | [data-testid="retweet"] | aria-label containing "retweets" |
+   | Views | [data-testid="views"] | aria-label containing "views" |
+   | Media | [data-testid="videoPlayer"], [data-testid="tweetPhoto"] | any <img> or <video> in container |
+   | Timestamp | <time> element | look for datetime attribute |
+   
+   ⚠️ NUMBER PARSING: Convert "1.2K" → 1200, "3.5M" → 3500000 (integers only)
+   ⚠️ Skip posts with no content found by both methods
+   
+4. For each extracted post, collect:
+   - post_url (from <time> link or construct from handle+timestamp)
+   - content (text content, max 500 chars)
+   - posted_at (ISO timestamp from datetime attribute)
+   - likes, comments, retweets, views (parsed numbers)
+   - media_urls (array of image/video URLs)
+
+5. For posts with > 10 comments, open post and collect top 10 most-liked:
+   - content: [data-testid="tweetText"] of comment
+   - author_handle: from [data-testid="User-Name"] or profile link
+   - likes: [data-testid="like"] count
+   - reply_count: [data-testid="reply"] count
 
 CRITICAL: Wait 10-15 seconds between each KOL to respect rate limits.
 
