@@ -107,15 +107,14 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     task.status = ETaskStatus.COMPLETED;
     task.completed_at = new Date();
 
-    const resultJson = JSON.parse(req.body?.result ?? "{}");
-    task.completed_job_id = resultJson.id ?? "";
-    const resultString = JSON.stringify({
-      id: resultJson.id,
-      name: resultJson.name,
-      description: resultJson.description,
-      state: resultJson.state
-    });
-    task.result = resultString;
+    const rawResult = req.body?.result ?? "";
+    try {
+      const parsed = JSON.parse(rawResult);
+      task.completed_job_id = parsed.id ?? "";
+    } catch {
+      task.completed_job_id = "";
+    }
+    task.result = rawResult;
     await task.save();
 
     log.info(`Task ${task._id} (${task.type}) → completed`);
