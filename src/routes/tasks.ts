@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { Task, ETaskStatus } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { extractResponse } from "../utils/extractResponse.js";
+import { processBatchCrawlResult } from "../services/kolCrawlerService.js";
 
 export const tasksRouter = Router();
 
@@ -197,6 +198,48 @@ tasksRouter.delete("/:id", async (req: Request, res: Response) => {
     if (!task)
       return res.status(404).json({ success: false, error: "Task not found" });
     res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ── Process Result ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/tasks/:id/process-result
+ * Process a completed batch_crawl task result: parse JSON, save KolPost records.
+ * Idempotent — re-processing deduplicates via post_url unique index.
+ */
+tasksRouter.post("/:id/process-result", async (req: Request, res: Response) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task)
+      return res.status(404).json({ success: false, error: "Task not found" });
+
+    if (task.status !== ETaskStatus.COMPLETED) {
+      return res.status(409).json({
+        success: false,
+        error: `Task status is "${task.status}" — must be "completed" to process result`,
+      });
+    }
+
+    if (!task.result) {
+      return res.status(422).json({ success: false, error: "Task has no result to process" });
+    }
+
+    const payload = task.payload as Record<string, unknown> | undefined;
+    const handles = Array.isArray(payload?.handles)
+      ? (payload.handles as string[])
+      : [];
+
+    if (handles.length === 0) {
+      return res.status(422).json({ success: false, error: "Task payload has no handles" });
+    }
+
+    const results = await processBatchCrawlResult(task.result, handles);
+
+    log.info(`Task ${task._id}: processed result for ${results.length} KOLs`);
+    res.json({ success: true, results });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
   }
