@@ -126,7 +126,7 @@ async function createOpenClawTask(
 
 function buildAddCommand(job: CronJob): string {
   const escapedMessage = job.message.replace(/'/g, "'\\''");
-  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session isolated --message '${escapedMessage}' --no-deliver --description "${job.description}"`;
+  return `cron add --name "${job.name}" --cron "${job.schedule}" --tz "Asia/Ho_Chi_Minh" --session isolated --message '${escapedMessage}' --no-deliver --description "${job.description}" --json`;
 }
 
 function buildRemoveCommand(jobId: string): string {

@@ -1,6 +1,6 @@
 /** Task queue routes — CRUD and status management for async OpenClaw agent jobs. */
 import { Router, type Request, type Response } from "express";
-import { Task, ETaskStatus } from "../db/index.js";
+import { Task, ETaskStatus, ETaskType } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { extractResponse } from "../utils/extractResponse.js";
 import { processBatchCrawlResult } from "../services/kolCrawlerService.js";
@@ -109,7 +109,11 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     task.status = ETaskStatus.COMPLETED;
     task.completed_at = new Date();
 
-    const rawResult = extractResponse(req.body?.result ?? "");
+    const CLI_TASK_TYPES = [ETaskType.CRON_JOB_ADD, ETaskType.CRON_JOB_REMOVE, ETaskType.CRON_JOB_TRIGGER];
+    const isCli = CLI_TASK_TYPES.includes(task.type as ETaskType);
+    const rawResult = isCli
+      ? (req.body?.result ?? "").trim()
+      : extractResponse(req.body?.result ?? "");
     try {
       const parsed = JSON.parse(rawResult);
       task.completed_job_id = parsed.id ?? "";

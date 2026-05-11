@@ -3,7 +3,6 @@ import { log } from "../utils/logger.js";
 import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus } from "../db/models/KolPost.js";
-import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
@@ -11,7 +10,6 @@ import { getRedis } from "../db/redis.js";
 import { KOL_TWEET_SCRIPT, KOL_TWEET_SCRIPT_BATCH, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
 import {
   parseBatchCrawlResult,
-  parseSingleCrawlResult,
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
 
@@ -142,7 +140,7 @@ async function createBatchCrawlTask(
   const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
-    type: ETaskType.CRON_JOB_TRIGGER,
+    type: ETaskType.SINGLE_TASK_TRIGGER,
     agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
