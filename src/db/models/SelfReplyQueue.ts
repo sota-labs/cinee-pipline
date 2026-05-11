@@ -124,7 +124,6 @@ const selfReplyQueueSchema = new Schema<ISelfReplyQueue>(
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
-selfReplyQueueSchema.index({ our_post_id: 1 });
 selfReplyQueueSchema.index({ queue_status: 1, created_at: -1 });
 selfReplyQueueSchema.index({ "pending_comments.status": 1 });
 selfReplyQueueSchema.index({ last_reply_sent_at: 1 });

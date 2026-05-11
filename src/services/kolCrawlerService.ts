@@ -8,7 +8,7 @@ import { KolSettings } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
-import { KOL_TWEET_SCRIPT, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
+import { KOL_TWEET_SCRIPT, KOL_TWEET_SCRIPT_BATCH, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
 import {
   parseBatchCrawlResult,
   parseSingleCrawlResult,
@@ -23,6 +23,7 @@ import type { Types } from "mongoose";
 
 const KOL_CRAWL_CACHE_PREFIX = "kol:crawl:";
 const KOL_CRAWL_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+const MAX_CRAWL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h max crawl window
 
 async function getCachedLastCrawled(handle: string): Promise<Date | null> {
   try {
@@ -94,18 +95,19 @@ ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
 1. Navigate to https://x.com/{handle}, wait 8s, scroll 3x (2s each)
-2. Run TWEET_SCRIPT via page.evaluate(), collect posts
+2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle — posts older than sinceTimestamp will be filtered out by the script
 3. For each post where comments > 10 (max 5 posts per KOL):
    a. Navigate to post_url, wait 4s
    b. Run COMMENT_SCRIPT via page.evaluate(), add as top_comments
    c. Navigate back to profile
 4. Wait 10s before next handle
 
-Handles: {{handleList}}
+Handles:
+{{handleList}}
 
-TWEET_SCRIPT:
+TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
 \`\`\`
-${KOL_TWEET_SCRIPT}
+${KOL_TWEET_SCRIPT_BATCH}
 \`\`\`
 
 COMMENT_SCRIPT:
@@ -129,7 +131,9 @@ interface IKolCrawlInfo {
 async function createBatchCrawlTask(
   kols: IKolCrawlInfo[],
 ): Promise<string> {
-  const handleList = kols.map(k => `@${k.handle}`).join(", ");
+  const handleList = kols
+    .map(k => `- @${k.handle} | sinceTimestamp: "${k.since}"`)
+    .join("\n");
 
   const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE
     .replace(/\{\{handleList\}\}/g, handleList);
@@ -529,7 +533,10 @@ export async function crawlAllKolsSequential(
   const kolInfos: IKolCrawlInfo[] = [];
   for (const kol of kols) {
     const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-    const since = cachedLastCrawled ?? kol.last_crawled_at ?? getDefaultSinceDate();
+    const now = new Date();
+    const oldestAllowed = new Date(now.getTime() - MAX_CRAWL_WINDOW_MS);
+    const rawSince = cachedLastCrawled ?? kol.last_crawled_at ?? null;
+    const since = rawSince && rawSince > oldestAllowed && rawSince <= now ? rawSince : oldestAllowed;
     kolInfos.push({
       handle: kol.handle,
       since: since.toISOString(),

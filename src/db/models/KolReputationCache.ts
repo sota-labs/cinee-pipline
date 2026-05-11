@@ -84,7 +84,6 @@ const kolReputationCacheSchema = new Schema<IKolReputationCache>(
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
-kolReputationCacheSchema.index({ handle: 1 });
 kolReputationCacheSchema.index({ checked_at: -1 });
 kolReputationCacheSchema.index({ trust_score: -1 });
 

@@ -93,7 +93,6 @@ const kolProfileSchema = new Schema<IKolProfile>(
 
 kolProfileSchema.index({ is_active: 1, last_crawled_at: 1 });
 kolProfileSchema.index({ reputation_score: -1 });
-kolProfileSchema.index({ handle: 1 });
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
