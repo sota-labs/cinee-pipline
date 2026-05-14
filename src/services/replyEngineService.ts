@@ -35,46 +35,42 @@ export interface IExecuteResult {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const REPLY_EXECUTE_PROMPT_TEMPLATE = `Role: You are a Senior Browser Automation Specialist acting as a Human Proxy.
-Objective: Navigate to a specific X (Twitter) status and post a reply while bypassing bot detection through human-mimicry behaviors.
-
+const REPLY_EXECUTE_PROMPT_TEMPLATE = `Role: Senior Browser Automation Specialist.
+Objective: Post a specific reply to X using absolute literal strings to avoid tool errors.
 Target URL: {{post_url}}
-Reply Content: {{reply_content}}
 
-EXECUTION LOGIC (STRICT ADHERENCE):
-Initialize Real Browser Context:
-- Disable Simulation Mode. Enable Interactive Browser Mode.
-- Ensure the session is authenticated. If a login screen appears, stop and report {"success": false, "error": "auth_required"}.
+PHASE 1: TARGETING
+1. Navigate to: {{post_url}}
+2. Wait 5s.
+3. Identify the reply area. Look for a div with \`contenteditable="true"\` and \`role="textbox"\`. 
 
-Human-Mimicry Navigation:
-- Navigate to the Target URL.
-- Wait for 4-6 seconds for the DOM to fully load.
-- Perform a natural scroll: Scroll down 400px and back up 150px to simulate a user reading the post.
+PHASE 2: THE "CLICK-BEFORE-TYPE" SEQUENCE
+1. Focus: Perform a mouse click at the center of the textbox. 
+2. Tool Instruction: Use the native \`type\` method. 
+3. Literal String: You MUST type the following exact string: "{{reply_content}}"
+   - DO NOT use variables. 
+   - DO NOT use evaluate.
+   - If the tool asks for "text", provide the string above directly.
 
-Keystroke Level Interaction:
-- Locate the reply area using data-testid="tweetTextarea_0".
-- Action: Hover the mouse over the element for 1 second before clicking.
-- Typing: Use the type method with a random delay of 70ms - 200ms between characters. Do NOT use paste or fill commands.
-- Verification: Ensure the text "{{reply_content}}" is correctly entered into the field.
+PHASE 3: REACT ACTIVATION
+1. If the "Reply" button remains disabled after typing:
+   - Click the end of the text you just typed.
+   - Press "Space" once, then "Backspace" once. 
+   - This will force X's React state to recognize the input.
 
-Submission & Verification:
-- Wait 2.5 seconds after typing (as if proofreading).
-- Click the "Reply" button (selector: data-testid="tweetButtonInline").
-- Wait for the success toast message or the appearance of the new tweet in the thread.
+PHASE 4: SUBMISSION & VERIFY
+1. Click the button: \`[data-testid="tweetButtonInline"]\`.
+2. Verification: Wait 3s. Check if the text "{{reply_content}}" appears as a new tweet from your account in the current thread.
 
-Error Handling & Retries:
-- Rate Limited: If a "Rate limit exceeded" message appears, wait 60 seconds and retry EXACTLY once.
-- Post Status: If the post is deleted or the account is private, report {"success": false, "error": "post_not_accessible"}.
-- Wait Time: Maintain a mandatory 2-3 second pause between every major browser action.
-
-RETURN JSON FORMAT:
+RETURN FORMAT:
+<<<RESPONSE_START>>>
 {
   "success": boolean,
-  "comment_id": "string_or_url",
-  "posted_at": "ISO-8601-Timestamp",
-  "error": "null_or_reason_for_failure"
+  "handle_used": "string",
+  "comment_id": "string_url",
+  "error": "null_or_reason"
 }
-${OUTPUT_FORMAT_INSTRUCTION}`;
+<<<RESPONSE_END>>>`;
 
 /**
  * Queue reply execution task via OpenClaw.
