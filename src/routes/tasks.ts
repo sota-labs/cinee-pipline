@@ -11,6 +11,8 @@ import {
   kolAnalyzerService,
 } from "../services/kolAnalyzerService.js";
 import { replyEngineService } from "../services/replyEngineService.js";
+import { ownAccountService } from "../services/ownAccountService.js";
+import { selfReplyService } from "../services/selfReplyService.js";
 
 export const tasksRouter = Router();
 
@@ -174,10 +176,38 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
           try {
             log.info(`[Webhook] Processing generated suggestions for ${suggestionId}`);
             await replyEngineService.processGeneratedSuggestions(suggestionId, rawResult);
-          } catch (e: any) {
-            log.error(`[Webhook] Error processing generated suggestions: ${e.message}`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error processing generated suggestions: ${(e as Error).message}`);
           }
         });
+      }
+
+      // Handle own-account personality learning result
+      if (payload.analysisType === "own_account_personality") {
+        setImmediate(async () => {
+          try {
+            await ownAccountService.applyLearnedProfile(rawResult);
+            log.info("[Webhook] Applied own_account_personality learning result");
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error applying own_account_personality: ${(e as Error).message}`);
+          }
+        });
+      }
+
+      // Handle self-reply AI generation result
+      if (payload.analysisType === "self_reply_generation") {
+        const refId = String(payload.ref_id ?? "");
+        const commentId = String(payload.comment_id ?? "");
+        if (refId && commentId) {
+          setImmediate(async () => {
+            try {
+              await selfReplyService.processSelfReplyResult(refId, commentId, rawResult);
+              log.info(`[Webhook] Processed self_reply_generation for comment ${commentId}`);
+            } catch (e: unknown) {
+              log.error(`[Webhook] Error processing self_reply_generation: ${(e as Error).message}`);
+            }
+          });
+        }
       }
     }
 

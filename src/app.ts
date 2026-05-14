@@ -8,6 +8,7 @@ import { contentReviewRouter } from "./routes/contentReview.js";
 import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
 import { tasksRouter } from "./routes/tasks.js";
+import { accountRouter } from "./routes/account.js";
 import kolsRouter from "./routes/kols.js";
 import kolPostsRouter from "./routes/kolPosts.js";
 import kolSettingsRouter from "./routes/kolSettings.js";
@@ -27,6 +28,7 @@ app.use("/api/content-review", contentReviewRouter);
 app.use("/api/priority-accounts", priorityAccountsRouter);
 app.use("/api/topic-config", topicConfigRouter);
 app.use("/api/tasks", tasksRouter);
+app.use("/api/account", accountRouter);
 app.use("/api/kols", kolsRouter);
 app.use("/api/kol-posts", kolPostsRouter);
 app.use("/api/kol-settings", kolSettingsRouter);
@@ -47,6 +49,7 @@ app.get("/", (_req, res) => {
       tasks: "/api/tasks/*",
       kols: "/api/kols/*",
       kol_posts: "/api/kol-posts/*",
+      account: "/api/account/*",
     },
   });
 });

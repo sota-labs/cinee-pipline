@@ -16,6 +16,7 @@ import { KolSettings } from "../db/models/KolSettings.js";
 import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
+import { kolAnalyzerService } from "./kolAnalyzerService.js";
 import type { Types } from "mongoose";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -121,6 +122,13 @@ export class ReplyEngineService {
     const kol = await KolProfile.findById(post.kol_id);
     if (!kol) {
       log.error(`[ReplyEngine] KOL for post ${postId} not found`);
+      return null;
+    }
+
+    // Guard: skip suggestion generation if personality hasn't been learned yet
+    if (!kol.personality_profile?.writing_style) {
+      log.warn(`[ReplyEngine] KOL @${kol.handle} has no personality profile — queuing learning and skipping`);
+      await kolAnalyzerService.learnPersonality(String(kol._id));
       return null;
     }
 
