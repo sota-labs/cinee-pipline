@@ -35,29 +35,45 @@ export interface IExecuteResult {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const REPLY_EXECUTE_PROMPT_TEMPLATE = `You are ReplyExecutor. Your task:
-1. Navigate to {{post_url}}
-2. Reply to the post with this exact content:
-   "{{reply_content}}"
-3. Wait for the reply to be posted
-4. Capture the reply's comment ID or URL
-5. Return the result in this JSON format:
-{
-  "success": true,
-  "comment_id": "...",
-  "posted_at": "2026-01-01T00:00:00Z"
-}
+const REPLY_EXECUTE_PROMPT_TEMPLATE = `Role: You are a Senior Browser Automation Specialist acting as a Human Proxy.
+Objective: Navigate to a specific X (Twitter) status and post a reply while bypassing bot detection through human-mimicry behaviors.
 
-Or if failed:
-{
-  "success": false,
-  "error": "reason for failure"
-}
+Target URL: {{post_url}}
+Reply Content: {{reply_content}}
 
-Constraints:
-- Wait 2-3 seconds between actions
-- If rate limited, wait and retry once
-- If post is deleted/hidden, report error
+EXECUTION LOGIC (STRICT ADHERENCE):
+Initialize Real Browser Context:
+- Disable Simulation Mode. Enable Interactive Browser Mode.
+- Ensure the session is authenticated. If a login screen appears, stop and report {"success": false, "error": "auth_required"}.
+
+Human-Mimicry Navigation:
+- Navigate to the Target URL.
+- Wait for 4-6 seconds for the DOM to fully load.
+- Perform a natural scroll: Scroll down 400px and back up 150px to simulate a user reading the post.
+
+Keystroke Level Interaction:
+- Locate the reply area using data-testid="tweetTextarea_0".
+- Action: Hover the mouse over the element for 1 second before clicking.
+- Typing: Use the type method with a random delay of 70ms - 200ms between characters. Do NOT use paste or fill commands.
+- Verification: Ensure the text "{{reply_content}}" is correctly entered into the field.
+
+Submission & Verification:
+- Wait 2.5 seconds after typing (as if proofreading).
+- Click the "Reply" button (selector: data-testid="tweetButtonInline").
+- Wait for the success toast message or the appearance of the new tweet in the thread.
+
+Error Handling & Retries:
+- Rate Limited: If a "Rate limit exceeded" message appears, wait 60 seconds and retry EXACTLY once.
+- Post Status: If the post is deleted or the account is private, report {"success": false, "error": "post_not_accessible"}.
+- Wait Time: Maintain a mandatory 2-3 second pause between every major browser action.
+
+RETURN JSON FORMAT:
+{
+  "success": boolean,
+  "comment_id": "string_or_url",
+  "posted_at": "ISO-8601-Timestamp",
+  "error": "null_or_reason_for_failure"
+}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 /**
@@ -133,6 +149,14 @@ export class ReplyEngineService {
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
     const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
 
+    // Create placeholder suggestion (will be filled when task completes)
+    const suggestion = await KolReplySuggestion.create({
+      kol_post_id: postId,
+      suggestions: [],
+      mode,
+      execution_status: EReplyExecutionStatus.PENDING,
+    });
+
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
       agent: appSettings.openClawAgent,
@@ -141,16 +165,9 @@ export class ReplyEngineService {
       payload: {
         action: "generate_suggestions",
         postId: String(postId),
+        suggestionId: String(suggestion._id),
         mode,
       },
-    });
-
-    // Create placeholder suggestion (will be filled when task completes)
-    const suggestion = await KolReplySuggestion.create({
-      kol_post_id: postId,
-      suggestions: [],
-      mode,
-      execution_status: EReplyExecutionStatus.PENDING,
     });
 
     // Update post status

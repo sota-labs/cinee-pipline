@@ -42,6 +42,8 @@ export interface IPendingComment {
   engagement_points: number;
   author_reputation?: IReputationCheck;
   author_trust_score: number;
+  is_hidden?: boolean;
+  is_spam?: boolean;
   status: ECommentStatus;
   priority_score: number;
   scheduled_reply_at?: Date;
@@ -59,6 +61,8 @@ const pendingCommentSchema = new Schema<IPendingComment>(
     engagement_points: { type: Number, default: 0 },
     author_reputation: { type: reputationCheckSchema },
     author_trust_score: { type: Number, default: 50 },
+    is_hidden: { type: Boolean, default: false },
+    is_spam: { type: Boolean, default: false },
     status: {
       type: String,
       enum: Object.values(ECommentStatus),

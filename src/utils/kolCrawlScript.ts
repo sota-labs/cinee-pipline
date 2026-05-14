@@ -78,11 +78,18 @@ export const KOL_COMMENT_SCRIPT = `
     return parseInt(s) || 0;
   }
   const items = [...document.querySelectorAll('[data-testid="tweet"]')].slice(1, 11);
-  return items.map(c => ({
-    content: c.querySelector('[data-testid="tweetText"]')?.innerText?.slice(0, 300) || '',
-    author_handle: (c.querySelector('[data-testid="User-Name"] a')?.href || '').split('/').pop() || '',
-    likes: parseCount(c.querySelector('[data-testid="like"] span')?.innerText),
-    reply_count: parseCount(c.querySelector('[data-testid="reply"] span')?.innerText),
-  })).filter(c => c.content);
+  return items.map(c => {
+    const text = c.innerText || '';
+    const isHidden = text.toLowerCase().includes('show more replies') || text.toLowerCase().includes('hidden');
+    const isSpam = text.toLowerCase().includes('probable spam');
+    return {
+      content: c.querySelector('[data-testid="tweetText"]')?.innerText?.slice(0, 300) || '',
+      author_handle: (c.querySelector('[data-testid="User-Name"] a')?.href || '').split('/').pop() || '',
+      likes: parseCount(c.querySelector('[data-testid="like"] span')?.innerText),
+      reply_count: parseCount(c.querySelector('[data-testid="reply"] span')?.innerText),
+      is_hidden: isHidden,
+      is_spam: isSpam
+    };
+  }).filter(c => c.content);
 })()
 `;

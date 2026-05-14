@@ -17,6 +17,8 @@ export interface IRawPost {
     author_handle: string;
     likes: number;
     reply_count: number;
+    is_hidden?: boolean;
+    is_spam?: boolean;
   }>;
 }
 
@@ -44,6 +46,8 @@ function normalizePost(raw: Record<string, unknown>): IRawPost {
           author_handle: String(c.author_handle || ""),
           likes: toNumber(c.likes),
           reply_count: toNumber(c.reply_count),
+          is_hidden: Boolean(c.is_hidden),
+          is_spam: Boolean(c.is_spam),
         }))
         .filter((c) => c.content)
     : [];

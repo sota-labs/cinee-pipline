@@ -4,6 +4,13 @@ import { Task, ETaskStatus, ETaskType } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { extractResponse } from "../utils/extractResponse.js";
 import { processBatchCrawlResult } from "../services/kolCrawlerService.js";
+import {
+  processPostAnalysisResult,
+  processCommentPatternResult,
+  processPersonalityResult,
+  kolAnalyzerService,
+} from "../services/kolAnalyzerService.js";
+import { replyEngineService } from "../services/replyEngineService.js";
 
 export const tasksRouter = Router();
 
@@ -109,11 +116,7 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     task.status = ETaskStatus.COMPLETED;
     task.completed_at = new Date();
 
-    const CLI_TASK_TYPES = [ETaskType.CRON_JOB_ADD, ETaskType.CRON_JOB_REMOVE, ETaskType.CRON_JOB_TRIGGER];
-    const isCli = CLI_TASK_TYPES.includes(task.type as ETaskType);
-    const rawResult = isCli
-      ? (req.body?.result ?? "").trim()
-      : extractResponse(req.body?.result ?? "");
+    const rawResult = extractResponse(req.body?.result ?? "");
     try {
       const parsed = JSON.parse(rawResult);
       task.completed_job_id = parsed.id ?? "";
@@ -122,6 +125,61 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
     }
     task.result = rawResult;
     await task.save();
+
+    // Trigger automated pipeline hooks for background analysis/suggestions
+    if (task.payload && typeof task.payload === "object") {
+      const payload = task.payload as Record<string, unknown>;
+      
+      // Handle post analysis hooks
+      if (payload.analysisType && payload.relatedId) {
+        const relatedId = String(payload.relatedId);
+        
+        // Use setImmediate to avoid blocking the API response to the worker
+        setImmediate(async () => {
+          try {
+            if (payload.analysisType === "post_analysis") {
+              const result = await processPostAnalysisResult(relatedId, rawResult);
+              if (result) {
+                await kolAnalyzerService.applyAnalysisResults(relatedId, result);
+                log.info(`[Webhook] Applied post_analysis to post ${relatedId}, triggering generateSuggestions`);
+                // Auto-trigger suggestion generation
+                await replyEngineService.generateSuggestions(relatedId);
+              }
+            } else if (payload.analysisType === "comment_pattern") {
+              const result = await processCommentPatternResult(relatedId, rawResult);
+              if (result) {
+                await kolAnalyzerService.applyAnalysisResults(relatedId, {} as any, result);
+                log.info(`[Webhook] Applied comment_pattern to post ${relatedId}`);
+              }
+            } else if (payload.analysisType === "personality") {
+              const result = await processPersonalityResult(relatedId, rawResult);
+              if (result) {
+                // Not sure if there is an applyPersonalityUpdate function, let's assume it logs for now if missing
+                log.info(`[Webhook] Applied personality to KOL ${relatedId}`);
+                if ((kolAnalyzerService as any).applyPersonalityUpdate) {
+                  await (kolAnalyzerService as any).applyPersonalityUpdate(relatedId, result);
+                }
+              }
+            }
+          } catch (e: any) {
+            log.error(`[Webhook] Error processing analysis ${payload.analysisType}: ${e.message}`);
+          }
+        });
+      }
+      
+      // Handle suggestion generation hooks
+      if (payload.action === "generate_suggestions" && payload.suggestionId) {
+        const suggestionId = String(payload.suggestionId);
+        setImmediate(async () => {
+          try {
+            log.info(`[Webhook] Processing generated suggestions for ${suggestionId}`);
+            await replyEngineService.processGeneratedSuggestions(suggestionId, rawResult);
+          } catch (e: any) {
+            log.error(`[Webhook] Error processing generated suggestions: ${e.message}`);
+          }
+        });
+      }
+    }
 
     log.info(`Task ${task._id} (${task.type}) → completed`);
     res.json({ success: true, task });

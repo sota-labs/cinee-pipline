@@ -34,6 +34,8 @@ export class SelfReplyService {
       author_handle: string;
       content: string;
       likes: number;
+      is_hidden?: boolean;
+      is_spam?: boolean;
     }>,
   ): Promise<IQueueCreateResult | null> {
     const settings = await KolSettings.getSettings();
@@ -65,6 +67,8 @@ export class SelfReplyService {
       likes: c.likes,
       engagement_points: 0, // Will be calculated
       author_trust_score: 50, // Default, will be updated
+      is_hidden: c.is_hidden || false,
+      is_spam: c.is_spam || false,
       status: ECommentStatus.PENDING,
       priority_score: 0,
     }));
@@ -160,14 +164,16 @@ export class SelfReplyService {
     // Check rate limit
     if (queue.last_reply_sent_at) {
       const secondsSinceLastReply = (Date.now() - queue.last_reply_sent_at.getTime()) / 1000;
-      if (secondsSinceLastReply < queue.reply_interval_seconds) {
+      // Adjust reply speed to a random interval between 1 and 3 minutes (60-180 seconds)
+      const randomInterval = Math.floor(Math.random() * (180 - 60 + 1)) + 60;
+      if (secondsSinceLastReply < randomInterval) {
         return null; // Rate limited
       }
     }
 
-    // Find highest priority pending comment
+    // Find highest priority pending comment that is not hidden or spam
     const candidate = queue.pending_comments.find(
-      (c) => c.status === ECommentStatus.PENDING && c.author_trust_score >= 30,
+      (c) => c.status === ECommentStatus.PENDING && c.author_trust_score >= 30 && !c.is_hidden && !c.is_spam,
     );
 
     return candidate || null;
