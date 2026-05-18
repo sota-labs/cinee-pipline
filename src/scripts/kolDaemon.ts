@@ -65,6 +65,18 @@ async function executeSelfReplies() {
   }
 }
 
+async function executeAutoReject() {
+  log.info("[KOLDaemon] Auto-Reject job starting…");
+  try {
+    const result = await replyEngineService.runAutoRejectExpired();
+    if (result.rejected > 0) {
+      log.info(`[KOLDaemon] Auto-Reject done — rejected: ${result.rejected}`);
+    }
+  } catch (err: any) {
+    log.error(`[KOLDaemon] Auto-Reject job crashed: ${err.message}`);
+  }
+}
+
 async function executeDailyLearning() {
   log.info("[KOLDaemon] Daily Personality Learning job starting…");
   try {
@@ -97,6 +109,9 @@ async function startDaemon() {
   
   // Execute scheduled AFK replies every 10 minutes
   cron.schedule("*/10 * * * *", executeAFKReplies);
+
+  // Auto-reject expired manual suggestions every 10 minutes
+  cron.schedule("*/10 * * * *", executeAutoReject);
   
   // Process self-reply queues every 2 minutes to allow 1-3 min dynamic delay
   cron.schedule("*/2 * * * *", executeSelfReplies);

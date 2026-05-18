@@ -36,7 +36,9 @@ export interface IExecuteResult {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const REPLY_EXECUTE_PROMPT_TEMPLATE = `Role: Senior Browser Automation Specialist.
+const REPLY_EXECUTE_PROMPT_TEMPLATE = `You are a browser automation agent. EXECUTE these steps immediately. Do NOT explain or plan — act now.
+
+Role: Senior Browser Automation Specialist.
 Objective: Post a specific reply to X using absolute literal strings to avoid tool errors.
 Target URL: {{post_url}}
 
@@ -138,6 +140,7 @@ export class ReplyEngineService {
       writingStyle: kol.personality_profile.writing_style,
       topics: kol.personality_profile.common_topics,
       slangs: kol.personality_profile.slang_words,
+      slangExamples: kol.personality_profile.slang_examples || [],
       tone: kol.personality_profile.engagement_tone,
       postContent: post.content,
       dominantTone: post.engagement_pattern.dominant_tone,
@@ -234,9 +237,7 @@ export class ReplyEngineService {
       if (suggestion.mode === EReplyMode.AFK) {
         await this.processAFKMode(suggestion);
       } else {
-        // Manual mode: Send Telegram notification
-        const { sendSuggestionForReview } = await import("../telegram/kolTelegramBotNative.js");
-        await sendSuggestionForReview(suggestion);
+        await this.processManualMode(suggestion);
       }
 
       return true;
@@ -250,48 +251,74 @@ export class ReplyEngineService {
   }
 
   /**
-   * Process AFK mode: auto-select best suggestion and schedule.
+   * Select the best suggestion by confidence threshold + post quality check.
+   * Shared by both AFK and Manual modes.
    */
-  private async processAFKMode(suggestion: IKolReplySuggestion): Promise<void> {
+  private async selectBestSuggestion(
+    suggestion: IKolReplySuggestion,
+  ): Promise<ISuggestion | null> {
     const settings = await KolSettings.getSettings();
     const minConfidence = settings.afk.min_confidence_threshold;
 
-    // Find best suggestion meeting threshold
-    const bestSuggestion = suggestion.suggestions
+    const best = suggestion.suggestions
       .filter((s) => s.confidence >= minConfidence)
       .sort((a, b) => b.confidence - a.confidence)[0];
 
-    if (!bestSuggestion) {
+    if (!best) return null;
+
+    const post = await KolPost.findById(suggestion.kol_post_id);
+    if (!post || post.analysis.virality_score < 30) return null;
+
+    return best;
+  }
+
+  /**
+   * Process AFK mode: auto-select best suggestion and schedule.
+   */
+  private async processAFKMode(suggestion: IKolReplySuggestion): Promise<void> {
+    const best = await this.selectBestSuggestion(suggestion);
+
+    if (!best) {
       log.info(
-        `[ReplyEngine] No suggestion meets AFK threshold (${minConfidence}) for ${suggestion._id}, converting to manual`,
+        `[ReplyEngine] No suggestion meets AFK threshold for ${suggestion._id}, converting to manual`,
       );
       await this.convertToManualMode(suggestion);
       return;
     }
 
-    // Check post quality before auto-replying
-    const post = await KolPost.findById(suggestion.kol_post_id);
-    if (!post) return;
-
-    // Simple quality check (virality score > 30)
-    if (post.analysis.virality_score < 30) {
-      log.info(`[ReplyEngine] Post quality too low for AFK, converting to manual`);
-      await this.convertToManualMode(suggestion);
-      return;
-    }
-
     // Schedule with random delay
+    const settings = await KolSettings.getSettings();
     const delayMin = settings.afk.auto_delay_min_minutes;
     const delayMax = settings.afk.auto_delay_max_minutes;
     const delayMinutes = Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin;
 
-    suggestion.selected_suggestion_id = bestSuggestion.id;
+    suggestion.selected_suggestion_id = best.id;
     suggestion.auto_reply_scheduled_at = new Date(Date.now() + delayMinutes * 60 * 1000);
     await suggestion.save();
 
     log.info(
       `[ReplyEngine] AFK reply scheduled for ${suggestion._id} in ${delayMinutes} minutes`,
     );
+  }
+
+  /**
+   * Process Manual mode: pre-select best suggestion and send streamlined Telegram confirmation.
+   * Falls back to full suggestion list if no suggestion meets threshold.
+   */
+  private async processManualMode(suggestion: IKolReplySuggestion): Promise<void> {
+    const best = await this.selectBestSuggestion(suggestion);
+
+    if (best) {
+      suggestion.selected_suggestion_id = best.id;
+      await suggestion.save();
+
+      const { sendConfirmationRequest } = await import("../telegram/kolTelegramBotNative.js");
+      await sendConfirmationRequest(suggestion);
+    } else {
+      // No suggestion meets threshold — show full list for manual pick
+      const { sendSuggestionForReview } = await import("../telegram/kolTelegramBotNative.js");
+      await sendSuggestionForReview(suggestion);
+    }
   }
 
   /**
@@ -500,6 +527,37 @@ export class ReplyEngineService {
       execution_status: EReplyExecutionStatus.SENT,
       sent_at: { $gte: oneHourAgo },
     });
+  }
+
+  /**
+   * Auto-reject manual suggestions that exceeded the configured timeout.
+   * Called by cron every 10 minutes.
+   */
+  async runAutoRejectExpired(): Promise<{ rejected: number }> {
+    const settings = await KolSettings.getSettings();
+    const timeoutMinutes = settings.manual.auto_reject_after_minutes;
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+
+    const expired = await KolReplySuggestion.find({
+      mode: EReplyMode.MANUAL,
+      execution_status: EReplyExecutionStatus.PENDING,
+      admin_decision: { $exists: false },
+      created_at: { $lte: cutoff },
+    });
+
+    for (const suggestion of expired) {
+      suggestion.admin_decision = EAdminDecision.REJECTED;
+      suggestion.admin_decided_at = new Date();
+      suggestion.execution_status = EReplyExecutionStatus.FAILED;
+      suggestion.error_message = "Auto-rejected: no response within timeout";
+      await suggestion.save();
+    }
+
+    if (expired.length > 0) {
+      log.info(`[ReplyEngine] Auto-rejected ${expired.length} expired manual suggestions`);
+    }
+
+    return { rejected: expired.length };
   }
 
   /**
