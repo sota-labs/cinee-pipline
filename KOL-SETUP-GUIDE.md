@@ -1,542 +1,478 @@
-# KOL Engagement System - Setup & Flow Guide
+# KOL Engagement System - Setup & Testing Guide
 
-## 📚 Tổng quan
+## Tổng quan
 
-KOL Engagement System tự động hóa việc tương tác với 100-200 KOLs trên X/Twitter bao gồm:
-- Crawl post mới
-- AI phân tích nội dung và cá tính KOL
-- Đề xuất reply phù hợp
-- Gửi reply ở 2 chế độ: **AFK** (tự động) hoặc **Manual** (cần duyệt)
+KOL Engagement System tự động hóa việc tương tác với KOLs trên X/Twitter:
+- Crawl post mới mỗi 30 phút
+- AI phân tích nội dung, cá tính, và slang của KOL
+- Đề xuất reply phù hợp với giọng văn của KOL
+- Gửi reply ở 2 chế độ: **AFK** (tự động) hoặc **Manual** (xác nhận qua Telegram)
 
-## 🚀 Cài đặt & Chạy
+---
 
-### 1. Cài đặt dependencies
+## 1. Cài đặt
+
+### 1.1 Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Environment Variables
+### 1.2 Environment Variables
 
-Thêm vào `.env`:
+Copy file mẫu và điền thông tin:
 
 ```bash
-# Telegram Bot (cho Manual mode)
+cp .env.example .env
+```
+
+Các biến bắt buộc:
+
+```bash
+# Database
+MONGO_URI=mongodb://localhost:27017/cinee_pipeline
+REDIS_URL=redis://localhost:6379/0
+
+# Server
+PORT=3000
+NODE_ENV=development
+PUBLIC_API_URL=http://localhost:3000
+
+# X/Twitter account (không có @)
+X_USERNAME=your_x_handle
+
+# OpenClaw agent name
+OPENCLAW_AGENT=main
+
+# Telegram Bot (bắt buộc cho Manual mode)
 KOL_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_ADMIN_CHAT_ID=your_chat_id
-
-# MongoDB (đã có từ trước)
-MONGODB_URI=mongodb://localhost:27017/pipeline
-
-# Redis (nếu dùng)
-REDIS_URL=redis://localhost:6379
-```
-
-**Lấy Telegram Bot Token:**
-1. Chat với [@BotFather](https://t.me/botfather)
-2. Gửi `/newbot`
-3. Copy token được cấp
-
-**Lấy Chat ID:**
-1. Chat với bot vừa tạo
-2. Truy cập: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-3. Tìm `"chat":{"id":123456789` - đó là Chat ID
-
-### 3. Khởi tạo Database
-
-Chạy server để auto-create collections:
-
-```bash
-npm run dev
-```
-
-Hoặc dùng script init (nếu có):
-
-```bash
-npm run db:init
-```
-
-### 4. Chạy Cron Jobs
-
-```bash
-# Thêm cron jobs vào hệ thống
-npm run cron:add:kol-crawl      # Mỗi 30 phút - Crawl posts
-npm run cron:add:kol-analyze    # Mỗi 15 phút - Phân tích
-npm run cron:add:kol-afk        # Mỗi 10 phút - Thực thi AFK replies
-npm run cron:add:self-reply     # Mỗi 5 phút - Self-reply queue
-```
-
-**Chạy thủ công (testing):**
-
-```bash
-# Crawl ngay lập tức
-npm run kol:crawl
-
-# Analyze ngay lập tức  
-npm run kol:analyze
 ```
 
 ---
 
-## 🔄 Luồng hệ thống
+## 2. Lấy Telegram Bot Token và Chat ID
 
-### Luồng tổng quan
+### 2.1 Tạo Telegram Bot
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  CRON JOB   │───▶│   CRAWLER   │───▶│   ANALYZER  │───▶│  REPLY      │
-│ (30 phút)   │    │  (KOL Posts)│    │  (AI + NLP) │    │  ENGINE     │
-└─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘
-                                                                │
-                              ┌─────────────────────────────────┘
-                              │
-                    ┌─────────▼─────────┐
-                    │   MODE DECISION   │
-                    └─────────┬─────────┘
-              ┌───────────────┴───────────────┐
-              ▼                                 ▼
-       ┌─────────────┐                  ┌─────────────┐
-       │  AFK MODE   │                  │ MANUAL MODE │
-       │  (Tự động)  │                  │ (Cần duyệt) │
-       └──────┬──────┘                  └──────┬──────┘
-              │                                 │
-              ▼                                 ▼
-       ┌─────────────┐                  ┌─────────────┐
-       │ Auto-send   │                  │ Telegram    │
-       │ delay 5-15m │                  │ Notification│
-       └─────────────┘                  └──────┬──────┘
-                                                │
-                                                ▼
-                                         ┌─────────────┐
-                                         │ Admin       │
-                                         │ Approve/    │
-                                         │ Reject      │
-                                         └─────────────┘
-```
+1. Mở Telegram, tìm kiếm **@BotFather**
+2. Gửi lệnh `/newbot`
+3. Đặt tên bot (ví dụ: `KOL Manager`)
+4. Đặt username bot (phải kết thúc bằng `bot`, ví dụ: `my_kol_manager_bot`)
+5. BotFather sẽ trả về token dạng:
+   ```
+   1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+   ```
+6. Copy token này vào `KOL_BOT_TOKEN` trong `.env`
 
----
+### 2.2 Lấy Chat ID của bạn
 
-## 🔧 Chi tiết từng luồng
+**Cách 1 — Dùng @userinfobot (dễ nhất):**
+1. Tìm kiếm **@userinfobot** trên Telegram
+2. Gửi `/start`
+3. Bot sẽ trả về thông tin bao gồm `Id: 123456789`
+4. Copy số đó vào `TELEGRAM_ADMIN_CHAT_ID`
 
-### 1️⃣ Luồng Crawl (Mỗi 30 phút)
+**Cách 2 — Dùng API trực tiếp:**
+1. Chat với bot vừa tạo (gửi bất kỳ tin nhắn nào)
+2. Mở trình duyệt, truy cập:
+   ```
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   ```
+   Ví dụ:
+   ```
+   https://api.telegram.org/bot1234567890:ABCdef/getUpdates
+   ```
+3. Tìm trong JSON trả về:
+   ```json
+   "chat": {
+     "id": 123456789,
+     "first_name": "Your Name",
+     "type": "private"
+   }
+   ```
+4. Số `id` đó là Chat ID của bạn
 
-**File:** `src/services/kolCrawlerService.ts`
+> **Lưu ý:** Bot không thể gửi tin nhắn cho bạn nếu bạn chưa từng chat với nó. Hãy gửi `/start` cho bot trước.
 
-```
-KolCrawlCron ──▶ crawlAllKols() ──▶ Query active KOLs ──▶ Queue OpenClaw tasks ──▶ Save to KolPost
-```
+### 2.3 Đăng ký Webhook
 
-**API liên quan:**
-```bash
-# Trigger manual crawl cho 1 KOL
-POST /api/kols/:id/crawl
-
-# Bulk import KOLs từ list
-POST /api/kols/bulk-import
-{"handles": ["elonmusk", "naval", "..."]}
-```
-
-**Dữ liệu lưu:**
-- `KolPost`: Post content, engagement metrics, comments
-- `KolProfile`: Cập nhật last_crawled_at
-
----
-
-### 2️⃣ Luồng Analyze (Mỗi 15 phút)
-
-**File:** `src/services/kolAnalyzerService.ts`
-
-```
-KolAnalyzeCron ──▶ analyzePendingPosts() ──▶ Queue AI tasks ──▶ Update KolPost analysis
-```
-
-**AI Analysis bao gồm:**
-1. **Post Analysis**: Tóm tắt, sentiment, virality score
-2. **Comment Pattern**: Phân tích top 10 comments, tìm pattern
-3. **Personality Learning**: Học cá tính KOL (nếu đủ 20 posts)
-
-**API liên quan:**
-```bash
-# Trigger analyze cho 1 post
-POST /api/kol-posts/:id/analyze
-
-# Trigger personality learning cho 1 KOL
-POST /api/kols/:id/learn
-```
-
-**Dữ liệu lưu:**
-- `KolPost.analysis`: summary, sentiment, virality_score, key_topics
-- `KolPost.engagement_pattern`: dominant_tone, emoji_trend, common_phrases
-- `KolProfile.personality_profile`: writing_style, slang_words, tone
-
----
-
-### 3️⃣ Luồng Reply Generation & Routing
-
-**File:** `src/services/replyEngineService.ts`
-
-#### AFK Mode Flow
-
-```
-generateSuggestions() ──▶ AI creates 3 suggestions ──▶ processAFKMode()
-                                                            │
-                                                            ▼
-                                              ┌─────────────────────────┐
-                                              │ 1. Check confidence >= 70%│
-                                              │ 2. Check virality > 30    │
-                                              │ 3. Schedule delay 5-15m   │
-                                              └─────────────────────────┘
-                                                            │
-                                                            ▼
-                                              KolAFKReplyCron ──▶ executeReply()
-```
-
-**AFK Settings:**
-```typescript
-afk: {
-  min_confidence_threshold: 70,  // Tối thiểu 70% mới auto-reply
-  auto_delay_min_minutes: 5,   // Delay ngẫu nhiên 5-15 phút
-  auto_delay_max_minutes: 15,
-  hourly_reply_limit: 10,      // Tối đa 10 reply/giờ
-  daily_reply_limit: 50        // Tối đa 50 reply/ngày
-}
-```
-
-#### Manual Mode Flow
-
-```
-generateSuggestions() ──▶ AI creates 3 suggestions ──▶ sendTelegramNotification()
-                                                            │
-                                                            ▼
-                                              Admin nhận message với buttons:
-                                              [✅ Approve 1] [✅ Approve 2] [❌ Reject]
-                                                            │
-                                              ┌─────────────┴─────────────┐
-                                              ▼                           ▼
-                                    Admin click Approve              Admin click Reject
-                                            │                            │
-                                            ▼                            ▼
-                                    executeReply()              rejectSuggestion()
-                                            │                            │
-                                            ▼                            ▼
-                                    Gửi reply lên X             Đánh dấu rejected
-```
-
-**Manual Settings:**
-```typescript
-manual: {
-  notification_channel: "",    // Telegram channel (nếu có)
-  max_pending_hours: 24       // Tối đa chờ 24h
-}
-```
-
----
-
-### 4️⃣ Luồng Self-Reply (Reply vào comments post của mình)
-
-**File:** `src/services/selfReplyService.ts`
-
-```
-SelfReplyCron ──▶ processAllQueues() ──▶ Check rate limit ──▶ Rank comments
-                                              │
-                                              ▼
-                                    ┌─────────────────────────┐
-                                    │ Rank by:                │
-                                    │ • Like count × 2        │
-                                    │ • Trust score × 1.5     │
-                                    │ • Question bonus +5     │
-                                    │ • Mention bonus +3      │
-                                    └─────────────────────────┘
-                                              │
-                                              ▼
-                                    Check author reputation
-                                    (Skip nếu trust_score < 30)
-                                              │
-                                              ▼
-                                    Generate AI reply ──▶ Send via OpenClaw
-```
-
-**Self-Reply Settings:**
-```typescript
-self_reply: {
-  enabled: true,
-  min_comments_to_trigger: 5,    // Tối thiểu 5 comments mới trigger
-  reply_interval_seconds: 120,   // 2 phút giữa các reply
-  hourly_limit: 20               // Tối đa 20 reply/giờ
-}
-```
-
----
-
-## 🎮 API Endpoints
-
-### Settings API (Điều khiển chính)
+Sau khi server đang chạy, đăng ký webhook để Telegram gửi updates về server:
 
 ```bash
-# Xem mode hiện tại
-GET /api/kol-settings/mode
-
-# Chuyển sang AFK mode
-POST /api/kol-settings/mode
-{"mode": "afk"}
-
-# Chuyển sang Manual mode  
-POST /api/kol-settings/mode
-{"mode": "manual"}
-
-# Quick switch
-POST /api/kol-settings/mode/afk
-POST /api/kol-settings/mode/manual
-
-# Xem toàn bộ settings
-GET /api/kol-settings
-
-# Update thresholds
-PATCH /api/kol-settings/thresholds
-{
-  "min_confidence": 75,
-  "delay_min": 3,
-  "delay_max": 10,
-  "hourly_limit": 15
-}
-```
-
-### KOL Management API
-
-```bash
-# List KOLs
-GET /api/kols?page=1&limit=20&status=active
-
-# Thêm KOL mới
-POST /api/kols
-{
-  "handle": "elonmusk",
-  "platform": "x",
-  "priority_score": 95,
-  "notes": "AI/Tech influencer"
-}
-
-# Xem chi tiết 1 KOL
-GET /api/kols/:id
-
-# Trigger crawl
-POST /api/kols/:id/crawl
-
-# Trigger personality learning
-POST /api/kols/:id/learn
-
-# Bulk import
-POST /api/kols/bulk-import
-{"handles": ["naval", "sama", "..."]}
-```
-
-### Post & Reply API
-
-```bash
-# List posts
-GET /api/kol-posts?status=analyzed&mode=afk&page=1
-
-# Generate suggestions cho 1 post
-POST /api/kol-posts/:id/suggest
-
-# Manual reply (gửi ngay)
-POST /api/kol-posts/:id/reply
-{
-  "content": "Your custom reply here"
-}
-
-# Xem pending manual reviews
-GET /api/replies/pending
-
-# Approve suggestion (Manual mode)
-POST /api/replies/:id/approve
-{
-  "suggestion_index": 0,
-  "edited_content": "Optional edited version"
-}
-
-# Reject suggestion
-POST /api/replies/:id/reject
-```
-
----
-
-## 🛡️ Safety Features
-
-### Rate Limiting
-- Hourly limit: 10 replies/giờ (AFK), 20/giờ (Self-reply)
-- Daily limit: 50 replies/ngày
-- Delay giữa các reply: 1-3 phút (AFK), 2 phút (Self-reply)
-
-### Reputation Check
-- Trust score < 30: Skip hoàn toàn
-- Trust score 30-70: Proceed với caution
-- Trust score > 70: Proceed normally
-
-### Post Quality Check
-- Virality score > 30 mới AFK reply
-- Detect spam/hidden content
-- Duplicate detection (Levenshtein similarity > 80%)
-- Banned words filter
-
----
-
-## 📱 Telegram Bot Commands
-
-Bot tự động gửi notification khi có suggestion cần duyệt (Manual mode).
-
-**Commands:**
-- `/start` hoặc `/menu` - Hiện main menu
-- `/kols` - List các KOL đang follow
-- `/pending` - Xem danh sách chờ duyệt
-- `/stats` - Stats 24h
-
-**Inline Buttons trong notification:**
-- `✅ Approve 1/2/3` - Chọn suggestion để gửi
-- `✏️ Edit` - Edit rồi gửi (sẽ implement sau)
-- `❌ Reject` - Từ chối suggestion
-- `🔗 View Post` - Xem post gốc
-
----
-
-## 🔧 Webhook Setup (cho Telegram)
-
-Thêm vào `src/app.ts` hoặc routes:
-
-```typescript
-import { handleCallbackQuery, handleCommand } from "./telegram/kolTelegramBotNative.js";
-
-// Webhook endpoint
-app.post("/webhook/kol-bot", async (req, res) => {
-  const { callback_query, message } = req.body;
-  
-  if (callback_query) {
-    await handleCallbackQuery(callback_query);
-  }
-  if (message?.text?.startsWith("/")) {
-    await handleCommand(message);
-  }
-  
-  res.sendStatus(200);
-});
-```
-
-**Set webhook với Telegram:**
-```bash
-curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
   -d "url=https://yourdomain.com/webhook/kol-bot"
 ```
 
----
+Kiểm tra webhook đã được set chưa:
 
-## 📝 Database Models
-
-### Core Models
-
-| Model | Mục đích | Key Fields |
-|-------|----------|------------|
-| `KolProfile` | Thông tin KOL | handle, reputation_score, personality_profile |
-| `KolPost` | Posts đã crawl | content, engagement_metrics, analysis, status |
-| `KolReplySuggestion` | AI suggestions | suggestions[], mode, execution_status |
-| `KolReputationCache` | Cache reputation | trust_score, updated_at (TTL 24h) |
-| `SelfReplyQueue` | Queue self-replies | pending_comments, priority_score |
-| `KolSettings` | Global config | default_mode, afk, manual, safety |
-
-### Relationships
+```bash
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo"
 ```
-KolProfile 1 ────── N KolPost 1 ────── N KolReplySuggestion
-                        │
-                        └── 1 SelfReplyQueue (per user post)
-```
+
+> **Khi test local:** Dùng [ngrok](https://ngrok.com) để expose localhost:
+> ```bash
+> ngrok http 3000
+> # Copy URL dạng https://xxxx.ngrok.io rồi dùng làm webhook URL
+> ```
 
 ---
 
-## 🐛 Troubleshooting
+## 3. Khởi động
 
-### Lỗi thường gặp
-
-**1. Cron jobs không chạy**
 ```bash
-# Kiểm tra jobs đã được add chưa
-npm run cron:list
+# Development
+npm run dev
 
-# Chạy thủ công để test
-tsx src/scripts/kolCrawlCron.ts
+# Production
+npm run build && npm start
 ```
 
-**2. Telegram không nhận notification**
-- Kiểm tra `KOL_BOT_TOKEN` và `TELEGRAM_ADMIN_CHAT_ID`
-- Chat với bot trước (bot không thể gửi message cho user chưa từng chat)
-- Kiểm tra webhook URL có đúng không
-
-**3. AI không generate suggestions**
-- Kiểm tra post đã được analyze chưa (status = "analyzed")
-- Kiểm tra OpenClaw task queue có bị stuck không
-- Xem log: `grep "ReplyEngine" logs/app.log`
-
-**4. Rate limit quá nghiêm ngặt**
+Kiểm tra server đang chạy:
 ```bash
-# Update thresholds
-PATCH /api/kol-settings/thresholds
-{
-  "hourly_limit": 20,
-  "delay_min": 2,
-  "delay_max": 5
+curl http://localhost:3000/
+```
+
+---
+
+## 4. Thêm KOL vào hệ thống
+
+### 4.1 Thêm 1 KOL
+
+```bash
+curl -X POST http://localhost:3000/api/kols \
+  -H "Content-Type: application/json" \
+  -d '{"handle": "elonmusk"}'
+```
+
+### 4.2 Bulk import nhiều KOL
+
+```bash
+curl -X POST http://localhost:3000/api/kols/bulk-import \
+  -H "Content-Type: application/json" \
+  -d '{"handles": ["naval", "sama", "levelsio"]}'
+```
+
+### 4.3 Xem danh sách KOL
+
+```bash
+curl http://localhost:3000/api/kols
+```
+
+---
+
+## 5. Chạy Daemon (tất cả cron jobs)
+
+```bash
+# Chạy daemon (crawl + analyze + reply + self-reply)
+npm run kol:daemon
+
+# Chạy daemon và fire ngay lập tức lần đầu
+npm run kol:daemon -- --run-now
+```
+
+Daemon tự động chạy các jobs:
+
+| Job | Interval | Mô tả |
+|-----|----------|-------|
+| Crawl posts | 30 phút | Lấy post mới từ KOLs |
+| Analyze posts | 10 phút | AI phân tích nội dung |
+| AFK replies | 10 phút | Thực thi reply đã schedule |
+| Auto-reject | 10 phút | Reject manual suggestions quá 1 giờ |
+| Self-reply | 2 phút | Reply vào comments post của mình |
+| Personality learning | 02:00 AM | Học cá tính KOL hàng ngày |
+
+---
+
+## 6. Chế độ hoạt động
+
+### 6.1 Xem mode hiện tại
+
+```bash
+curl http://localhost:3000/api/kol-settings/mode
+```
+
+### 6.2 Chuyển sang AFK mode
+
+```bash
+curl -X POST http://localhost:3000/api/kol-settings/mode/afk
+```
+
+Trong AFK mode:
+- Hệ thống tự chọn suggestion có confidence cao nhất (≥ 70%)
+- Kiểm tra virality score của post (> 30)
+- Schedule reply với delay ngẫu nhiên 5–15 phút
+- Không cần xác nhận từ người dùng
+
+### 6.3 Chuyển sang Manual mode
+
+```bash
+curl -X POST http://localhost:3000/api/kol-settings/mode/manual
+```
+
+Trong Manual mode (đã cải tiến):
+- Hệ thống vẫn tự chọn suggestion tốt nhất (dùng logic AFK)
+- Gửi tin nhắn Telegram với suggestion đã chọn sẵn
+- Bạn chỉ cần bấm **✅ Confirm** hoặc **❌ Reject**
+- Nếu muốn xem tất cả options → bấm **🔄 See All**
+- **Tự động reject sau 1 giờ** nếu không có phản hồi
+
+---
+
+## 7. Test Manual Mode (Confirm Flow)
+
+### Bước 1: Đảm bảo Telegram đã cấu hình
+
+```bash
+# Kiểm tra settings
+curl http://localhost:3000/api/kol-settings
+```
+
+Xác nhận `manual.auto_reject_after_minutes` = 60.
+
+### Bước 2: Chuyển sang Manual mode
+
+```bash
+curl -X POST http://localhost:3000/api/kol-settings/mode/manual
+```
+
+### Bước 3: Trigger crawl và analyze
+
+```bash
+# Crawl posts từ KOL
+curl -X POST http://localhost:3000/api/kols/<KOL_ID>/crawl
+
+# Hoặc chạy daemon với --run-now
+npm run kol:daemon -- --run-now
+```
+
+### Bước 4: Xem pending suggestions
+
+```bash
+curl http://localhost:3000/api/replies/pending
+```
+
+### Bước 5: Kiểm tra Telegram
+
+Khi có suggestion mới, bot sẽ gửi tin nhắn dạng:
+
+```
+🤖 Reply to @kol_handle
+
+📝 Post: "Nội dung post của KOL..."
+
+💬 Reply: "Nội dung reply AI đề xuất"
+📊 Confidence: 85% | Tone: casual
+
+⏱ Auto-reject in 1 hour if no response
+
+[✅ Confirm]  [❌ Reject]
+[🔄 See All Options]
+```
+
+- **✅ Confirm** → Reply được gửi ngay lên X
+- **❌ Reject** → Suggestion bị reject
+- **🔄 See All Options** → Hiện đầy đủ 3 suggestions để chọn
+
+### Bước 6: Test auto-reject
+
+Để test auto-reject nhanh (không cần chờ 1 giờ), tạm thời giảm timeout:
+
+```bash
+curl -X PATCH http://localhost:3000/api/kol-settings \
+  -H "Content-Type: application/json" \
+  -d '{"manual": {"auto_reject_after_minutes": 1}}'
+```
+
+Sau 1 phút, chạy cron thủ công:
+
+```bash
+npx tsx src/scripts/kolAutoRejectCron.ts
+```
+
+Kiểm tra suggestion đã bị reject:
+
+```bash
+curl http://localhost:3000/api/replies/pending
+# Kết quả phải là mảng rỗng
+```
+
+Nhớ đặt lại timeout về 60:
+
+```bash
+curl -X PATCH http://localhost:3000/api/kol-settings \
+  -H "Content-Type: application/json" \
+  -d '{"manual": {"auto_reject_after_minutes": 60}}'
+```
+
+---
+
+## 8. Test AFK Mode
+
+### Bước 1: Chuyển sang AFK mode
+
+```bash
+curl -X POST http://localhost:3000/api/kol-settings/mode/afk
+```
+
+### Bước 2: Giảm delay để test nhanh
+
+```bash
+curl -X PATCH http://localhost:3000/api/kol-settings/thresholds \
+  -H "Content-Type: application/json" \
+  -d '{"delay_min": 1, "delay_max": 1}'
+```
+
+### Bước 3: Trigger suggestion generation
+
+```bash
+curl -X POST http://localhost:3000/api/kol-posts/<POST_ID>/suggest
+```
+
+### Bước 4: Chạy AFK cron thủ công
+
+```bash
+npx tsx src/scripts/kolAFKReplyCron.ts
+```
+
+### Bước 5: Kiểm tra kết quả
+
+```bash
+# Xem post đã được reply chưa
+curl http://localhost:3000/api/kol-posts/<POST_ID>
+# status phải là "replied"
+```
+
+---
+
+## 9. Test KOL Slang Learning
+
+### Bước 1: Trigger personality learning cho 1 KOL
+
+```bash
+curl -X POST http://localhost:3000/api/kols/<KOL_ID>/learn
+```
+
+### Bước 2: Kiểm tra profile đã có slang_examples chưa
+
+```bash
+curl http://localhost:3000/api/kols/<KOL_ID>
+```
+
+Tìm trong response:
+
+```json
+"personality_profile": {
+  "slang_words": ["ngmi", "wagmi", "ser"],
+  "slang_examples": [
+    { "word": "ngmi", "context": "mocking bad decisions: 'still holding that bag... ngmi'" },
+    { "word": "ser", "context": "addressing someone: 'ser, this is the alpha'" }
+  ]
 }
 ```
 
+> **Lưu ý:** Cần ít nhất 5 posts đã analyzed mới trigger được personality learning.
+
 ---
 
-## 📊 Monitoring
+## 10. Telegram Bot Commands
 
-**Stats endpoint:**
+Gửi trực tiếp cho bot:
+
+| Command | Mô tả |
+|---------|-------|
+| `/start` hoặc `/menu` | Hiện main menu |
+| `/pending` | Xem danh sách suggestions chờ duyệt |
+| `/kols` | Danh sách KOL đang theo dõi |
+| `/stats` | Thống kê 24 giờ qua |
+
+---
+
+## 11. API Reference nhanh
+
+### Settings
+
 ```bash
-GET /api/kol-posts/stats
+GET    /api/kol-settings              # Xem toàn bộ settings
+GET    /api/kol-settings/mode         # Xem mode hiện tại
+POST   /api/kol-settings/mode/afk     # Chuyển AFK
+POST   /api/kol-settings/mode/manual  # Chuyển Manual
+PATCH  /api/kol-settings              # Update settings
+PATCH  /api/kol-settings/thresholds   # Update AFK thresholds
 ```
 
-**Logs:**
-```bash
-# Xem real-time logs
-tail -f logs/app.log | grep "KOL"
+### KOL Management
 
-# Filter theo service
-tail -f logs/app.log | grep "ReplyEngine"
-tail -f logs/app.log | grep "KolCrawler"
+```bash
+GET    /api/kols                      # Danh sách KOL
+POST   /api/kols                      # Thêm KOL mới {"handle": "..."}
+GET    /api/kols/:id                  # Chi tiết 1 KOL
+POST   /api/kols/bulk-import          # Import nhiều KOL {"handles": [...]}
+POST   /api/kols/:id/crawl            # Trigger crawl ngay
+POST   /api/kols/:id/learn            # Trigger personality learning
+```
+
+### Posts & Replies
+
+```bash
+GET    /api/kol-posts                 # Danh sách posts
+POST   /api/kol-posts/:id/suggest     # Generate suggestions cho post
+GET    /api/replies/pending           # Danh sách chờ duyệt (Manual mode)
+POST   /api/replies/:id/approve       # Approve suggestion
+POST   /api/replies/:id/reject        # Reject suggestion
 ```
 
 ---
 
-## 🔄 CI/CD
+## 12. Luồng hệ thống
 
-**Git workflow:**
-```bash
-# Branch hiện tại: feat/kol
-git add .
-git commit -m "feat: add KOL engagement system"
-git push origin feat/kol
-
-# Merge vào main
-gh pr create --title "feat: KOL engagement system" --body "..."
+```
+KOL Posts (X/Twitter)
+        │
+        ▼ (mỗi 30 phút)
+   [CRAWLER] ──▶ KolPost (status: NEW)
+        │
+        ▼ (mỗi 10 phút)
+   [ANALYZER] ──▶ KolPost (status: ANALYZED)
+        │         └── Học slang + cá tính KOL
+        ▼
+[REPLY ENGINE] ──▶ KolReplySuggestion
+        │
+        ├── AFK mode ──▶ Auto-select best ──▶ Schedule 5-15m ──▶ Execute
+        │
+        └── Manual mode ──▶ Auto-select best ──▶ Telegram Confirm
+                                                      │
+                                          ┌───────────┼───────────┐
+                                          ▼           ▼           ▼
+                                      Confirm      Reject     See All
+                                          │                       │
+                                       Execute              Show full list
+                                                            (pick manually)
+                                    (nếu không phản hồi sau 1h → auto-reject)
 ```
 
 ---
 
-## 🎯 Tóm tắt nhanh
+## 13. Troubleshooting
 
-| Bạn muốn | Làm gì |
-|----------|--------|
-| **Xem mode hiện tại** | `GET /api/kol-settings/mode` |
-| **Chuyển sang AFK** | `POST /api/kol-settings/mode` `{"mode":"afk"}` |
-| **Chuyển sang Manual** | `POST /api/kol-settings/mode` `{"mode":"manual"}` |
-| **Thêm KOL mới** | `POST /api/kols` `{"handle":"..."}` |
-| **Crawl ngay** | `POST /api/kols/:id/crawl` |
-| **Xem pending** | `GET /api/replies/pending` |
-| **Approve reply** | `POST /api/replies/:id/approve` |
+**Bot không gửi tin nhắn:**
+- Đảm bảo đã chat với bot ít nhất 1 lần (`/start`)
+- Kiểm tra `KOL_BOT_TOKEN` và `TELEGRAM_ADMIN_CHAT_ID` đúng chưa
+- Thử gọi API trực tiếp để test:
+  ```bash
+  curl "https://api.telegram.org/bot<TOKEN>/sendMessage" \
+    -d "chat_id=<CHAT_ID>&text=test"
+  ```
 
----
+**Suggestions không được generate:**
+- Kiểm tra post đã có status `analyzed` chưa
+- KOL cần có `personality_profile.writing_style` (chạy `/learn` trước)
+- Xem log: `grep "ReplyEngine" logs/app.log`
 
-## 📞 Support
+**Auto-reject không chạy:**
+- Kiểm tra daemon đang chạy: `npm run kol:daemon`
+- Chạy thủ công: `npx tsx src/scripts/kolAutoRejectCron.ts`
 
-**Team:** Cinee Pipeline  
-**Docs:** [KOL-ENGAGEMENT-PLAN.md](./KOL-ENGAGEMENT-PLAN.md)  
-**API Base:** `http://localhost:3000/api`
+**Confidence quá thấp, không có suggestion nào được chọn:**
+- Giảm threshold: `PATCH /api/kol-settings/thresholds` với `{"min_confidence": 50}`
+- Khi không có suggestion đủ điều kiện, Manual mode sẽ hiện full list thay vì confirm flow

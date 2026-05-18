@@ -10,6 +10,7 @@ export enum EReplyMode {
 
 export enum EReplyExecutionStatus {
   PENDING = "pending",
+  EXECUTING = "executing",
   SENT = "sent",
   FAILED = "failed",
   BANNED = "banned",
@@ -114,7 +115,6 @@ const kolReplySuggestionSchema = new Schema<IKolReplySuggestion>(
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 
-kolReplySuggestionSchema.index({ kol_post_id: 1 });
 kolReplySuggestionSchema.index({ mode: 1, execution_status: 1 });
 kolReplySuggestionSchema.index({ execution_status: 1, auto_reply_scheduled_at: 1 });
 kolReplySuggestionSchema.index({ created_at: -1 });

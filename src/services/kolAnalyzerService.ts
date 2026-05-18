@@ -33,6 +33,7 @@ export interface IPersonalityUpdate {
   writingStyle: string;
   commonTopics: string[];
   slangWords: string[];
+  slangExamples: Array<{ word: string; context: string }>;
   emojiPattern: string;
   sentenceStructure: string;
   engagementTone: string;
@@ -154,6 +155,7 @@ export async function processPersonalityResult(
     writing_style: string;
     common_topics: string[];
     slang_words: string[];
+    slang_examples?: Array<{ word: string; context: string }>;
     emoji_pattern: string;
     sentence_structure: string;
     engagement_tone: string;
@@ -169,6 +171,10 @@ export async function processPersonalityResult(
     writingStyle: parsed.writing_style || "",
     commonTopics: parsed.common_topics || [],
     slangWords: parsed.slang_words || [],
+    slangExamples: (parsed.slang_examples || []).map((s) => ({
+      word: String(s.word || ""),
+      context: String(s.context || ""),
+    })),
     emojiPattern: parsed.emoji_pattern || "",
     sentenceStructure: parsed.sentence_structure || "",
     engagementTone: parsed.engagement_tone || "",
@@ -373,6 +379,7 @@ export class KolAnalyzerService {
       writing_style: update.writingStyle,
       common_topics: update.commonTopics,
       slang_words: update.slangWords,
+      slang_examples: update.slangExamples || [],
       emoji_pattern: update.emojiPattern,
       sentence_structure: update.sentenceStructure,
       engagement_tone: update.engagementTone,

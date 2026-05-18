@@ -3,10 +3,16 @@ import { Schema, model, Document, Types } from "mongoose";
 
 // ── Personality Profile Sub-document ────────────────────────────────────────────
 
+export interface ISlangExample {
+  word: string;
+  context: string;
+}
+
 export interface IPersonalityProfile {
   writing_style: string;
   common_topics: string[];
   slang_words: string[];
+  slang_examples: ISlangExample[];
   emoji_pattern: string;
   sentence_structure: string;
   engagement_tone: string;
@@ -18,6 +24,10 @@ const personalityProfileSchema = new Schema<IPersonalityProfile>(
     writing_style: { type: String, default: "" },
     common_topics: { type: [String], default: [] },
     slang_words: { type: [String], default: [] },
+    slang_examples: {
+      type: [{ word: { type: String }, context: { type: String } }],
+      default: [],
+    },
     emoji_pattern: { type: String, default: "" },
     sentence_structure: { type: String, default: "" },
     engagement_tone: { type: String, default: "" },
@@ -93,7 +103,6 @@ const kolProfileSchema = new Schema<IKolProfile>(
 
 kolProfileSchema.index({ is_active: 1, last_crawled_at: 1 });
 kolProfileSchema.index({ reputation_score: -1 });
-kolProfileSchema.index({ handle: 1 });
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 

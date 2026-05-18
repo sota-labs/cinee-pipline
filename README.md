@@ -432,6 +432,28 @@ curl -X PATCH http://localhost:3000/api/content-review/drafts/DRAFT_ID/schedule
 
 ---
 
+### KOL Tracking & Auto-Reply
+
+#### KOL Profiles
+| Method   | Endpoint                     | Description                                |
+| -------- | ---------------------------- | ------------------------------------------ |
+| `GET`    | `/api/kols`                  | List KOLs (paginated, supports filtering)  |
+| `POST`   | `/api/kols`                  | Add a new KOL                              |
+| `POST`   | `/api/kols/bulk-import`      | Bulk import KOLs via array of handles      |
+| `GET`    | `/api/kols/:id`              | Get a KOL by ID                            |
+| `PATCH`  | `/api/kols/:id`              | Update KOL details                         |
+| `DELETE` | `/api/kols/:id`              | Delete a KOL                               |
+
+#### KOL Actions
+| Method   | Endpoint                     | Description                                |
+| -------- | ---------------------------- | ------------------------------------------ |
+| `POST`   | `/api/kols/:id/crawl`        | Trigger manual crawl of a KOL              |
+| `POST`   | `/api/kols/:id/learn`        | Learn AI personality from KOL's posts      |
+| `GET`    | `/api/kols/:id/posts`        | Get all crawled posts for a KOL            |
+| `GET`    | `/api/kols/:id/personality`  | Get the learned personality profile        |
+
+---
+
 ## Dynamic Topic Switching
 
 The pipeline's persona and content topics can be switched at runtime without restarting the server.
@@ -485,3 +507,4 @@ The JSON file accepts any subset of `RoleConfig` fields. Missing fields fall bac
 | `npm run cron:add:post`             | Register `post_approved_content`               |
 | `npm run cron:add:auto-interact`    | Register `auto_interact_hot_posts`             |
 | `npm run scan-post`                 | Run the scan-and-post script manually          |
+| `npm run kol:daemon`                | Start KOL unified daemon (scan, reply, learn)  |

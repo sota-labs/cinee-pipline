@@ -65,7 +65,7 @@ RECENT POSTS ({{post_count}} posts):
 Your task:
 1. Identify their writing style (casual, professional, aggressive, meme-heavy, etc.)
 2. List their common discussion topics
-3. Extract slang words and phrases they frequently use
+3. Extract slang words and phrases they frequently use, WITH a short example of how they use each one
 4. Note their emoji usage patterns
 5. Describe their typical sentence structure
 6. Identify their tone when engaging (supportive, sarcastic, educational, etc.)
@@ -76,6 +76,12 @@ Respond in this exact JSON format:
   "writing_style": "casual, meme-heavy with technical depth",
   "common_topics": ["crypto", "AI", "startups", "web3"],
   "slang_words": ["ngmi", "wagmi", "ser", "gm"],
+  "slang_examples": [
+    { "word": "ngmi", "context": "mocking bad decisions: 'still holding that bag... ngmi'" },
+    { "word": "wagmi", "context": "bullish encouragement: 'just keep building, wagmi'" },
+    { "word": "ser", "context": "addressing someone directly: 'ser, this is the alpha'" },
+    { "word": "gm", "context": "casual greeting to open a post: 'gm, big news today'" }
+  ],
   "emoji_pattern": "frequent 🔥, occasional 💎, rare 😂",
   "sentence_structure": "short punchy sentences, occasional long threads",
   "engagement_tone": "bullish and supportive but calls out BS",
@@ -92,8 +98,10 @@ KOL PROFILE:
 Handle: @{{handle}}
 Writing Style: {{writing_style}}
 Common Topics: {{topics}}
-Frequent Slangs: {{slangs}}
 Typical Tone: {{tone}}
+
+SLANG DICTIONARY (use these naturally when the context fits — don't force them):
+{{slang_dictionary}}
 
 POST TO REPLY TO:
 {{post_content}}
@@ -105,7 +113,7 @@ Popular Emojis: {{emoji_trend}}
 
 REQUIREMENTS:
 1. Match the KOL's personality and posting style
-2. Use similar slang/phrasing when appropriate
+2. Use slang from the dictionary above when it fits naturally
 3. Add genuine value or humor
 4. Avoid generic responses like "Great post!" or "Thanks for sharing"
 5. Keep replies between 5-30 words
@@ -245,17 +253,25 @@ export function buildReplyGenerationPrompt(params: {
   writingStyle: string;
   topics: string[];
   slangs: string[];
+  slangExamples?: Array<{ word: string; context: string }>;
   tone: string;
   postContent: string;
   dominantTone: string;
   commonPhrases: string[];
   emojiTrend: string[];
 }): string {
+  // Build slang dictionary — use examples if available, fall back to flat list
+  const slangDict = params.slangExamples && params.slangExamples.length > 0
+    ? params.slangExamples.map((s) => `- "${s.word}" — ${s.context}`).join("\n")
+    : params.slangs.length > 0
+      ? params.slangs.map((s) => `- "${s}"`).join("\n")
+      : "(none identified)";
+
   return REPLY_GENERATION_PROMPT
     .replace("{{handle}}", params.handle)
     .replace("{{writing_style}}", params.writingStyle)
     .replace("{{topics}}", params.topics.join(", "))
-    .replace("{{slangs}}", params.slangs.join(", "))
+    .replace("{{slang_dictionary}}", slangDict)
     .replace("{{tone}}", params.tone)
     .replace("{{post_content}}", params.postContent)
     .replace("{{dominant_tone}}", params.dominantTone)
@@ -284,4 +300,30 @@ export function buildSelfReplyPrompt(params: {
 
 export function buildPostQualityCheckPrompt(postContent: string): string {
   return POST_QUALITY_CHECK_PROMPT.replace("{{post_content}}", postContent);
+}
+
+// ── Self-Reply Execution ──────────────────────────────────────────────────────
+
+const EXECUTE_SELF_REPLY_PROMPT = `You are an AI Agent with browser access. Post a reply to a comment on X.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times.
+
+Step 1: Open {{post_url}} in the browser.
+Step 2: Wait for the page to load. Scroll to find the comment with tweet ID {{comment_id}} in the replies section.
+Step 3: Click the Reply button on that specific comment.
+Step 4: Type the following reply text exactly as provided (do not modify it):
+{{reply_content}}
+Step 5: Click the Post/Reply button to submit.
+Step 6: Confirm the reply was posted successfully.
+${OUTPUT_FORMAT_INSTRUCTION}`;
+
+export function buildExecuteReplyPrompt(
+  postUrl: string,
+  commentId: string,
+  replyContent: string,
+): string {
+  return EXECUTE_SELF_REPLY_PROMPT
+    .replace("{{post_url}}", postUrl)
+    .replace("{{comment_id}}", commentId)
+    .replace("{{reply_content}}", replyContent);
 }

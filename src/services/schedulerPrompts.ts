@@ -22,7 +22,11 @@ Step 3: Extract Data (Only for items within the 24h window):
 - 'reply_content': Extract text from [data-testid="tweetText"].
 - 'url': Find the <a> tag linked to the timestamp or the tweet status to get the full URL (e.g., https://x.com/username/status/...).
 - 'actual_timestamp': The value from the 'datetime' attribute of the <time> element.
-- 'author_handle': The @username who wrote the mention (found in the tweet header or URL path).
+- 'author_handle': The @username who wrote the mention (found in the tweet header or URL path), without the @ prefix.
+- 'parent_post_url': The URL of YOUR OWN post that this mention is replying to.
+  Look for a quoted tweet link or the "in reply to" context shown in the notification item.
+  This will be a URL matching https://x.com/${process.env.X_USERNAME || "{X_USERNAME}"}/status/...
+  If not found, omit this field.
 
 Step 4: Evaluate and Format:
 1. Evaluate 'reply_content':
@@ -34,6 +38,8 @@ Step 4: Evaluate and Format:
    - status: (resolved/rejected)
    - platform: "x"
    - url: (the full comment URL)
+   - author_handle: (the @username without @ prefix)
+   - parent_post_url: (the URL of your own post being replied to, omit if not found)
    - created_at: (use the 'actual_timestamp' extracted from the element)
    - updated_at: ${new Date().toISOString()}
 

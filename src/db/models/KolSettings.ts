@@ -25,12 +25,14 @@ const afkSettingsSchema = new Schema<IAFKSettings>(
 export interface IManualSettings {
   notification_channel: string;
   max_pending_hours: number;
+  auto_reject_after_minutes: number;
 }
 
 const manualSettingsSchema = new Schema<IManualSettings>(
   {
     notification_channel: { type: String, default: "" },
     max_pending_hours: { type: Number, default: 24, min: 1 },
+    auto_reject_after_minutes: { type: Number, default: 60, min: 5 },
   },
   { _id: false },
 );

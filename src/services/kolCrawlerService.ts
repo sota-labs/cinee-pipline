@@ -3,11 +3,15 @@ import { log } from "../utils/logger.js";
 import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus } from "../db/models/KolPost.js";
-import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
+import { KOL_TWEET_SCRIPT, KOL_TWEET_SCRIPT_BATCH, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
+import {
+  parseBatchCrawlResult,
+  type IRawPost,
+} from "../utils/kolCrawlResultParser.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -17,6 +21,7 @@ import type { Types } from "mongoose";
 
 const KOL_CRAWL_CACHE_PREFIX = "kol:crawl:";
 const KOL_CRAWL_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+const MAX_CRAWL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h max crawl window
 
 async function getCachedLastCrawled(handle: string): Promise<Date | null> {
   try {
@@ -67,117 +72,48 @@ export interface IComment {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const KOL_CRAWL_PROMPT_TEMPLATE = `You are KolCrawler. Your task:
-1. Navigate to https://x.com/{{handle}}
-2. Collect recent posts since {{since}}
-3. For each post, extract:
-   - post_url (full URL)
-   - content (text content)
-   - posted_at (ISO timestamp)
-   - likes, comments, retweets, views (numbers)
-   - media_urls (array of image/video URLs if any)
-4. For posts with > 10 comments, collect top 10 most-liked comments:
-   - content (comment text)
-   - author_handle (without @)
-   - likes (number)
-   - reply_count (number)
+const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate to https://x.com/{{handle}}, wait 8s, scroll 3x (2s each).
+2. Run TWEET_SCRIPT via page.evaluate(), collect posts array.
+3. For each post where comments > 10 (max 5 posts):
+   a. Navigate to post_url, wait 4s
+   b. Run COMMENT_SCRIPT via page.evaluate(), add result as top_comments on that post
+   c. Navigate back
+4. Return JSON: {"posts": <posts array with top_comments populated>}
 
-Return JSON format:
-{
-  "posts": [
-    {
-      "post_url": "...",
-      "content": "...",
-      "posted_at": "2026-01-01T00:00:00Z",
-      "likes": 100,
-      "comments": 50,
-      "retweets": 20,
-      "views": 1000,
-      "media_urls": [],
-      "top_comments": [
-        {"content": "...", "author_handle": "...", "likes": 10, "reply_count": 2}
-      ]
-    }
-  ]
-}
+TWEET_SCRIPT:
+\`\`\`
+${KOL_TWEET_SCRIPT}
+\`\`\`
 
-Constraints:
-- Max {{limit}} posts
-- Skip posts older than 24 hours
-- Respect rate limits: 5 second delay between actions
+COMMENT_SCRIPT:
+\`\`\`
+${KOL_COMMENT_SCRIPT}
+\`\`\`
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
-const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `You are KolCrawler. Your task is to crawl posts from MULTIPLE KOLs sequentially.
+const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
+1. Navigate to https://x.com/{handle}, wait 8s, scroll 3x (2s each)
+2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle — posts older than sinceTimestamp will be filtered out by the script
+3. For each post where comments > 10 (max 5 posts per KOL):
+   a. Navigate to post_url, wait 4s
+   b. Run COMMENT_SCRIPT via page.evaluate(), add as top_comments
+   c. Navigate back to profile
+4. Wait 10s before next handle
 
-KOLs TO CRAWL ({{kolCount}} total):
-{{kolList}}
+Handles:
+{{handleList}}
 
-For EACH KOL:
-1. Navigate to https://x.com/{handle}
-2. Wait 10s for page load
-3. DATA EXTRACTION (DOM-FIRST MAPPING):
-   For each post in the timeline, extract using these exact selectors:
-   
-   PRIMARY DOM Selectors (use these first):
-   | Field | Selector | Fallback if null |
-   |-------|----------|----------------|
-   | Container | [data-testid="tweet"] | first <article> element |
-   | Content | [data-testid="tweetText"] | largest text block in container |
-   | Likes | [data-testid="like"] | aria-label containing "likes" |
-   | Comments | [data-testid="reply"] | aria-label containing "replies" |
-   | Retweets | [data-testid="retweet"] | aria-label containing "retweets" |
-   | Views | [data-testid="views"] | aria-label containing "views" |
-   | Media | [data-testid="videoPlayer"], [data-testid="tweetPhoto"] | any <img> or <video> in container |
-   | Timestamp | <time> element | look for datetime attribute |
-   
-   ⚠️ NUMBER PARSING: Convert "1.2K" → 1200, "3.5M" → 3500000 (integers only)
-   ⚠️ Skip posts with no content found by both methods
-   
-4. For each extracted post, collect:
-   - post_url (from <time> link or construct from handle+timestamp)
-   - content (text content, max 500 chars)
-   - posted_at (ISO timestamp from datetime attribute)
-   - likes, comments, retweets, views (parsed numbers)
-   - media_urls (array of image/video URLs)
+TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
+\`\`\`
+${KOL_TWEET_SCRIPT_BATCH}
+\`\`\`
 
-5. For posts with > 10 comments, open post and collect top 10 most-liked:
-   - content: [data-testid="tweetText"] of comment
-   - author_handle: from [data-testid="User-Name"] or profile link
-   - likes: [data-testid="like"] count
-   - reply_count: [data-testid="reply"] count
+COMMENT_SCRIPT:
+\`\`\`
+${KOL_COMMENT_SCRIPT}
+\`\`\`
 
-CRITICAL: Wait 10-15 seconds between each KOL to respect rate limits.
-
-Return JSON format:
-{
-  "results": [
-    {
-      "handle": "username1",
-      "posts": [
-        {
-          "post_url": "...",
-          "content": "...",
-          "posted_at": "2026-01-01T00:00:00Z",
-          "likes": 100,
-          "comments": 50,
-          "retweets": 20,
-          "views": 1000,
-          "media_urls": [],
-          "top_comments": [
-            {"content": "...", "author_handle": "...", "likes": 10, "reply_count": 2}
-          ]
-        }
-      ],
-      "crawledAt": "2026-01-01T00:00:00Z"
-    }
-  ]
-}
-
-Constraints:
-- Max {{limit}} posts per KOL
-- Skip posts older than 24 hours
-- Respect rate limits: 10-15 second delay BETWEEN KOLs
-- Stop immediately if rate limited by X/Twitter
+Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 interface IKolCrawlInfo {
@@ -193,20 +129,18 @@ interface IKolCrawlInfo {
 async function createBatchCrawlTask(
   kols: IKolCrawlInfo[],
 ): Promise<string> {
-  const kolListFormatted = kols.map(k => 
-    `- @${k.handle} (since: ${k.since}, max: ${k.limit} posts)`
-  ).join("\n");
+  const handleList = kols
+    .map(k => `- @${k.handle} | sinceTimestamp: "${k.since}"`)
+    .join("\n");
 
   const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE
-    .replace(/\{\{kolCount\}\}/g, String(kols.length))
-    .replace(/\{\{kolList\}\}/g, kolListFormatted)
-    .replace(/\{\{limit\}\}/g, String(Math.max(...kols.map(k => k.limit))));
+    .replace(/\{\{handleList\}\}/g, handleList);
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
   const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
-    type: ETaskType.CRON_JOB_TRIGGER,
+    type: ETaskType.SINGLE_TASK_TRIGGER,
     agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
@@ -251,23 +185,6 @@ async function createCrawlTask(
 }
 
 // ── Crawl Result Processor ───────────────────────────────────────────────────
-
-interface IRawPost {
-  post_url: string;
-  content: string;
-  posted_at: string;
-  likes: number;
-  comments: number;
-  retweets: number;
-  views: number;
-  media_urls?: string[];
-  top_comments?: Array<{
-    content: string;
-    author_handle: string;
-    likes: number;
-    reply_count: number;
-  }>;
-}
 
 /**
  * Process crawl results from OpenClaw and save to database.
@@ -334,6 +251,64 @@ function calculateEngagementScore(post: IRawPost): number {
     post.retweets * 2 +
     post.views * 0.001;
   return Math.round(score);
+}
+
+/**
+ * Process a completed batch crawl task result.
+ * Parses JSON, looks up KolProfiles, saves posts per handle.
+ * Called by POST /api/tasks/:id/process-result endpoint.
+ */
+export async function processBatchCrawlResult(
+  taskResult: string,
+  handles: string[],
+): Promise<ICrawlResult[]> {
+  const batchResults = parseBatchCrawlResult(taskResult);
+  const results: ICrawlResult[] = [];
+
+  for (const { handle, posts } of batchResults) {
+    try {
+      const kol = await KolProfile.findOne({ handle });
+      if (!kol) {
+        log.warn(`[KolCrawler] processBatchCrawlResult: handle "${handle}" not found in KolProfile`);
+        continue;
+      }
+
+      const { saved, skipped } = await processCrawlResults(kol._id, posts);
+
+      const now = new Date();
+      kol.last_crawled_at = now;
+      await kol.save();
+      await setCachedLastCrawled(kol.handle, now);
+
+      results.push({
+        kolId: kol._id,
+        handle: kol.handle,
+        postsFound: posts.length,
+        postsSaved: saved,
+        errors: [],
+      });
+
+      log.info(`[KolCrawler] @${handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped`);
+    } catch (error) {
+      log.error(`[KolCrawler] Failed processing @${handle}: ${(error as Error).message}`);
+      results.push({
+        kolId: "",
+        handle,
+        postsFound: 0,
+        postsSaved: 0,
+        errors: [(error as Error).message],
+      });
+    }
+  }
+
+  const processedHandles = new Set(batchResults.map((r) => r.handle));
+  for (const h of handles) {
+    if (!processedHandles.has(h)) {
+      log.warn(`[KolCrawler] Handle "${h}" was expected but missing from batch result`);
+    }
+  }
+
+  return results;
 }
 
 // ── Main Service ──────────────────────────────────────────────────────────────
@@ -556,7 +531,10 @@ export async function crawlAllKolsSequential(
   const kolInfos: IKolCrawlInfo[] = [];
   for (const kol of kols) {
     const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-    const since = cachedLastCrawled ?? kol.last_crawled_at ?? getDefaultSinceDate();
+    const now = new Date();
+    const oldestAllowed = new Date(now.getTime() - MAX_CRAWL_WINDOW_MS);
+    const rawSince = cachedLastCrawled ?? kol.last_crawled_at ?? null;
+    const since = rawSince && rawSince > oldestAllowed && rawSince <= now ? rawSince : oldestAllowed;
     kolInfos.push({
       handle: kol.handle,
       since: since.toISOString(),
@@ -590,34 +568,11 @@ export async function crawlAllKolsSequential(
 
   if (taskResult.result) {
     try {
-      const parsed = JSON.parse(taskResult.result);
-      if (parsed.results && Array.isArray(parsed.results)) {
-        for (const kolResult of parsed.results) {
-          const kol = kols.find(k => k.handle === kolResult.handle);
-          if (!kol) continue;
-
-          const posts = kolResult.posts || [];
-          const { saved, skipped } = await processCrawlResults(kol._id, posts);
-
-          // Update last_crawled_at
-          const crawledAt = kolResult.crawledAt ? new Date(kolResult.crawledAt) : new Date();
-          kol.last_crawled_at = crawledAt;
-          await kol.save();
-          await setCachedLastCrawled(kol.handle, crawledAt);
-
-          results.push({
-            kolId: kol._id,
-            handle: kol.handle,
-            postsFound: posts.length,
-            postsSaved: saved,
-            errors: [],
-          });
-
-          log.info(`[KolCrawler] @${kol.handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped`);
-        }
-      }
-    } catch (parseError) {
-      log.error(`[KolCrawler] Failed to parse batch results: ${(parseError as Error).message}`);
+      const handles = kols.map((k) => k.handle);
+      const processed = await processBatchCrawlResult(taskResult.result, handles);
+      results.push(...processed);
+    } catch (error) {
+      log.error(`[KolCrawler] Failed to process batch results: ${(error as Error).message}`);
     }
   }
 
