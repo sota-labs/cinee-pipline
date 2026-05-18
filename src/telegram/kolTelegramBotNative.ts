@@ -9,14 +9,35 @@ import {
   EReplyExecutionStatus,
 } from "../db/models/KolReplySuggestion.js";
 import { KolSettings } from "../db/models/KolSettings.js";
+import { SelfReplyQueue, ECommentStatus } from "../db/models/SelfReplyQueue.js";
+import { Post, EPostStatus } from "../db/models/Post.js";
 import { replyEngineService } from "../services/replyEngineService.js";
+import { selfReplyService } from "../services/selfReplyService.js";
 import type { IKolReplySuggestion } from "../db/models/KolReplySuggestion.js";
 
-// ── Configuration ────────────────────────────────────────────────────────────
+// ── Edit State ───────────────────────────────────────────────────────────────
+
+// chatId → suggestionId or "self:<queueId>:<commentId>", cleared after use or timeout
+const pendingEditState = new Map<string, string>();
+
+// ── Seed State ───────────────────────────────────────────────────────────────
+
+type ESeedStep = "awaiting_content_type" | "awaiting_raw_content" | "awaiting_post_url" | "awaiting_confirm";
+
+interface ISeedState {
+  step: ESeedStep;
+  content_type?: string;
+  raw_content?: string;
+  post_url?: string;
+}
+
+// chatId → ISeedState, cleared after use or 10-minute timeout
+const pendingSeedState = new Map<string, ISeedState>();
 
 function getBotToken(): string {
   return process.env.KOL_BOT_TOKEN || "";
 }
+
 
 function getAdminChatId(): string {
   return process.env.TELEGRAM_ADMIN_CHAT_ID || "";
@@ -114,6 +135,66 @@ function buildMainMenuKeyboard() {
 
 // ── Message Sending ──────────────────────────────────────────────────────────
 
+/**
+ * Send a streamlined confirmation for a pre-selected suggestion.
+ * Used by Manual mode when the system auto-picks the best reply.
+ */
+export async function sendConfirmationRequest(
+  suggestion: IKolReplySuggestion,
+): Promise<{ message_id: number } | null> {
+  const chatId = getAdminChatId();
+  if (!chatId) {
+    log.error("[KolTelegramBot] TELEGRAM_ADMIN_CHAT_ID not configured");
+    return null;
+  }
+
+  const post = await KolPost.findById(suggestion.kol_post_id).populate("kol_id");
+  if (!post) return null;
+
+  const kol = post.kol_id as unknown as { handle: string };
+  const handle = kol?.handle || "unknown";
+
+  const selected = suggestion.suggestions.find(
+    (s) => s.id === suggestion.selected_suggestion_id,
+  );
+  if (!selected) return null;
+
+  let text = `🤖 *Reply to @${escapeMarkdown(handle)}*\n\n`;
+  text += `📝 *Post:* ${escapeMarkdown(post.content.substring(0, 150))}${post.content.length > 150 ? "\\.\\.\\." : ""}\n\n`;
+  text += `💬 *Reply:* "${escapeMarkdown(selected.content)}"\n`;
+  text += `📊 Confidence: ${selected.confidence}% \\| Tone: ${escapeMarkdown(selected.tone)}\n\n`;
+  text += `⏱ _Auto\\-reject in 1 hour if no response_`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "✅ Confirm", callback_data: `kol_confirm:${suggestion._id}` },
+        { text: "✏️ Edit", callback_data: `kol_edit:${suggestion._id}` },
+        { text: "❌ Reject", callback_data: `kol_confirm_reject:${suggestion._id}` },
+      ],
+    ],
+  };
+
+  try {
+    const result = await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "MarkdownV2",
+      reply_markup: keyboard,
+    });
+
+    await KolReplySuggestion.findByIdAndUpdate(suggestion._id, {
+      telegram_message_id: result.message_id,
+    });
+
+    log.info(`[KolTelegramBot] Sent confirmation request for ${suggestion._id}`);
+    return result;
+  } catch (error) {
+    log.error(`[KolTelegramBot] Failed to send confirmation: ${(error as Error).message}`);
+    return null;
+  }
+}
+
 export async function sendSuggestionForReview(
   suggestion: IKolReplySuggestion,
 ): Promise<{ message_id: number } | null> {
@@ -130,12 +211,12 @@ export async function sendSuggestionForReview(
   const handle = kol?.handle || "unknown";
 
   let text = `📱 *New KOL Post from @${escapeMarkdown(handle)}*\n\n`;
-  text += `📝 *Post:*\n${escapeMarkdown(post.content.substring(0, 200))}${post.content.length > 200 ? "..." : ""}\n\n`;
+  text += `📝 *Post:*\n${escapeMarkdown(post.content.substring(0, 200))}${post.content.length > 200 ? "\\.\\.\\." : ""}\n\n`;
   text += `💡 *AI Suggestions:*\n`;
 
   suggestion.suggestions.forEach((s, i) => {
-    text += `${i + 1}\. \"${escapeMarkdown(s.content)}\"\n`;
-    text += `   Confidence: ${s.confidence}% \| Tone: ${escapeMarkdown(s.tone)}\n\n`;
+    text += `${i + 1}\\. "${escapeMarkdown(s.content)}"\n`;
+    text += `   Confidence: ${s.confidence}% \\| Tone: ${escapeMarkdown(s.tone)}\n\n`;
   });
 
   try {
@@ -184,6 +265,52 @@ export async function sendAFKNotification(
     });
   } catch (error) {
     log.error(`[KolTelegramBot] Failed to send AFK notification: ${(error as Error).message}`);
+  }
+}
+
+export async function sendSelfReplyConfirmation(
+  queueId: string,
+  commentId: string,
+): Promise<void> {
+  const chatId = getAdminChatId();
+  if (!chatId) return;
+
+  const queue = await SelfReplyQueue.findById(queueId);
+  if (!queue) return;
+
+  const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
+  if (!comment || !comment.reply_content) return;
+
+  const post = await Post.findById(queue.our_post_id);
+  const postSnippet = post
+    ? escapeMarkdown(post.raw_content.substring(0, 100)) + (post.raw_content.length > 100 ? "\\.\\.\\." : "")
+    : "_unknown post_";
+
+  let text = `💬 *Reply to comment on your post*\n\n`;
+  text += `📝 *Post:* ${postSnippet}\n\n`;
+  text += `👤 *@${escapeMarkdown(comment.author_handle)}:* "${escapeMarkdown(comment.content)}"\n\n`;
+  text += `🤖 *Reply:* "${escapeMarkdown(comment.reply_content)}"`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "✅ Confirm", callback_data: `self_confirm:${queueId}:${commentId}` },
+        { text: "✏️ Edit", callback_data: `self_edit:${queueId}:${commentId}` },
+        { text: "❌ Reject", callback_data: `self_reject:${queueId}:${commentId}` },
+      ],
+    ],
+  };
+
+  try {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "MarkdownV2",
+      reply_markup: keyboard,
+    });
+    log.info(`[KolTelegramBot] Sent self-reply confirmation for comment ${commentId}`);
+  } catch (error) {
+    log.error(`[KolTelegramBot] Failed to send self-reply confirmation: ${(error as Error).message}`);
   }
 }
 
@@ -333,6 +460,24 @@ export async function handleCallbackQuery(callbackQuery: {
   } else if (data.startsWith("kol_reject:")) {
     const [, suggestionId] = data.split(":");
     await handleReject(chatId, messageId, suggestionId);
+  } else if (data.startsWith("kol_confirm:")) {
+    const [, suggestionId] = data.split(":");
+    await handleConfirmApprove(chatId, messageId, suggestionId);
+  } else if (data.startsWith("kol_confirm_reject:")) {
+    const [, suggestionId] = data.split(":");
+    await handleReject(chatId, messageId, suggestionId);
+  } else if (data.startsWith("kol_edit:")) {
+    const [, suggestionId] = data.split(":");
+    await handleEdit(chatId, messageId, suggestionId);
+  } else if (data.startsWith("self_confirm:")) {
+    const [, queueId, commentId] = data.split(":");
+    await handleSelfConfirm(chatId, messageId, queueId, commentId);
+  } else if (data.startsWith("self_edit:")) {
+    const [, queueId, commentId] = data.split(":");
+    await handleSelfEdit(chatId, messageId, queueId, commentId);
+  } else if (data.startsWith("self_reject:")) {
+    const [, queueId, commentId] = data.split(":");
+    await handleSelfReject(chatId, messageId, queueId, commentId);
   } else if (data === "kol_pending") {
     await sendPendingList();
   } else if (data === "kol_list") {
@@ -341,6 +486,8 @@ export async function handleCallbackQuery(callbackQuery: {
     await sendStats();
   } else if (data === "kol_settings") {
     await sendSettings(chatId);
+  } else if (data.startsWith("seed_type:") || data === "seed_confirm" || data === "seed_cancel") {
+    await handleSeedCallback(chatId, messageId, data);
   }
 }
 
@@ -383,6 +530,283 @@ async function handleReject(
   }
 }
 
+async function handleConfirmApprove(
+  chatId: string,
+  messageId: number | undefined,
+  suggestionId: string,
+): Promise<void> {
+  const suggestion = await KolReplySuggestion.findById(suggestionId);
+  if (!suggestion || !suggestion.selected_suggestion_id) {
+    if (messageId) {
+      await callTelegram("editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: "❌ *Error*\n\nSuggestion not found or no pre\\-selected reply\\.",
+        parse_mode: "MarkdownV2",
+      });
+    }
+    return;
+  }
+
+  const index = suggestion.suggestions.findIndex(
+    (s) => s.id === suggestion.selected_suggestion_id,
+  );
+  if (index === -1) return;
+
+  const result = await replyEngineService.approveSuggestion(suggestionId, index);
+
+  const text = result.success
+    ? "✅ *Confirmed and Sent*\n\nReply posted successfully\\."
+    : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+async function handleEdit(
+  chatId: string,
+  messageId: number | undefined,
+  suggestionId: string,
+): Promise<void> {
+  pendingEditState.set(chatId, suggestionId);
+
+  // Clear pending state after 5 minutes if user doesn't respond
+  setTimeout(() => pendingEditState.delete(chatId), 5 * 60 * 1000);
+
+  const promptText =
+    `✏️ *Edit Reply*\n\n` +
+    `Type your custom reply text and send it\\.\n` +
+    `_Reply will be sent as\\-is\\._\n\n` +
+    `Send /cancel to cancel\\.`;
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: promptText,
+      parse_mode: "MarkdownV2",
+    });
+  } else {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: promptText,
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+async function handleSelfConfirm(
+  chatId: string,
+  messageId: number | undefined,
+  queueId: string,
+  commentId: string,
+): Promise<void> {
+  const queue = await SelfReplyQueue.findById(queueId);
+  const comment = queue?.pending_comments.find((c) => c.comment_id === commentId);
+
+  if (!comment?.reply_content) {
+    if (messageId) {
+      await callTelegram("editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: "❌ *Error*\n\nReply content not found\\.",
+        parse_mode: "MarkdownV2",
+      });
+    }
+    return;
+  }
+
+  const result = await selfReplyService.sendReply(queueId, commentId, comment.reply_content);
+  const text = result.success
+    ? "✅ *Confirmed and Queued*\n\nReply will be posted shortly\\."
+    : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+async function handleSelfEdit(
+  chatId: string,
+  messageId: number | undefined,
+  queueId: string,
+  commentId: string,
+): Promise<void> {
+  pendingEditState.set(chatId, `self:${queueId}:${commentId}`);
+  setTimeout(() => pendingEditState.delete(chatId), 5 * 60 * 1000);
+
+  const promptText =
+    `✏️ *Edit Self\\-Reply*\n\n` +
+    `Type your custom reply text and send it\\.\n` +
+    `_Reply will be sent as\\-is\\._\n\n` +
+    `Send /cancel to cancel\\.`;
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: promptText,
+      parse_mode: "MarkdownV2",
+    });
+  } else {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: promptText,
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+async function handleSelfReject(
+  chatId: string,
+  messageId: number | undefined,
+  queueId: string,
+  commentId: string,
+): Promise<void> {
+  await selfReplyService.skipComment(queueId, commentId);
+
+  if (messageId) {
+    await callTelegram("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: "❌ *Rejected*\n\nThis comment has been skipped\\.",
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+export async function handleTextMessage(message: {
+  text?: string;
+  chat: { id: number };
+}): Promise<void> {
+  const chatId = String(message.chat.id);
+  const text = message.text || "";
+
+  if (text.startsWith("/")) {
+    if (text === "/cancel") {
+      if (pendingEditState.has(chatId)) pendingEditState.delete(chatId);
+      if (pendingSeedState.has(chatId)) pendingSeedState.delete(chatId);
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "❌ Cancelled\\.",
+        parse_mode: "MarkdownV2",
+      });
+    }
+    return;
+  }
+
+  // Handle seed multi-step text input
+  const seedState = pendingSeedState.get(chatId);
+  if (seedState) {
+    if (seedState.step === "awaiting_raw_content") {
+      seedState.raw_content = text;
+      seedState.step = "awaiting_post_url";
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: "📌 *Seed Post — Step 3/3*\n\nNhập URL bài post \\(x\\.com/\\.\\.\\.\\):",
+        parse_mode: "MarkdownV2",
+      });
+      return;
+    }
+
+    if (seedState.step === "awaiting_post_url") {
+      const urlPattern = /x\.com\/[^/]+\/status\/\d+/;
+      if (!urlPattern.test(text)) {
+        await callTelegram("sendMessage", {
+          chat_id: chatId,
+          text: "⚠️ URL không hợp lệ\\. Vui lòng nhập URL dạng `x\\.com/username/status/123`:",
+          parse_mode: "MarkdownV2",
+        });
+        return;
+      }
+
+      seedState.post_url = text.startsWith("http") ? text : `https://${text}`;
+      seedState.step = "awaiting_confirm";
+
+      const confirmText =
+        `📌 *Xác nhận lưu bài post?*\n\n` +
+        `📌 Type: *${escapeMarkdown(seedState.content_type || "")}*\n` +
+        `📝 Content: "${escapeMarkdown((seedState.raw_content || "").substring(0, 100))}${(seedState.raw_content || "").length > 100 ? "\\.\\.\\." : ""}"\n` +
+        `🔗 URL: ${escapeMarkdown(seedState.post_url)}`;
+
+      await callTelegram("sendMessage", {
+        chat_id: chatId,
+        text: confirmText,
+        parse_mode: "MarkdownV2",
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "✅ Confirm", callback_data: "seed_confirm" },
+            { text: "❌ Cancel", callback_data: "seed_cancel" },
+          ]],
+        },
+      });
+      return;
+    }
+  }
+
+  const editStateValue = pendingEditState.get(chatId);
+  if (!editStateValue) return;
+
+  pendingEditState.delete(chatId);
+
+  // Self-reply edit: value is "self:<queueId>:<commentId>"
+  if (editStateValue.startsWith("self:")) {
+    const [, queueId, commentId] = editStateValue.split(":");
+    const result = await selfReplyService.sendReply(queueId, commentId, text);
+    const responseText = result.success
+      ? `✅ *Reply Queued*\n\n"${escapeMarkdown(text)}"`
+      : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: responseText,
+      parse_mode: "MarkdownV2",
+    });
+    return;
+  }
+
+  // KOL suggestion edit: value is suggestionId
+  const suggestion = await KolReplySuggestion.findById(editStateValue);
+  if (!suggestion) {
+    await callTelegram("sendMessage", {
+      chat_id: chatId,
+      text: "❌ Suggestion not found\\.",
+      parse_mode: "MarkdownV2",
+    });
+    return;
+  }
+
+  const index = suggestion.selected_suggestion_id
+    ? suggestion.suggestions.findIndex((s) => s.id === suggestion.selected_suggestion_id)
+    : 0;
+
+  const result = await replyEngineService.approveSuggestion(
+    editStateValue,
+    index < 0 ? 0 : index,
+    text,
+  );
+
+  const responseText = result.success
+    ? `✅ *Reply Sent*\n\n"${escapeMarkdown(text)}"`
+    : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
+
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: responseText,
+    parse_mode: "MarkdownV2",
+  });
+}
+
 async function sendSettings(chatId: string): Promise<void> {
   const settings = await KolSettings.getSettings();
   const mode = settings.default_mode;
@@ -403,6 +827,129 @@ async function sendSettings(chatId: string): Promise<void> {
 }
 
 // ── Command Handlers ─────────────────────────────────────────────────────────
+
+async function handleSeedCommand(chatId: string): Promise<void> {
+  pendingSeedState.set(chatId, { step: "awaiting_content_type" });
+  setTimeout(() => pendingSeedState.delete(chatId), 10 * 60 * 1000);
+
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: "📌 *Seed Post — Step 1/3*\n\nChọn loại bài post:",
+    parse_mode: "MarkdownV2",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "🔥 hot_take", callback_data: "seed_type:hot_take" },
+          { text: "📰 curation", callback_data: "seed_type:curation" },
+        ],
+        [
+          { text: "📣 announcement", callback_data: "seed_type:announcement" },
+          { text: "💬 engagement", callback_data: "seed_type:engagement" },
+        ],
+        [
+          { text: "🧵 thread", callback_data: "seed_type:thread" },
+          { text: "❌ Cancel", callback_data: "seed_cancel" },
+        ],
+      ],
+    },
+  });
+}
+
+export async function handleSeedCallback(
+  chatId: string,
+  messageId: number | undefined,
+  data: string,
+): Promise<void> {
+  if (data === "seed_cancel") {
+    pendingSeedState.delete(chatId);
+    if (messageId) {
+      await callTelegram("editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: "❌ Seed cancelled\\.",
+        parse_mode: "MarkdownV2",
+      });
+    }
+    return;
+  }
+
+  if (data === "seed_confirm") {
+    const state = pendingSeedState.get(chatId);
+    if (!state || !state.content_type || !state.raw_content || !state.post_url) {
+      pendingSeedState.delete(chatId);
+      return;
+    }
+
+    pendingSeedState.delete(chatId);
+
+    try {
+      const existing = await Post.findOne({ post_url: state.post_url });
+      if (existing) {
+        if (messageId) {
+          await callTelegram("editMessageText", {
+            chat_id: chatId,
+            message_id: messageId,
+            text: "⚠️ *Đã tồn tại*\n\nBài post này đã có trong DB\\.",
+            parse_mode: "MarkdownV2",
+          });
+        }
+        return;
+      }
+
+      await Post.create({
+        platform: "twitter",
+        content_type: state.content_type,
+        raw_content: state.raw_content,
+        post_url: state.post_url,
+        status: EPostStatus.POSTED,
+        media: [],
+        ai_stack: [],
+        is_viral_candidate: false,
+        external_refs: [],
+        edit_history: [],
+      });
+
+      if (messageId) {
+        await callTelegram("editMessageText", {
+          chat_id: chatId,
+          message_id: messageId,
+          text: "✅ *Đã lưu\\!*\n\nBài post đã được seed vào DB\\.",
+          parse_mode: "MarkdownV2",
+        });
+      }
+      log.info(`[KolTelegramBot] Seeded post ${state.post_url}`);
+    } catch (e: unknown) {
+      log.error(`[KolTelegramBot] Seed failed: ${(e as Error).message}`);
+      if (messageId) {
+        await callTelegram("editMessageText", {
+          chat_id: chatId,
+          message_id: messageId,
+          text: `❌ *Lỗi*\n\n${escapeMarkdown((e as Error).message)}`,
+          parse_mode: "MarkdownV2",
+        });
+      }
+    }
+    return;
+  }
+
+  if (data.startsWith("seed_type:")) {
+    const contentType = data.split(":")[1];
+    const state = pendingSeedState.get(chatId);
+    if (!state) return;
+
+    state.content_type = contentType;
+    state.step = "awaiting_raw_content";
+
+    if (messageId) {
+      await callTelegram("editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: `📌 *Seed Post — Step 2/3*\n\nType: *${escapeMarkdown(contentType)}*\n\nNhập nội dung bài post:`,
+        parse_mode: "MarkdownV2",
+      });
+    }
+  }
+}
 
 export async function handleCommand(message: {
   text?: string;
@@ -425,6 +972,9 @@ export async function handleCommand(message: {
       break;
     case "/stats":
       await sendStats();
+      break;
+    case "/seed":
+      await handleSeedCommand(chatId);
       break;
     default:
       // Unknown command

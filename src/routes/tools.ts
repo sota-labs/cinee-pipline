@@ -5,11 +5,19 @@
  *   /db/replies  — CEO's replies (status: draft | rejected | resolved | replied)
  */
 import { Router, type Request, type Response } from "express";
-import { Post, Reply, PersonaKnowledge, CurationSource, Interaction } from "../db/index.js";
+import { Post, Reply, PersonaKnowledge, CurationSource, Interaction, SelfReplyQueue } from "../db/index.js";
 import { EReplyStatus } from "../db/models/Reply.js";
 import { ECurationStatus } from "../db/models/CurationSource.js";
+import { selfReplyService } from "../services/selfReplyService.js";
+import { log } from "../utils/logger.js";
 
 export const toolsRouter = Router();
+
+function parseXUrl(url: string): { handle: string; tweetId: string } | null {
+  const match = url?.match(/x\.com\/([^/]+)\/status\/(\d+)/);
+  if (!match) return null;
+  return { handle: match[1], tweetId: match[2] };
+}
 
 // ── DB: Posts ─────────────────────────────────────────────────────────────────
 
@@ -86,6 +94,38 @@ toolsRouter.post("/db/replies", async (req: Request, res: Response) => {
       status: "resolved",
     }));
     const replies = await Reply.insertMany(items, { ordered: false });
+
+    // Trigger self-reply queue creation for resolved mentions with parent_post_url
+    setImmediate(async () => {
+      for (const reply of replies) {
+        if (reply.status !== EReplyStatus.RESOLVED || !reply.parent_post_url) continue;
+
+        const parsed = parseXUrl(reply.url ?? "");
+        if (!parsed) continue;
+
+        try {
+          const post = await Post.findOne({ post_url: reply.parent_post_url });
+          if (!post) continue;
+
+          const comment = {
+            comment_id: parsed.tweetId,
+            author_handle: reply.author_handle || parsed.handle,
+            content: reply.reply_content,
+            likes: 0,
+          };
+
+          const existing = await SelfReplyQueue.findOne({ our_post_id: post._id });
+          if (existing) {
+            await selfReplyService.addCommentToQueue(String(existing._id), comment);
+          } else {
+            await selfReplyService.createReplyQueue(String(post._id), reply.parent_post_url, [comment]);
+          }
+        } catch (e: unknown) {
+          log.error(`[Tools] Self-reply trigger failed for reply ${reply._id}: ${(e as Error).message}`);
+        }
+      }
+    });
+
     res.json({ success: true, inserted: replies.length, replies });
   } catch (e: any) {
     res.status(400).json({ success: false, error: e.message });

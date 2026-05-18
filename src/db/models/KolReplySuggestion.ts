@@ -10,6 +10,7 @@ export enum EReplyMode {
 
 export enum EReplyExecutionStatus {
   PENDING = "pending",
+  EXECUTING = "executing",
   SENT = "sent",
   FAILED = "failed",
   BANNED = "banned",
