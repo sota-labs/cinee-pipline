@@ -28,6 +28,8 @@ export interface IReply extends Document {
   status: EReplyStatus;
   platform: EReplyPlatform;
   url?: string;
+  author_handle?: string;
+  parent_post_url?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -55,6 +57,8 @@ const replySchema = new Schema<IReply>(
       default: EReplyPlatform.X,
     },
     url: String,
+    author_handle: { type: String },
+    parent_post_url: { type: String },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
@@ -64,5 +68,7 @@ const replySchema = new Schema<IReply>(
 replySchema.index({ status: 1, created_at: -1 });
 replySchema.index({ platform: 1 });
 replySchema.index({ url: 1 }, { unique: true });
+replySchema.index({ author_handle: 1 }, { sparse: true });
+replySchema.index({ parent_post_url: 1 }, { sparse: true });
 
 export const Reply = model<IReply>("Reply", replySchema);

@@ -233,10 +233,15 @@ export class ReplyEngineService {
         `[ReplyEngine] Processed ${suggestion.suggestions.length} suggestions for ${suggestionId}`,
       );
 
-      // Route based on mode
-      if (suggestion.mode === EReplyMode.AFK) {
+      // Route based on current global mode, not the stale mode stored on suggestion
+      const currentSettings = await KolSettings.getSettings();
+      if (currentSettings.default_mode === EReplyMode.AFK) {
+        suggestion.mode = EReplyMode.AFK;
+        await suggestion.save();
         await this.processAFKMode(suggestion);
       } else {
+        suggestion.mode = EReplyMode.MANUAL;
+        await suggestion.save();
         await this.processManualMode(suggestion);
       }
 
@@ -375,7 +380,7 @@ export class ReplyEngineService {
     try {
       const taskId = await queueReplyExecution(post.post_url, replyContent, suggestionId);
 
-      suggestion.execution_status = EReplyExecutionStatus.PENDING;
+      suggestion.execution_status = EReplyExecutionStatus.EXECUTING;
       await suggestion.save();
 
       log.info(`[ReplyEngine] Queued reply execution for ${suggestionId} (task: ${taskId})`);
@@ -568,6 +573,12 @@ export class ReplyEngineService {
     succeeded: number;
     failed: number;
   }> {
+    const settings = await KolSettings.getSettings();
+    if (settings.default_mode !== EReplyMode.AFK) {
+      log.info("[ReplyEngine] AFK mode disabled globally — skipping scheduled replies");
+      return { processed: 0, succeeded: 0, failed: 0 };
+    }
+
     const scheduled = await this.getScheduledAFKSuggestions();
 
     let processed = 0;

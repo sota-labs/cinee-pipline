@@ -301,3 +301,29 @@ export function buildSelfReplyPrompt(params: {
 export function buildPostQualityCheckPrompt(postContent: string): string {
   return POST_QUALITY_CHECK_PROMPT.replace("{{post_content}}", postContent);
 }
+
+// ── Self-Reply Execution ──────────────────────────────────────────────────────
+
+const EXECUTE_SELF_REPLY_PROMPT = `You are an AI Agent with browser access. Post a reply to a comment on X.
+
+BROWSER RULE: Keep ONLY ONE tab open at all times.
+
+Step 1: Open {{post_url}} in the browser.
+Step 2: Wait for the page to load. Scroll to find the comment with tweet ID {{comment_id}} in the replies section.
+Step 3: Click the Reply button on that specific comment.
+Step 4: Type the following reply text exactly as provided (do not modify it):
+{{reply_content}}
+Step 5: Click the Post/Reply button to submit.
+Step 6: Confirm the reply was posted successfully.
+${OUTPUT_FORMAT_INSTRUCTION}`;
+
+export function buildExecuteReplyPrompt(
+  postUrl: string,
+  commentId: string,
+  replyContent: string,
+): string {
+  return EXECUTE_SELF_REPLY_PROMPT
+    .replace("{{post_url}}", postUrl)
+    .replace("{{comment_id}}", commentId)
+    .replace("{{reply_content}}", replyContent);
+}

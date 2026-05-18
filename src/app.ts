@@ -15,6 +15,7 @@ import kolSettingsRouter from "./routes/kolSettings.js";
 import {
   handleCallbackQuery,
   handleCommand,
+  handleTextMessage,
 } from "./telegram/kolTelegramBotNative.js";
 
 const app = express();
@@ -62,6 +63,8 @@ app.post("/webhook/kol-bot", async (req, res) => {
   }
   if (message?.text?.startsWith("/")) {
     await handleCommand(message);
+  } else if (message?.text) {
+    await handleTextMessage(message);
   }
 
   res.sendStatus(200);

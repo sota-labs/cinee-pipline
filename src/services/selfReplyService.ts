@@ -6,7 +6,7 @@ import { OwnAccountProfile } from "../db/models/OwnAccountProfile.js";
 import { Post } from "../db/models/Post.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { reputationCheckerService } from "./reputationCheckerService.js";
-import { buildSelfReplyPrompt } from "../prompts/kolPrompts.js";
+import { buildSelfReplyPrompt, buildExecuteReplyPrompt } from "../prompts/kolPrompts.js";
 import { settings } from "../config/settings.js";
 import type { IPendingComment } from "../db/models/SelfReplyQueue.js";
 import type { Types } from "mongoose";
@@ -98,6 +98,45 @@ export class SelfReplyService {
       totalComments: comments.length,
       queuedComments: comments.length,
     };
+  }
+
+  /**
+   * Add a new comment to an existing queue. Returns false if duplicate or queue not found.
+   */
+  async addCommentToQueue(
+    queueId: string,
+    comment: { comment_id: string; author_handle: string; content: string; likes: number },
+  ): Promise<boolean> {
+    const queue = await SelfReplyQueue.findById(queueId);
+    if (!queue) {
+      log.warn(`[SelfReply] addCommentToQueue: queue ${queueId} not found`);
+      return false;
+    }
+
+    const duplicate = queue.pending_comments.some((c) => c.comment_id === comment.comment_id);
+    if (duplicate) {
+      log.info(`[SelfReply] Duplicate comment_id ${comment.comment_id} — skipping`);
+      return false;
+    }
+
+    queue.pending_comments.push({
+      comment_id: comment.comment_id,
+      author_handle: comment.author_handle,
+      content: comment.content,
+      likes: comment.likes,
+      engagement_points: 0,
+      author_trust_score: 50,
+      is_hidden: false,
+      is_spam: false,
+      status: ECommentStatus.PENDING,
+      priority_score: 0,
+    });
+    queue.total_comments++;
+    await queue.save();
+
+    await this.rankComments(queueId);
+    log.info(`[SelfReply] Added comment ${comment.comment_id} to queue ${queueId}`);
+    return true;
   }
 
   /**
@@ -193,41 +232,72 @@ export class SelfReplyService {
     replyContent: string,
   ): Promise<IReplyResult> {
     const queue = await SelfReplyQueue.findById(queueId);
-    if (!queue) {
-      return { success: false, error: "Queue not found" };
-    }
+    if (!queue) return { success: false, error: "Queue not found" };
 
     const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
-    if (!comment) {
-      return { success: false, error: "Comment not found" };
+    if (!comment) return { success: false, error: "Comment not found" };
+
+    if (comment.status !== ECommentStatus.PENDING && comment.status !== ECommentStatus.QUEUED) {
+      return { success: false, error: `Comment already processed (status: ${comment.status})` };
     }
 
-    if (comment.status !== ECommentStatus.PENDING) {
-      return { success: false, error: "Comment already processed" };
-    }
-
-    // Update comment status
     comment.status = ECommentStatus.QUEUED;
     comment.reply_content = replyContent;
     await queue.save();
 
-    // Here you would actually send the reply via OpenClaw
-    // For now, we mark as sent immediately (real implementation would queue via Task)
+    try {
+      const promptText = buildExecuteReplyPrompt(queue.post_url, commentId, replyContent);
+      const escapedPrompt = promptText.replace(/'/g, "'\\''");
+      const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+      const task = await Task.create({
+        type: ETaskType.SINGLE_TASK_TRIGGER,
+        agent: settings.openClawAgent,
+        prompt: command,
+        status: ETaskStatus.PENDING,
+        payload: { action: "execute_self_reply", queueId, commentId },
+      });
+
+      log.info(`[SelfReply] Queued execute task ${task._id} for comment ${commentId}`);
+      return { success: true, replyId: String(task._id) };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error(`[SelfReply] Failed to create execute task for comment ${commentId}: ${msg}`);
+      comment.status = ECommentStatus.PENDING;
+      await queue.save();
+      return { success: false, error: msg };
+    }
+  }
+
+  async processExecutionComplete(queueId: string, commentId: string): Promise<void> {
+    const queue = await SelfReplyQueue.findById(queueId);
+    if (!queue) return;
+
+    const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
+    if (!comment) return;
+
     comment.status = ECommentStatus.SENT;
     comment.replied_at = new Date();
     queue.last_reply_sent_at = new Date();
     queue.processed_count++;
 
-    // Check if queue is complete
     if (queue.processed_count >= queue.total_comments) {
       queue.queue_status = EQueueStatus.COMPLETED;
     }
 
     await queue.save();
+    log.info(`[SelfReply] Comment ${commentId} marked SENT in queue ${queueId}`);
+  }
 
-    log.info(`[SelfReply] Reply sent to comment ${commentId} in queue ${queueId}`);
+  async processExecutionFailed(queueId: string, commentId: string, errorLog: string): Promise<void> {
+    const queue = await SelfReplyQueue.findById(queueId);
+    if (!queue) return;
 
-    return { success: true, replyId: `reply_${Date.now()}` };
+    const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
+    if (!comment) return;
+
+    comment.status = ECommentStatus.FAILED;
+    await queue.save();
+    log.error(`[SelfReply] Comment ${commentId} FAILED in queue ${queueId}: ${errorLog}`);
   }
 
   /**
@@ -425,11 +495,18 @@ export class SelfReplyService {
     const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
     if (comment) {
       comment.reply_content = replyContent;
-      // Keep status as QUEUED — admin approves via PATCH /api/self-reply/:queueId/comments/:commentId/approve
       await queue.save();
     }
 
     log.info(`[SelfReply] Stored reply for manual review — comment ${commentId}`);
+
+    // Send Telegram notification for admin approval
+    try {
+      const { sendSelfReplyConfirmation } = await import("../telegram/kolTelegramBotNative.js");
+      await sendSelfReplyConfirmation(queueId, commentId);
+    } catch (e: unknown) {
+      log.error(`[SelfReply] Failed to send Telegram confirmation: ${(e as Error).message}`);
+    }
   }
 }
 

@@ -46,53 +46,53 @@ async function buildCronJobs(): Promise<CronJob[]> {
       description:
         "Scrape X notifications and store replies (every hour at :20)",
     },
-    {
-      name: `reply_x_notifications_${topicSuffix}`,
-      schedule: "40 * * * *",
-      message: replyPrompt,
-      description: "Auto-reply on X and update status (every hour at :40)",
-    },
-    {
-      name: `research_and_collect_${topicSuffix}`,
-      schedule: "0 */6 * * *",
-      message: researchPrompt,
-      description:
-        "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
-    },
-    {
-      name: `research_and_draft_morning_${topicSuffix}`,
-      schedule: "0 9 * * *",
-      message: draftPrompt,
-      description:
-        "Read top research from DB and create draft for review (9 AM daily)",
-    },
-    {
-      name: `research_and_draft_evening_${topicSuffix}`,
-      schedule: "0 21 * * *",
-      message: draftPrompt,
-      description:
-        "Read top research from DB and create draft for review (9 PM daily)",
-    },
-    {
-      name: `auto_interact_hot_posts_${topicSuffix}`,
-      schedule: "0 */4 * * *",
-      message: interactPrompt,
-      description:
-        "Automatically post CEO-style comments on hot posts (every 4 hours)",
-    },
-    {
-      name: `auto_like_posts_${topicSuffix}`,
-      schedule: "0 10,22 * * *",
-      message: AUTO_LIKE_PROMPT,
-      description:
-        "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
-    },
-    {
-      name: `auto_bookmark_posts_${topicSuffix}`,
-      schedule: "0 14 */2 * *",
-      message: AUTO_BOOKMARK_PROMPT,
-      description: "Automatically bookmark a high-quality post (every 2 days)",
-    },
+    // {
+    //   name: `reply_x_notifications_${topicSuffix}`,
+    //   schedule: "40 * * * *",
+    //   message: replyPrompt,
+    //   description: "Auto-reply on X and update status (every hour at :40)",
+    // },
+    // {
+    //   name: `research_and_collect_${topicSuffix}`,
+    //   schedule: "0 */6 * * *",
+    //   message: researchPrompt,
+    //   description:
+    //     "Scrape X for topic posts and save to CurationSource DB (every 6 hours)",
+    // },
+    // {
+    //   name: `research_and_draft_morning_${topicSuffix}`,
+    //   schedule: "0 9 * * *",
+    //   message: draftPrompt,
+    //   description:
+    //     "Read top research from DB and create draft for review (9 AM daily)",
+    // },
+    // {
+    //   name: `research_and_draft_evening_${topicSuffix}`,
+    //   schedule: "0 21 * * *",
+    //   message: draftPrompt,
+    //   description:
+    //     "Read top research from DB and create draft for review (9 PM daily)",
+    // },
+    // {
+    //   name: `auto_interact_hot_posts_${topicSuffix}`,
+    //   schedule: "0 */4 * * *",
+    //   message: interactPrompt,
+    //   description:
+    //     "Automatically post CEO-style comments on hot posts (every 4 hours)",
+    // },
+    // {
+    //   name: `auto_like_posts_${topicSuffix}`,
+    //   schedule: "0 10,22 * * *",
+    //   message: AUTO_LIKE_PROMPT,
+    //   description:
+    //     "Automatically like posts (twice daily, ~5 posts each) for priority accounts and hot topics",
+    // },
+    // {
+    //   name: `auto_bookmark_posts_${topicSuffix}`,
+    //   schedule: "0 14 */2 * *",
+    //   message: AUTO_BOOKMARK_PROMPT,
+    //   description: "Automatically bookmark a high-quality post (every 2 days)",
+    // },
   ];
 }
 

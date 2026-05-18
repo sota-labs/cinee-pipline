@@ -194,6 +194,33 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
         });
       }
 
+      // Handle reply execution result
+      if (payload.action === "execute_reply" && payload.suggestionId) {
+        const suggestionId = String(payload.suggestionId);
+        setImmediate(async () => {
+          try {
+            await replyEngineService.processExecutionResult(suggestionId, rawResult);
+            log.info(`[Webhook] Processed execute_reply result for suggestion ${suggestionId}`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error processing execute_reply: ${(e as Error).message}`);
+          }
+        });
+      }
+
+      // Handle self-reply execution result
+      if (payload.action === "execute_self_reply" && payload.queueId && payload.commentId) {
+        const queueId = String(payload.queueId);
+        const commentId = String(payload.commentId);
+        setImmediate(async () => {
+          try {
+            await selfReplyService.processExecutionComplete(queueId, commentId);
+            log.info(`[Webhook] execute_self_reply complete for comment ${commentId}`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error in execute_self_reply complete: ${(e as Error).message}`);
+          }
+        });
+      }
+
       // Handle self-reply AI generation result
       if (payload.analysisType === "self_reply_generation") {
         const refId = String(payload.ref_id ?? "");
@@ -241,6 +268,38 @@ tasksRouter.patch("/:id/fail", async (req: Request, res: Response) => {
     task.error_log = req.body.error_log ?? "Unknown error";
     task.completed_at = new Date();
     await task.save();
+
+    // Mark suggestion as failed if this was a reply execution task
+    if (task.payload && typeof task.payload === "object") {
+      const payload = task.payload as Record<string, unknown>;
+      if (payload.action === "execute_reply" && payload.suggestionId) {
+        const suggestionId = String(payload.suggestionId);
+        setImmediate(async () => {
+          try {
+            await replyEngineService.processExecutionResult(
+              suggestionId,
+              JSON.stringify({ success: false, error: task.error_log }),
+            );
+            log.info(`[Webhook] Marked execute_reply suggestion ${suggestionId} as failed`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error marking execute_reply failed: ${(e as Error).message}`);
+          }
+        });
+      }
+
+      if (payload.action === "execute_self_reply" && payload.queueId && payload.commentId) {
+        const queueId = String(payload.queueId);
+        const commentId = String(payload.commentId);
+        setImmediate(async () => {
+          try {
+            await selfReplyService.processExecutionFailed(queueId, commentId, task.error_log ?? "");
+            log.info(`[Webhook] execute_self_reply failed for comment ${commentId}`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error in execute_self_reply fail: ${(e as Error).message}`);
+          }
+        });
+      }
+    }
 
     log.error(`Task ${task._id} (${task.type}) → failed: ${task.error_log}`);
     res.json({ success: true, task });
