@@ -1,6 +1,6 @@
 # Code Standards & Codebase Structure
 
-**Last Updated:** 2026-05-14
+**Last Updated:** 2026-05-18
 
 ## Overview
 
@@ -27,7 +27,14 @@ cinee-pipeline/
 │   │       ├── Interaction.ts
 │   │       ├── PriorityAccount.ts
 │   │       ├── TopicConfig.ts
-│   │       └── OwnAccountProfile.ts
+│   │       ├── OwnAccountProfile.ts
+│   │       ├── KolProfile.ts
+│   │       ├── KolPost.ts
+│   │       ├── KolReplySuggestion.ts
+│   │       ├── KolReputationCache.ts
+│   │       ├── KolSettings.ts
+│   │       ├── SelfReplyQueue.ts
+│   │       └── Task.ts
 │   ├── prompts/
 │   │   ├── index.ts              # Barrel export
 │   │   ├── humanStyleRules.ts    # Human-like writing rules
@@ -41,17 +48,39 @@ cinee-pipeline/
 │   │   ├── priorityAccounts.ts
 │   │   ├── topicConfig.ts
 │   │   ├── tasks.ts              # Task webhook handlers
-│   │   └── account.ts            # Account personality routes
+│   │   ├── kols.ts               # KOL management routes
+│   │   ├── kolPosts.ts           # KOL post routes
+│   │   ├── kolSettings.ts        # KOL settings routes
+│   │   └── account.ts            # Account personality & post seeding routes
 │   ├── scripts/
-│   │   └── ownAccountLearnCron.ts # Daily learning cron
+│   │   ├── addAllJobs.ts
+│   │   ├── addJob.ts
+│   │   ├── removeAllJobs.ts
+│   │   ├── removeJob.ts
+│   │   ├── setupCronJobs.ts
+│   │   ├── scanAndPostCron.ts
+│   │   ├── dailyRollingWindowCron.ts
+│   │   ├── kolCrawlCron.ts
+│   │   ├── kolAnalyzeCron.ts
+│   │   ├── kolAFKReplyCron.ts
+│   │   ├── kolDaemon.ts
+│   │   ├── selfReplyCron.ts
+│   │   ├── ownAccountLearnCron.ts
+│   │   └── seedOwnAccountPostsCron.ts
 │   ├── services/
 │   │   ├── schedulerService.ts
 │   │   ├── schedulerPrompts.ts
 │   │   ├── topicConfigService.ts
 │   │   ├── openclawAgentService.ts
-│   │   ├── ownAccountService.ts  # Personality learning
-│   │   ├── selfReplyService.ts   # Reply generation
-│   │   └── replyEngineService.ts # Reply validation
+│   │   ├── ownAccountService.ts      # Personality learning
+│   │   ├── ownAccountCrawlerService.ts # Post seeding
+│   │   ├── selfReplyService.ts       # Reply generation
+│   │   ├── replyEngineService.ts     # Reply validation
+│   │   ├── kolCrawlerService.ts      # KOL post crawling
+│   │   ├── kolAnalyzerService.ts     # KOL analysis
+│   │   ├── reputationCheckerService.ts # Reputation scoring
+│   │   ├── priorityAccountService.ts # Priority accounts
+│   │   └── statusService.ts          # System status
 │   ├── tools/
 │   │   ├── contentTools.ts
 │   │   ├── memoryTools.ts

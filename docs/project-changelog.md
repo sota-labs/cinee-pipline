@@ -1,8 +1,47 @@
 # Project Changelog
 
-**Last Updated:** 2026-05-14
+**Last Updated:** 2026-05-18
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-05-18] - Own Account Post Seeding for AI Learning
+
+### Added
+- **Own Account Crawler Service** (`src/services/ownAccountCrawlerService.ts`)
+  - `queueCrawlTask(options)` — creates SINGLE_TASK_TRIGGER Task for OpenClaw to crawl own account
+  - `processCrawlResult(rawResult, limit)` — parses JSON from cinee-worker and seeds posts
+  - `countSeedPosts()` — returns count of seeded posts available for learning
+  - Options: `{ daysBack?: number (default 30), limit?: number (default 100) }`
+  
+- **Seed Own Account Posts Script** (`src/scripts/seedOwnAccountPostsCron.ts`)
+  - Entry point for seeding own account posts
+  - Supports CLI args: `--days <n>` and `--limit <n>`
+  - Exports `runSeedOwnAccountPosts()` function
+  
+- **Account Post Seeding API Routes** (enhanced `src/routes/account.ts`)
+  - `POST /api/account/posts/seed` — queue crawl task via API
+  - `POST /api/account/posts/seed/result` — receive crawl result and seed posts
+  - `GET /api/account/posts/seed/count` — get count of seeded posts
+  
+- **npm Script** (`package.json`)
+  - `npm run own-account:seed-posts` — seed own account posts for learning
+
+### Workflow
+1. Run: `npm run own-account:seed-posts [--days 30] [--limit 100]` or `POST /api/account/posts/seed`
+2. Creates SINGLE_TASK_TRIGGER Task in MongoDB
+3. cinee-worker picks up task, crawls x.com/<X_USERNAME>
+4. cinee-worker calls: `POST /api/account/posts/seed/result { result: "<JSON>" }`
+5. Posts seeded into Post collection with status: POSTED
+6. ownAccountService.learnPersonality() now has data to learn from
+7. Daily cron (ownAccountLearnCron) runs at 03:00 AM to learn personality
+
+### Technical Details
+- Deduplicates posts by post_url to prevent duplicates
+- Supports configurable date range (daysBack) and post limit
+- Integrates seamlessly with existing personality learning pipeline
+- Posts marked with status: POSTED for learning purposes
 
 ---
 

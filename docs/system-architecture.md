@@ -1,6 +1,6 @@
 # System Architecture
 
-**Last Updated:** 2026-05-14
+**Last Updated:** 2026-05-18
 
 ## Overview
 
@@ -178,8 +178,11 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
 |---------|-----------------|----------|
 | `schedulerService` | Task scheduling and cron management | `src/services/schedulerService.ts` |
 | `ownAccountService` | CEO personality learning and management | `src/services/ownAccountService.ts` |
+| `ownAccountCrawlerService` | Own account post seeding | `src/services/ownAccountCrawlerService.ts` |
 | `selfReplyService` | AI-powered reply generation | `src/services/selfReplyService.ts` |
 | `replyEngineService` | Reply validation and personality application | `src/services/replyEngineService.ts` |
+| `kolCrawlerService` | KOL post crawling and caching | `src/services/kolCrawlerService.ts` |
+| `kolAnalyzerService` | KOL personality analysis | `src/services/kolAnalyzerService.ts` |
 | `topicConfigService` | Dynamic topic configuration | `src/services/topicConfigService.ts` |
 | `openclawAgentService` | OpenClaw integration | `src/services/openclawAgentService.ts` |
 
@@ -191,6 +194,41 @@ updateManualConfig(config: ManualConfig): Promise<OwnAccountProfile>
 learnPersonality(tweets: Tweet[]): Promise<Task>
 applyLearnedProfile(learned: LearnedProfile): Promise<OwnAccountProfile>
 mergeProfiles(manual: ManualConfig, learned: LearnedProfile): EffectiveProfile
+```
+
+---
+
+## Workflow: Own Account Post Seeding
+
+```
+1. Seed Posts Request
+   └─> npm run own-account:seed-posts [--days 30] [--limit 100]
+   └─> OR: POST /api/account/posts/seed { daysBack, limit }
+
+2. Create Crawl Task
+   └─> ownAccountCrawlerService.queueCrawlTask()
+   └─> Creates SINGLE_TASK_TRIGGER Task in MongoDB
+   └─> Task targets: x.com/<X_USERNAME>
+
+3. OpenClaw Execution
+   └─> cinee-worker polls and executes
+   └─> Crawls own account posts from X/Twitter
+   └─> Returns JSON with post data
+
+4. Webhook Callback
+   └─> POST /api/account/posts/seed/result { result: "<JSON>" }
+   └─> ownAccountCrawlerService.processCrawlResult()
+   └─> Parses JSON and deduplicates by post_url
+
+5. Seed Posts into Database
+   └─> Posts inserted into Post collection
+   └─> Status set to: POSTED
+   └─> Ready for personality learning
+
+6. Personality Learning
+   └─> ownAccountService.learnPersonality() uses seeded posts
+   └─> Daily cron (03:00 AM) analyzes posts
+   └─> Extracts personality traits and writing patterns
 ```
 
 ---
@@ -221,99 +259,6 @@ mergeProfiles(manual: ManualConfig, learned: LearnedProfile): EffectiveProfile
    └─> Stores in effective_profile
    └─> Ready for reply generation
 ```
-
----
-
-## Workflow: Self-Reply AI Generation
-
-```
-1. Comment Detected
-   └─> Triggers reply generation workflow
-
-2. Queue Reply Generation
-   └─> selfReplyService.queueSelfReplyGeneration()
-   └─> Creates Task record with learned personality
-
-3. OpenClaw Execution
-   └─> cinee-worker polls and executes
-   └─> Generates reply using learned personality
-   └─> Respects KolSettings.default_mode (AFK vs Manual)
-
-4. Webhook Callback
-   └─> POST /api/tasks/webhook
-   └─> Payload: { analysisType: 'self_reply_generation', result: {...} }
-   └─> selfReplyService.processSelfReplyResult() handles response
-
-5. Store for Review
-   └─> If Manual mode: selfReplyService.storeForManualReview()
-   └─> If AFK mode: Auto-post reply
-```
-
----
-
-## API Routes
-
-### Account Personality Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/account/personality` | Retrieve current personality profile |
-| `PATCH` | `/api/account/personality` | Update manual personality config |
-| `POST` | `/api/account/personality/learn` | Trigger immediate learning |
-
-### KOL Management Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/kols` | List all tracked KOLs |
-| `POST` | `/api/kols` | Add new KOL to track |
-| `GET` | `/api/kols/:id` | Get KOL details and personality |
-| `PATCH` | `/api/kols/:id` | Update KOL settings |
-
-### KOL Posts Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/kol-posts` | List crawled KOL posts |
-| `GET` | `/api/kol-posts/:id` | Get post details and reply suggestions |
-
-### KOL Settings Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/kol-settings` | Get global KOL engagement settings |
-| `PATCH` | `/api/kol-settings` | Update KOL settings (mode, limits, safety) |
-
-### Topic Configuration Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/topic-config` | List all topic configs |
-| `POST` | `/api/topic-config` | Create a new topic config |
-| `PATCH` | `/api/topic-config/:id` | Update a topic config |
-| `DELETE` | `/api/topic-config/:id` | Delete a topic config |
-| `POST` | `/api/topic-config/:id/activate` | Switch active topic (deactivates all others) |
-| `POST` | `/api/topic-config/deactivate-all` | Revert to settings.ts default |
-
-### Priority Account Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/priority-accounts` | List priority accounts |
-| `POST` | `/api/priority-accounts` | Add priority account |
-
-### Task & Webhook Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `POST` | `/api/tasks/webhook` | Handle task completion callbacks from OpenClaw |
-
-### System Routes
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/scheduler` | Get scheduler status and pending tasks |
-| `GET` | `/api/status` | Get system health and statistics |
 
 ---
 
@@ -396,7 +341,79 @@ getHumanStyleRules("moderate") // Returns: no semicolons, no ellipsis, casual ac
 
 ---
 
-## Configuration
+## API Routes
+
+### Account Personality Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/account/personality` | Retrieve current personality profile |
+| `PATCH` | `/api/account/personality` | Update manual personality config |
+| `POST` | `/api/account/personality/learn` | Trigger immediate learning |
+
+### Account Post Seeding Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/account/posts/seed` | Queue own account crawl task |
+| `POST` | `/api/account/posts/seed/result` | Receive crawl result and seed posts |
+| `GET` | `/api/account/posts/seed/count` | Get count of seeded posts |
+
+### KOL Management Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/kols` | List all tracked KOLs |
+| `POST` | `/api/kols` | Add new KOL to track |
+| `GET` | `/api/kols/:id` | Get KOL details and personality |
+| `PATCH` | `/api/kols/:id` | Update KOL settings |
+
+### KOL Posts Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/kol-posts` | List crawled KOL posts |
+| `GET` | `/api/kol-posts/:id` | Get post details and reply suggestions |
+
+### KOL Settings Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/kol-settings` | Get global KOL engagement settings |
+| `PATCH` | `/api/kol-settings` | Update KOL settings (mode, limits, safety) |
+
+### Topic Configuration Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/topic-config` | List all topic configs |
+| `POST` | `/api/topic-config` | Create a new topic config |
+| `PATCH` | `/api/topic-config/:id` | Update a topic config |
+| `DELETE` | `/api/topic-config/:id` | Delete a topic config |
+| `POST` | `/api/topic-config/:id/activate` | Switch active topic (deactivates all others) |
+| `POST` | `/api/topic-config/deactivate-all` | Revert to settings.ts default |
+
+### Priority Account Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/priority-accounts` | List priority accounts |
+| `POST` | `/api/priority-accounts` | Add priority account |
+
+### Task & Webhook Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/tasks/webhook` | Handle task completion callbacks from OpenClaw |
+
+### System Routes
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/scheduler` | Get scheduler status and pending tasks |
+| `GET` | `/api/status` | Get system health and statistics |
+
+---
 
 ### Environment Variables
 

@@ -1,6 +1,6 @@
 # Development Roadmap
 
-**Last Updated:** 2026-05-14
+**Last Updated:** 2026-05-18
 
 ## Overview
 
@@ -9,6 +9,19 @@ This document tracks the project phases, milestones, and progress for the cinee-
 ---
 
 ## Completed Features
+
+### Own Account Post Seeding for AI Learning
+**Status:** Complete (2026-05-18)
+**Branch:** chore/improve-kol-crawl
+
+System to crawl and seed the CEO's own account posts into the database for AI personality learning. Posts are fetched from X/Twitter and stored with status POSTED, ready for the daily personality learning cron to analyze.
+
+**Key Components:**
+- `ownAccountCrawlerService` for queuing crawl tasks and processing results
+- `seedOwnAccountPostsCron.ts` script for on-demand post seeding
+- API endpoints for queuing crawls and receiving results
+- Deduplication by post_url to prevent duplicate seeding
+- Configurable date range (daysBack) and post limit
 
 ### Own Account Personality Learning + Self-Reply AI Integration
 **Status:** Complete (2026-05-14)
@@ -115,6 +128,7 @@ Track high-value accounts for engagement opportunities.
 
 | Milestone | Target Date | Status |
 |-----------|-------------|--------|
+| Own Account Post Seeding | 2026-05-18 | Complete |
 | Own Account Personality Learning | 2026-05-14 | Complete |
 | Self-Reply AI Integration | 2026-05-14 | Complete |
 | KOL Crawl & Analysis System | 2026-05-14 | Complete |
