@@ -1,6 +1,7 @@
 /** Account personality routes — view and manage own account personality profile */
 import { Router, type Request, type Response } from "express";
 import { ownAccountService } from "../services/ownAccountService.js";
+import { ownAccountCrawlerService } from "../services/ownAccountCrawlerService.js";
 import type { IOwnAccountManualConfig } from "../db/models/OwnAccountProfile.js";
 
 export const accountRouter = Router();
@@ -70,6 +71,70 @@ accountRouter.post("/personality/learn", async (_req: Request, res: Response) =>
     }
 
     res.json({ success: true, taskId });
+  } catch (e: unknown) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+/**
+ * POST /api/account/posts/seed
+ * Queue a crawl task to seed own account posts into DB for AI learning.
+ * Body: { daysBack?: number, limit?: number }
+ */
+accountRouter.post("/posts/seed", async (req: Request, res: Response) => {
+  try {
+    const { daysBack = 30, limit = 100 } = req.body as {
+      daysBack?: number;
+      limit?: number;
+    };
+
+    const taskId = await ownAccountCrawlerService.queueCrawlTask({ daysBack, limit });
+
+    if (!taskId) {
+      return res.status(422).json({
+        success: false,
+        error: "Failed to queue crawl task — check X_USERNAME env var",
+      });
+    }
+
+    const existing = await ownAccountCrawlerService.countSeedPosts();
+    res.json({ success: true, taskId, existingPostCount: existing });
+  } catch (e: unknown) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+/**
+ * POST /api/account/posts/seed/result
+ * Process crawl result from cinee-worker and seed posts into DB.
+ * Body: { result: string, limit?: number }
+ */
+accountRouter.post("/posts/seed/result", async (req: Request, res: Response) => {
+  try {
+    const { result, limit = 100 } = req.body as {
+      result: string;
+      limit?: number;
+    };
+
+    if (!result || typeof result !== "string") {
+      return res.status(400).json({ success: false, error: "result string is required" });
+    }
+
+    const crawlResult = await ownAccountCrawlerService.processCrawlResult(result, limit);
+    res.json({ success: true, data: crawlResult });
+  } catch (e: unknown) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+/**
+ * GET /api/account/posts/seed/count
+ * Returns count of seeded own-account posts available for learning.
+ */
+accountRouter.get("/posts/seed/count", async (_req: Request, res: Response) => {
+  try {
+    const count = await ownAccountCrawlerService.countSeedPosts();
+    res.json({ success: true, count });
   } catch (e: unknown) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }
