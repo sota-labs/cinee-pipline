@@ -518,7 +518,10 @@ export async function crawlAllKolsSequential(
   const kols = await KolProfile.find({
     is_active: true,
     reputation_score: { $gte: minTrustScore },
-  });
+  })
+    // null last_crawled_at sorts first (MongoDB ascending) — intentional: new KOLs get crawled first
+    .sort({ last_crawled_at: 1 })
+    .limit(kolSettings.crawl_batch_size);
 
   if (kols.length === 0) {
     log.info("[KolCrawler] No active KOLs to crawl");

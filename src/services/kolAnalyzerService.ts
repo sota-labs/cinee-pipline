@@ -15,6 +15,7 @@ import {
   buildPostQualityCheckPrompt,
 } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
+import { KolSettings } from "../db/models/KolSettings.js";
 import type { Types } from "mongoose";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -237,10 +238,14 @@ export class KolAnalyzerService {
     queued: number;
     errors: number;
   }> {
+    const { analyze_batch_size } = await KolSettings.getSettings();
+
     const pendingPosts = await KolPost.find({
       status: EKolPostStatus.NEW,
       comments: { $gt: 0 },
-    }).limit(50);
+    })
+      .sort({ crawled_at: 1 })
+      .limit(analyze_batch_size);
 
     log.info(`[KolAnalyzer] Found ${pendingPosts.length} posts to analyze`);
 

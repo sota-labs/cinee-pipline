@@ -93,7 +93,7 @@ async function callTelegram(
 
 /** Escape special characters for Telegram MarkdownV2. */
 function escapeMarkdown(text: string): string {
-  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+  return String(text).replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
 }
 
 // ── Keyboard Builders ────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ export async function sendConfirmationRequest(
   let text = `🤖 *Reply to @${escapeMarkdown(handle)}*\n\n`;
   text += `📝 *Post:* ${escapeMarkdown(post.content.substring(0, 150))}${post.content.length > 150 ? "\\.\\.\\." : ""}\n\n`;
   text += `💬 *Reply:* "${escapeMarkdown(selected.content)}"\n`;
-  text += `📊 Confidence: ${selected.confidence}% \\| Tone: ${escapeMarkdown(selected.tone)}\n\n`;
+  text += `📊 Confidence: ${escapeMarkdown(String(selected.confidence))}% \\| Tone: ${escapeMarkdown(selected.tone)}\n\n`;
   text += `⏱ _Auto\\-reject in 1 hour if no response_`;
 
   const keyboard = {
@@ -216,7 +216,7 @@ export async function sendSuggestionForReview(
 
   suggestion.suggestions.forEach((s, i) => {
     text += `${i + 1}\\. "${escapeMarkdown(s.content)}"\n`;
-    text += `   Confidence: ${s.confidence}% \\| Tone: ${escapeMarkdown(s.tone)}\n\n`;
+    text += `   Confidence: ${escapeMarkdown(String(s.confidence))}% \\| Tone: ${escapeMarkdown(s.tone)}\n\n`;
   });
 
   try {
@@ -346,11 +346,11 @@ export async function sendKolsList(page = 1): Promise<void> {
     .skip(skip)
     .limit(pageSize);
 
-  let text = `👥 *Active KOLs* \(Page ${page}\)\n\n`;
+  let text = `👥 *Active KOLs* \\(Page ${escapeMarkdown(String(page))}\\)\n\n`;
 
   for (const kol of kols) {
     text += `• @${escapeMarkdown(kol.handle)}\n`;
-    text += `  📈 Rep: ${kol.reputation_score} \| Posts: ${kol.post_frequency}/day\n\n`;
+    text += `  📈 Rep: ${escapeMarkdown(String(kol.reputation_score))} \\| Posts: ${escapeMarkdown(String(kol.post_frequency))}/day\n\n`;
   }
 
   await callTelegram("sendMessage", {
@@ -375,7 +375,7 @@ export async function sendPendingList(): Promise<void> {
     return;
   }
 
-  const text = `📋 *${pending.length} Pending Review${pending.length > 1 ? "s" : ""}*\n\nChecking...`;
+  const text = `📋 *${escapeMarkdown(String(pending.length))} Pending Review${pending.length > 1 ? "s" : ""}*\n\nChecking\\.\\.\\.`;
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -417,11 +417,11 @@ export async function sendStats(): Promise<void> {
 
   const text =
     `📊 *Last 24 Hours Stats*\n\n` +
-    `📥 Posts Crawled: ${postsCrawled}\n` +
-    `💡 Suggestions Generated: ${suggestionsGenerated}\n` +
-    `📤 Replies Sent: ${repliesSent}\n` +
-    `⏳ Pending Manual: ${pendingManual}\n` +
-    `👥 Active KOLs: ${activeKols}`;
+    `📥 Posts Crawled: ${escapeMarkdown(String(postsCrawled))}\n` +
+    `💡 Suggestions Generated: ${escapeMarkdown(String(suggestionsGenerated))}\n` +
+    `📤 Replies Sent: ${escapeMarkdown(String(repliesSent))}\n` +
+    `⏳ Pending Manual: ${escapeMarkdown(String(pendingManual))}\n` +
+    `👥 Active KOLs: ${escapeMarkdown(String(activeKols))}`;
 
   await callTelegram("sendMessage", {
     chat_id: chatId,
@@ -812,11 +812,11 @@ async function sendSettings(chatId: string): Promise<void> {
   const mode = settings.default_mode;
 
   const text =
-    `⚙️ *Current Mode: ${mode.toUpperCase()}*\n\n` +
+    `⚙️ *Current Mode: ${escapeMarkdown(mode.toUpperCase())}*\n\n` +
     (mode === EReplyMode.AFK
-      ? "🤖 *AFK Mode:* Auto\-reply based on confidence threshold\n" +
-        `• Min confidence: ${settings.afk.min_confidence_threshold}%\n` +
-        `• Delay: ${settings.afk.auto_delay_min_minutes}-${settings.afk.auto_delay_max_minutes} min`
+      ? "🤖 *AFK Mode:* Auto\\-reply based on confidence threshold\n" +
+        `• Min confidence: ${escapeMarkdown(String(settings.afk.min_confidence_threshold))}%\n` +
+        `• Delay: ${escapeMarkdown(String(settings.afk.auto_delay_min_minutes))}\\-${escapeMarkdown(String(settings.afk.auto_delay_max_minutes))} min`
       : "👤 *Manual Mode:* All require approval");
 
   await callTelegram("sendMessage", {

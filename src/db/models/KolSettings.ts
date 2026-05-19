@@ -98,6 +98,8 @@ export interface IKolSettings extends Document {
   crawl_interval_minutes: number;
   max_posts_per_crawl: number;
   max_comments_per_post: number;
+  crawl_batch_size: number;
+  analyze_batch_size: number;
 
   afk: IAFKSettings;
   manual: IManualSettings;
@@ -109,23 +111,11 @@ export interface IKolSettings extends Document {
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
-interface IKolSettingsModel extends Document {
-  default_mode: "afk" | "manual";
-  crawl_interval_minutes: number;
-  max_posts_per_crawl: number;
-  max_comments_per_post: number;
-  afk: IAFKSettings;
-  manual: IManualSettings;
-  self_reply: ISelfReplySettings;
-  safety: ISafetySettings;
-  updated_at: Date;
+interface KolSettingsModel extends Model<IKolSettings> {
+  getSettings(): Promise<IKolSettings>;
 }
 
-interface KolSettingsModel extends Model<IKolSettingsModel> {
-  getSettings(): Promise<IKolSettingsModel>;
-}
-
-const kolSettingsSchema = new Schema<IKolSettingsModel, KolSettingsModel>(
+const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
   {
     default_mode: {
       type: String,
@@ -136,6 +126,8 @@ const kolSettingsSchema = new Schema<IKolSettingsModel, KolSettingsModel>(
     crawl_interval_minutes: { type: Number, default: 30, min: 5 },
     max_posts_per_crawl: { type: Number, default: 10, min: 1 },
     max_comments_per_post: { type: Number, default: 10, min: 1 },
+    crawl_batch_size: { type: Number, default: 10, min: 1 },
+    analyze_batch_size: { type: Number, default: 10, min: 1 },
 
     afk: { type: afkSettingsSchema, default: () => ({}) },
     manual: { type: manualSettingsSchema, default: () => ({}) },
@@ -149,7 +141,7 @@ const kolSettingsSchema = new Schema<IKolSettingsModel, KolSettingsModel>(
 
 // ── Singleton pattern: only one settings document ─────────────────────────────
 
-kolSettingsSchema.statics.getSettings = async function (): Promise<IKolSettingsModel> {
+kolSettingsSchema.statics.getSettings = async function (): Promise<IKolSettings> {
   let settings = await this.findOne();
   if (!settings) {
     settings = await this.create({});
@@ -159,4 +151,4 @@ kolSettingsSchema.statics.getSettings = async function (): Promise<IKolSettingsM
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
-export const KolSettings = model<IKolSettingsModel, KolSettingsModel>("KolSettings", kolSettingsSchema);
+export const KolSettings = model<IKolSettings, KolSettingsModel>("KolSettings", kolSettingsSchema);
