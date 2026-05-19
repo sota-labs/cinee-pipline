@@ -93,6 +93,9 @@ export interface IKolPost extends Document {
   engagement_score: number;
 
   status: EKolPostStatus;
+  is_retweet: boolean;
+  is_quote: boolean;
+  quoted_post_url?: string;
   analysis: IAnalysisResult;
   top_comments: ITopComment[];
   engagement_pattern: IEngagementPattern;
@@ -137,6 +140,9 @@ const kolPostSchema = new Schema<IKolPost>(
       enum: Object.values(EKolPostStatus),
       default: EKolPostStatus.NEW,
     },
+    is_retweet: { type: Boolean, default: false },
+    is_quote: { type: Boolean, default: false },
+    quoted_post_url: { type: String },
     analysis: {
       type: analysisResultSchema,
       default: () => ({}),

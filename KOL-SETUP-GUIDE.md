@@ -3,10 +3,11 @@
 ## Tổng quan
 
 KOL Engagement System tự động hóa việc tương tác với KOLs trên X/Twitter:
-- Crawl post mới mỗi 30 phút
+- Crawl post mới mỗi 4 giờ (spawn nhiều tasks song song, mỗi task 2 handles)
 - AI phân tích nội dung, cá tính, và slang của KOL
 - Đề xuất reply phù hợp với giọng văn của KOL
 - Gửi reply ở 2 chế độ: **AFK** (tự động) hoặc **Manual** (xác nhận qua Telegram)
+- AFK mode tự động bỏ qua post chứa CA, DEX link, cashtag không trong whitelist
 
 ---
 
@@ -145,12 +146,28 @@ curl -X POST http://localhost:3000/api/kols \
   -d '{"handle": "elonmusk"}'
 ```
 
-### 4.2 Bulk import nhiều KOL
+Có thể chỉ định tier (S/A/B/C, mặc định B):
 
 ```bash
+curl -X POST http://localhost:3000/api/kols \
+  -H "Content-Type: application/json" \
+  -d '{"handle": "elonmusk", "tier": "S"}'
+```
+
+### 4.2 Bulk import nhiều KOL
+
+Hỗ trợ 2 format:
+
+```bash
+# Format 1: mảng string (tier mặc định B)
 curl -X POST http://localhost:3000/api/kols/bulk-import \
   -H "Content-Type: application/json" \
   -d '{"handles": ["naval", "sama", "levelsio"]}'
+
+# Format 2: mảng object với tier tùy chỉnh
+curl -X POST http://localhost:3000/api/kols/bulk-import \
+  -H "Content-Type: application/json" \
+  -d '{"handles": [{"handle": "naval", "tier": "S"}, {"handle": "sama", "tier": "A"}, "levelsio"]}'
 ```
 
 ### 4.3 Xem danh sách KOL
@@ -175,7 +192,7 @@ Daemon tự động chạy các jobs:
 
 | Job | Interval | Mô tả |
 |-----|----------|-------|
-| Crawl posts | 30 phút | Lấy post mới từ KOLs |
+| Crawl posts | 4 giờ | Spawn tasks song song (2 handles/task), cover toàn bộ KOLs trong 24h |
 | Analyze posts | 10 phút | AI phân tích nội dung |
 | AFK replies | 10 phút | Thực thi reply đã schedule |
 | Auto-reject | 10 phút | Reject manual suggestions quá 1 giờ |
@@ -203,6 +220,7 @@ Trong AFK mode:
 - Kiểm tra virality score của post (> 30)
 - Schedule reply với delay ngẫu nhiên 5–15 phút
 - Không cần xác nhận từ người dùng
+- **Tự động bỏ qua post** nếu vi phạm skip rules (xem mục 6.4)
 
 ### 6.3 Chuyển sang Manual mode
 
@@ -216,6 +234,49 @@ Trong Manual mode (đã cải tiến):
 - Bạn chỉ cần bấm **✅ Confirm** hoặc **❌ Reject**
 - Nếu muốn xem tất cả options → bấm **🔄 See All**
 - **Tự động reject sau 1 giờ** nếu không có phản hồi
+
+### 6.4 KOL Tier và AFK Skip Rules
+
+#### Tier hệ thống
+
+| Tier | Mô tả | AFK Skip Rules |
+|------|-------|----------------|
+| **S** | KOL ưu tiên cao nhất | **Bỏ qua tất cả skip rules** — luôn reply |
+| **A** | KOL quan trọng | Áp dụng skip rules |
+| **B** | KOL thường (mặc định) | Áp dụng skip rules |
+| **C** | KOL ít ưu tiên | Áp dụng skip rules |
+
+Cập nhật tier:
+
+```bash
+curl -X PATCH http://localhost:3000/api/kols/<KOL_ID> \
+  -H "Content-Type: application/json" \
+  -d '{"tier": "S"}'
+```
+
+#### AFK Skip Rules (áp dụng cho tier A/B/C)
+
+Post sẽ bị **bỏ qua** (status `SKIPPED`) nếu vi phạm bất kỳ rule nào:
+
+| Rule | Điều kiện bỏ qua |
+|------|-----------------|
+| 1 | Post là retweet/repost |
+| 2 | Chứa cashtag `$XXX` không có trong whitelist |
+| 3 | Chứa contract address (Solana, EVM `0x...40`, Sui `0x...64`) |
+| 4 | Chứa link DEX: dextools.io, dexscreener.com, pump.fun, letsbonk.fun |
+| 5 | Quote tweet từ URL chứa DEX domain |
+
+#### Cashtag Whitelist
+
+Mặc định: `WIF, BONK, PEPE, DOGE, SOL, BTC, ETH, BNB, BASE, SUI`
+
+Cập nhật whitelist:
+
+```bash
+curl -X PATCH http://localhost:3000/api/kol-settings \
+  -H "Content-Type: application/json" \
+  -d '{"afk_skip_cashtag_whitelist": ["BTC", "ETH", "SOL", "BNB"]}'
+```
 
 ---
 
@@ -397,7 +458,7 @@ GET    /api/kol-settings              # Xem toàn bộ settings
 GET    /api/kol-settings/mode         # Xem mode hiện tại
 POST   /api/kol-settings/mode/afk     # Chuyển AFK
 POST   /api/kol-settings/mode/manual  # Chuyển Manual
-PATCH  /api/kol-settings              # Update settings
+PATCH  /api/kol-settings              # Update settings (bao gồm afk_skip_cashtag_whitelist, crawl_handles_per_task)
 PATCH  /api/kol-settings/thresholds   # Update AFK thresholds
 ```
 
@@ -405,9 +466,10 @@ PATCH  /api/kol-settings/thresholds   # Update AFK thresholds
 
 ```bash
 GET    /api/kols                      # Danh sách KOL
-POST   /api/kols                      # Thêm KOL mới {"handle": "..."}
+POST   /api/kols                      # Thêm KOL mới {"handle": "...", "tier": "S|A|B|C"}
 GET    /api/kols/:id                  # Chi tiết 1 KOL
-POST   /api/kols/bulk-import          # Import nhiều KOL {"handles": [...]}
+PATCH  /api/kols/:id                  # Cập nhật KOL (bao gồm tier)
+POST   /api/kols/bulk-import          # Import nhiều KOL (string[] hoặc {handle, tier?}[])
 POST   /api/kols/:id/crawl            # Trigger crawl ngay
 POST   /api/kols/:id/learn            # Trigger personality learning
 ```
@@ -429,25 +491,38 @@ POST   /api/replies/:id/reject        # Reject suggestion
 ```
 KOL Posts (X/Twitter)
         │
-        ▼ (mỗi 30 phút)
+        ▼ (mỗi 4 giờ — spawn N tasks song song, 2 handles/task)
    [CRAWLER] ──▶ KolPost (status: NEW)
         │
         ▼ (mỗi 10 phút)
    [ANALYZER] ──▶ KolPost (status: ANALYZED)
         │         └── Học slang + cá tính KOL
         ▼
-[REPLY ENGINE] ──▶ KolReplySuggestion
+[REPLY ENGINE]
         │
-        ├── AFK mode ──▶ Auto-select best ──▶ Schedule 5-15m ──▶ Execute
+        ├── Tier S ──────────────────────────────────────────▶ Generate suggestion
         │
-        └── Manual mode ──▶ Auto-select best ──▶ Telegram Confirm
-                                                      │
-                                          ┌───────────┼───────────┐
-                                          ▼           ▼           ▼
-                                      Confirm      Reject     See All
-                                          │                       │
-                                       Execute              Show full list
-                                                            (pick manually)
+        └── Tier A/B/C ──▶ [AFK Skip Rules] ──▶ vi phạm? ──▶ SKIPPED
+                                                     │
+                                                  không vi phạm
+                                                     │
+                                                     ▼
+                                            Generate suggestion
+                                                     │
+                              ┌──────────────────────┤
+                              ▼                      ▼
+                          AFK mode              Manual mode
+                              │                      │
+                    Auto-select best        Auto-select best
+                              │                      │
+                    Schedule 5-15m          Telegram Confirm
+                              │                      │
+                           Execute      ┌────────────┼────────────┐
+                                        ▼            ▼            ▼
+                                    Confirm       Reject       See All
+                                        │                         │
+                                     Execute               Show full list
+                                                           (pick manually)
                                     (nếu không phản hồi sau 1h → auto-reject)
 ```
 

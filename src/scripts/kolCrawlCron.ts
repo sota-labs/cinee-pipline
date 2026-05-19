@@ -1,31 +1,21 @@
-/** KolCrawlCron — Periodic crawl job for all KOLs (Sequential) */
+/** KolCrawlCron — Periodic crawl job for all KOLs (parallel tasks, fire-and-forget) */
 import { crawlAllKolsSequential } from "../services/kolCrawlerService.js";
 import { connectDb, disconnectDb } from "../db/connection.js";
 import { log } from "../utils/logger.js";
 
 /**
  * Main entry point for cron job.
- * Schedule: every 30 minutes
- * Cron expression: 0,30 * * * *
+ * Schedule: every 4 hours — cron: 0 *-slash-4 * * *
  */
 async function main(): Promise<void> {
   try {
     await connectDb();
-    log.info("[KolCrawlCron] Connected to DB. Starting sequential crawl...");
+    log.info("[KolCrawlCron] Connected to DB. Spawning crawl tasks...");
 
-    // Crawl one KOL at a time to avoid rate limits
-    const results = await crawlAllKolsSequential({
-      delayBetweenKolsMs: 15000, // 15 seconds between KOLs
-      maxWaitPerKolMs: 300000,   // 5 minutes max per KOL
-    });
-
-    const totalPostsFound = results.reduce((sum: number, r) => sum + r.postsFound, 0);
-    const totalPostsSaved = results.reduce((sum: number, r) => sum + r.postsSaved, 0);
-    const totalErrors = results.reduce((sum: number, r) => sum + r.errors.length, 0);
+    const result = await crawlAllKolsSequential();
 
     log.info(
-      `[KolCrawlCron] Completed: ${results.length} KOLs, ` +
-        `${totalPostsFound} posts found, ${totalPostsSaved} saved, ${totalErrors} errors`,
+      `[KolCrawlCron] Completed: spawned ${result.tasksCreated} tasks for ${result.handles.length} handles`,
     );
 
     await disconnectDb();

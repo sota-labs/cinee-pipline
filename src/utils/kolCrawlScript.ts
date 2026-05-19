@@ -28,6 +28,9 @@ export const KOL_TWEET_SCRIPT = `
       views: parseCount(t.querySelector('[data-testid="analytics"] span')?.innerText),
       media_urls: [...t.querySelectorAll('[data-testid="tweetPhoto"] img, [data-testid="videoPlayer"] video')]
                     .map(el => el.src || el.poster).filter(Boolean),
+      is_retweet: !!t.querySelector('[data-testid="socialContext"]')?.innerText?.toLowerCase().includes('reposted'),
+      is_quote: !!t.querySelector('[data-testid="quoteTweet"]'),
+      quoted_post_url: t.querySelector('[data-testid="quoteTweet"] a[href*="/status/"]')?.href || '',
     };
   }).filter(p => p.content && p.post_url);
 })()
@@ -58,6 +61,9 @@ export const KOL_TWEET_SCRIPT_BATCH = `
       views: parseCount(t.querySelector('[data-testid="analytics"] span')?.innerText),
       media_urls: [...t.querySelectorAll('[data-testid="tweetPhoto"] img, [data-testid="videoPlayer"] video')]
                     .map(el => el.src || el.poster).filter(Boolean),
+      is_retweet: !!t.querySelector('[data-testid="socialContext"]')?.innerText?.toLowerCase().includes('reposted'),
+      is_quote: !!t.querySelector('[data-testid="quoteTweet"]'),
+      quoted_post_url: t.querySelector('[data-testid="quoteTweet"] a[href*="/status/"]')?.href || '',
     };
   }).filter(p =>
     p.content &&

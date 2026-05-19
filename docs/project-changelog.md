@@ -1,8 +1,60 @@
 # Project Changelog
 
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-19
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-05-19] - KOL Tier System & AFK Skip Rules
+
+### Added
+- **KOL Tier System** (`src/db/models/KolProfile.ts`)
+  - New field: `tier: "S" | "A" | "B" | "C"` (default: "B")
+  - Tier S: Bypasses all AFK skip rules (super VIP)
+  - Tier A: Skips cashtag check, applies other rules
+  - Tier B: Applies all rules (default)
+  - Tier C: Applies all rules (low priority)
+
+- **KolPost Enhanced Fields** (`src/db/models/KolPost.ts`)
+  - New fields: `is_retweet`, `is_quote`, `quoted_post_url`
+  - Updated status enum: `"new" | "analyzed" | "pending_reply" | "replied" | "skipped"`
+  - Enables granular post filtering
+
+- **AFK Skip Rules** (`src/utils/kolPostSkipRules.ts`)
+  - Pure function: `shouldSkipPost(params)` — no DB access, no side effects
+  - Rule 1: Skip retweets/reposts
+  - Rule 2: Skip posts with cashtags not in whitelist
+  - Rule 3: Skip posts with contract addresses (EVM, Solana, Sui)
+  - Rule 4: Skip posts linking to DEX/pump domains
+  - Rule 5: Skip quote tweets with DEX URLs in quoted post
+  - Tier S KOLs bypass all rules
+
+- **KolSettings Cashtag Whitelist** (`src/db/models/KolSettings.ts`)
+  - New field: `afk_skip_cashtag_whitelist: string[]`
+  - Default: `["WIF", "BONK", "PEPE", "DOGE", "SOL", "BTC", "ETH", "BNB", "BASE", "SUI"]`
+  - Configurable via `PATCH /api/kol-settings`
+
+- **KOL API Enhancements** (`src/routes/kols.ts`)
+  - `POST /api/kols` now accepts `tier` field
+  - `POST /api/kols/bulk-import` supports both formats:
+    - String array: `["handle1", "handle2"]` (all default to tier B)
+    - Object array: `[{handle: "handle1", tier: "S"}, ...]`
+
+- **Documentation**
+  - New: `docs/kol-setup-guide.md` — comprehensive KOL setup and management guide
+  - Updated: `docs/system-architecture.md` — KOL tier, skip rules, enhanced schemas
+  - Updated: `docs/code-standards.md` — added kolPostSkipRules.ts to utils
+
+### Technical Details
+- Skip rules evaluated in `replyEngineService` before generating replies
+- Posts matching rules marked with status: `"skipped"`
+- Tier S KOLs always reply if confidence > threshold (no skip rules applied)
+- Cashtag detection uses regex: `(?:^|[\s,;([\]])?\$([A-Z]{2,10})(?:[\s,;)\]]|$)`
+- Contract address detection supports EVM (0x + 40 hex), Solana (32-44 base58), Sui (0x + 64 hex)
+
+### Breaking Changes
+- None — fully backward compatible
 
 ---
 

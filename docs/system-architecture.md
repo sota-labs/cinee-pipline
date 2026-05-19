@@ -106,7 +106,10 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
   display_name: string,
   bio: string,
   follower_count: number,
+  following_count: number,
   is_verified: boolean,
+  account_age_days: number,
+  tier: "S" | "A" | "B" | "C",  // Default: "B"
   personality_profile: {
     writing_style: string,
     common_topics: string[],
@@ -116,6 +119,10 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
     avg_post_length: number
   },
   reputation_score: number,  // 0-100
+  avg_likes_per_post: number,
+  avg_comments_per_post: number,
+  avg_retweets_per_post: number,
+  post_frequency: number,
   last_crawled_at: Date | null,
   is_active: boolean
 }
@@ -125,12 +132,31 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
 ```typescript
 {
   kol_id: ObjectId,
+  platform: "twitter" | "reddit",
+  post_url: string,
   content: string,
+  media_urls: string[],
+  posted_at: Date,
   likes: number,
   comments: number,
   retweets: number,
-  status: "pending" | "analyzed" | "replied",
-  created_at: Date
+  views: number,
+  engagement_score: number,
+  status: "new" | "analyzed" | "pending_reply" | "replied" | "skipped",
+  is_retweet: boolean,
+  is_quote: boolean,
+  quoted_post_url?: string,
+  analysis: {
+    summary: string,
+    sentiment: "positive" | "negative" | "neutral",
+    trending_topics: string[],
+    virality_score: number
+  },
+  top_comments: ITopComment[],
+  engagement_pattern: IEngagementPattern,
+  crawled_at: Date,
+  analyzed_at?: Date,
+  replied_at?: Date
 }
 ```
 
@@ -150,19 +176,33 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
   default_mode: "afk" | "manual",
   crawl_interval_minutes: number,
   max_posts_per_crawl: number,
+  max_comments_per_post: number,
+  crawl_batch_size: number,
+  analyze_batch_size: number,
+  afk_skip_cashtag_whitelist: string[],  // Uppercase symbols, no $
   afk: {
     min_confidence_threshold: number,
     auto_delay_min_minutes: number,
+    auto_delay_max_minutes: number,
     hourly_reply_limit: number,
     daily_reply_limit: number
   },
   manual: {
     notification_channel: string,
-    max_pending_hours: number
+    max_pending_hours: number,
+    auto_reject_after_minutes: number
+  },
+  self_reply: {
+    enabled: boolean,
+    min_comments_to_trigger: number,
+    reply_interval_seconds: number,
+    hourly_limit: number,
+    priority_weights: IPriorityWeights
   },
   safety: {
     min_kol_trust_score: number,
     enable_duplicate_detection: boolean,
+    enable_banned_words_filter: boolean,
     max_hourly_replies_global: number
   }
 }
@@ -291,6 +331,59 @@ mergeProfiles(manual: ManualConfig, learned: LearnedProfile): EffectiveProfile
 
 ---
 
+## AFK Skip Rules
+
+In AFK mode, the system automatically filters posts before generating replies. Posts matching any skip rule are marked as `skipped` and not replied to. **Tier S KOLs bypass all skip rules.**
+
+### Skip Rule Evaluation
+
+The `shouldSkipPost()` function in `src/utils/kolPostSkipRules.ts` evaluates posts against 5 rules:
+
+**Rule 1: Retweets/Reposts**
+- Skips posts where `is_retweet: true`
+- Rationale: Focus on original content only
+
+**Rule 2: Cashtag Whitelist**
+- Skips posts containing cashtags (e.g., `$BTC`, `$ETH`) not in `afk_skip_cashtag_whitelist`
+- Default whitelist: `WIF, BONK, PEPE, DOGE, SOL, BTC, ETH, BNB, BASE, SUI`
+- Rationale: Avoid engagement with unvetted tokens
+
+**Rule 3: Contract Addresses**
+- Skips posts containing blockchain contract addresses:
+  - EVM: `0x` + 40 hex chars
+  - Solana: 32-44 base58 chars
+  - Sui: `0x` + 64 hex chars
+- Rationale: Avoid spam and scam tokens
+
+**Rule 4: DEX/Pump Domains**
+- Skips posts linking to: `dextools.io`, `dexscreener.com`, `pump.fun`, `letsbonk.fun`
+- Rationale: Avoid engagement with trading platforms
+
+**Rule 5: Quote Tweets with DEX URLs**
+- Skips quote tweets where `quoted_post_url` contains DEX domains
+- Rationale: Prevent indirect engagement with trading platforms
+
+### KOL Tier Bypass
+
+| Tier | Behavior |
+|------|----------|
+| **S** | Bypasses ALL skip rules — always replies if confidence > threshold |
+| **A** | Applies rules 1, 3, 4, 5 (skips cashtag check) |
+| **B** | Applies all 5 rules (default) |
+| **C** | Applies all 5 rules (same as B) |
+
+### Configuration
+
+Update cashtag whitelist via API:
+```bash
+PATCH /api/kol-settings
+{
+  "afk_skip_cashtag_whitelist": ["WIF", "BONK", "PEPE", "DOGE", "SOL", "BTC", "ETH", "BNB", "BASE", "SUI"]
+}
+```
+
+---
+
 ## Workflow: Self-Reply AI Generation
 
 ```
@@ -363,10 +456,16 @@ getHumanStyleRules("moderate") // Returns: no semicolons, no ellipsis, casual ac
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/kols` | List all tracked KOLs |
-| `POST` | `/api/kols` | Add new KOL to track |
+| `GET` | `/api/kols` | List all tracked KOLs with pagination and filters |
+| `POST` | `/api/kols` | Add new KOL to track (accepts `tier` field) |
+| `POST` | `/api/kols/bulk-import` | Bulk import KOLs (supports string[] or {handle, tier?}[]) |
 | `GET` | `/api/kols/:id` | Get KOL details and personality |
-| `PATCH` | `/api/kols/:id` | Update KOL settings |
+| `PATCH` | `/api/kols/:id` | Update KOL settings (tier, reputation, etc.) |
+| `DELETE` | `/api/kols/:id` | Delete KOL profile |
+| `POST` | `/api/kols/:id/crawl` | Trigger manual crawl for KOL |
+| `POST` | `/api/kols/:id/learn` | Trigger personality learning |
+| `GET` | `/api/kols/:id/posts` | Get posts for a KOL |
+| `GET` | `/api/kols/:id/personality` | Get KOL personality profile |
 
 ### KOL Posts Routes
 

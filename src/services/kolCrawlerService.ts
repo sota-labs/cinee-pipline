@@ -223,6 +223,9 @@ export async function processCrawlResults(
         views: raw.views,
         engagement_score: engagementScore,
         status: EKolPostStatus.NEW,
+        is_retweet: raw.is_retweet ?? false,
+        is_quote: raw.is_quote ?? false,
+        ...(raw.quoted_post_url ? { quoted_post_url: raw.quoted_post_url } : {}),
         top_comments: (raw.top_comments || []).map((c) => ({
           content: c.content,
           author_handle: c.author_handle,
@@ -465,70 +468,46 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Wait for OpenClaw task to complete by polling
- */
-async function waitForTaskCompletion(
-  taskId: string,
-  maxWaitMs: number = 300000, // 5 minutes max
-  pollIntervalMs: number = 5000, // Check every 5 seconds
-): Promise<{ success: boolean; result?: string; error?: string }> {
-  const startTime = Date.now();
+// ── Parallel Crawl Export ─────────────────────────────────────────────────────
 
-  while (Date.now() - startTime < maxWaitMs) {
-    const task = await Task.findById(taskId);
-
-    if (!task) {
-      return { success: false, error: "Task not found" };
-    }
-
-    if (task.status === ETaskStatus.COMPLETED) {
-      return { success: true, result: task.result };
-    }
-
-    if (task.status === ETaskStatus.FAILED) {
-      return { success: false, error: task.result || "Task failed" };
-    }
-
-    // Still pending or processing, wait and poll again
-    await delay(pollIntervalMs);
-  }
-
-  return { success: false, error: "Task timeout" };
-}
-
-// ── Sequential Crawl Export (for rate limiting) ──────────────────────────────
-
-export interface ISequentialCrawlOptions {
-  delayBetweenKolsMs?: number; // Default: 10000 (10s)
-  maxWaitPerKolMs?: number;    // Default: 300000 (5 min)
+export interface ICrawlSpawnResult {
+  tasksCreated: number;
+  handles: string[];
 }
 
 /**
- * Crawl all KOLs using a SINGLE batch task.
- * OpenClaw will crawl sequentially to avoid rate limits.
- * Much more efficient than creating 200 separate tasks.
+ * Spawn multiple batch crawl tasks (fire-and-forget).
+ * Each task covers `crawl_handles_per_task` handles (default 2).
+ * Handles per run = ceil(total_active / 6) to cover all KOLs every 24h (6 runs/day).
+ * Results are processed asynchronously via POST /api/tasks/:id/process-result.
  */
-export async function crawlAllKolsSequential(
-  options: ISequentialCrawlOptions = {},
-): Promise<ICrawlResult[]> {
+export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
   const kolSettings = await KolSettings.getSettings();
   const minTrustScore = kolSettings.safety.min_kol_trust_score;
 
+  const totalKols = await KolProfile.countDocuments({
+    is_active: true,
+    reputation_score: { $gte: minTrustScore },
+  });
+
+  if (totalKols === 0) {
+    log.info("[KolCrawler] No active KOLs to crawl");
+    return { tasksCreated: 0, handles: [] };
+  }
+
+  // Cover all handles in 24h across 6 runs (every 4h)
+  const RUNS_PER_DAY = 6;
+  const handlesPerRun = Math.ceil(totalKols / RUNS_PER_DAY);
+
+  // Round-robin: null last_crawled_at sorts first — new KOLs get priority
   const kols = await KolProfile.find({
     is_active: true,
     reputation_score: { $gte: minTrustScore },
   })
-    // null last_crawled_at sorts first (MongoDB ascending) — intentional: new KOLs get crawled first
     .sort({ last_crawled_at: 1 })
-    .limit(kolSettings.crawl_batch_size);
+    .limit(handlesPerRun);
 
-  if (kols.length === 0) {
-    log.info("[KolCrawler] No active KOLs to crawl");
-    return [];
-  }
-
-  log.info(`[KolCrawler] Starting batch crawl for ${kols.length} KOLs in SINGLE task`);
+  log.info(`[KolCrawler] Spawning tasks for ${kols.length}/${totalKols} KOLs (${handlesPerRun} per run)`);
 
   // Build KOL info list with their last crawled times
   const kolInfos: IKolCrawlInfo[] = [];
@@ -545,42 +524,20 @@ export async function crawlAllKolsSequential(
     });
   }
 
-  // Create SINGLE batch task for all KOLs
-  const taskId = await createBatchCrawlTask(kolInfos);
-  const maxWait = options.maxWaitPerKolMs ?? 600000; // 10 min default per KOL, so 200 KOLs = ~33 min max
+  // Split into chunks and create one task per chunk (fire-and-forget)
+  const chunkSize = kolSettings.crawl_handles_per_task;
+  const allHandles: string[] = [];
+  let tasksCreated = 0;
 
-  log.info(`[KolCrawler] Waiting for batch task ${taskId} to complete...`);
-
-  // Wait for completion (poll every 10s)
-  const taskResult = await waitForTaskCompletion(taskId, maxWait * kols.length, 10000);
-
-  if (!taskResult.success) {
-    log.error(`[KolCrawler] Batch task failed: ${taskResult.error}`);
-    // Return empty results for all KOLs
-    return kols.map(kol => ({
-      kolId: kol._id,
-      handle: kol.handle,
-      postsFound: 0,
-      postsSaved: 0,
-      errors: [taskResult.error || "Batch task failed"],
-    }));
+  for (let i = 0; i < kolInfos.length; i += chunkSize) {
+    const chunk = kolInfos.slice(i, i + chunkSize);
+    await createBatchCrawlTask(chunk);
+    allHandles.push(...chunk.map((k) => k.handle));
+    tasksCreated++;
   }
 
-  // Process batch results
-  const results: ICrawlResult[] = [];
-
-  if (taskResult.result) {
-    try {
-      const handles = kols.map((k) => k.handle);
-      const processed = await processBatchCrawlResult(taskResult.result, handles);
-      results.push(...processed);
-    } catch (error) {
-      log.error(`[KolCrawler] Failed to process batch results: ${(error as Error).message}`);
-    }
-  }
-
-  log.info(`[KolCrawler] Batch crawl completed: ${results.length}/${kols.length} KOLs processed`);
-  return results;
+  log.info(`[KolCrawler] Spawned ${tasksCreated} tasks for handles: ${allHandles.join(", ")}`);
+  return { tasksCreated, handles: allHandles };
 }
 
 // ── Singleton Export ─────────────────────────────────────────────────────────

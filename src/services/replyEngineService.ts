@@ -15,6 +15,7 @@ import {
 import { KolSettings } from "../db/models/KolSettings.js";
 import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
+import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { kolAnalyzerService } from "./kolAnalyzerService.js";
 import type { Types } from "mongoose";
@@ -126,6 +127,22 @@ export class ReplyEngineService {
     if (!kol) {
       log.error(`[ReplyEngine] KOL for post ${postId} not found`);
       return null;
+    }
+
+    // Tier S bypasses all skip rules
+    if (kol.tier !== "S") {
+      const settings = await KolSettings.getSettings();
+      if (shouldSkipPost({
+        content: post.content,
+        isRetweet: post.is_retweet,
+        isQuote: post.is_quote,
+        quotedPostUrl: post.quoted_post_url,
+        cashtagWhitelist: settings.afk_skip_cashtag_whitelist,
+      })) {
+        await KolPost.findByIdAndUpdate(post._id, { status: EKolPostStatus.SKIPPED });
+        log.info(`[ReplyEngine] Skipped post ${post._id} — matched AFK skip rule`);
+        return null;
+      }
     }
 
     // Guard: skip suggestion generation if personality hasn't been learned yet

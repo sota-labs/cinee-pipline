@@ -98,8 +98,9 @@ export interface IKolSettings extends Document {
   crawl_interval_minutes: number;
   max_posts_per_crawl: number;
   max_comments_per_post: number;
-  crawl_batch_size: number;
+  crawl_handles_per_task: number;
   analyze_batch_size: number;
+  afk_skip_cashtag_whitelist: string[];
 
   afk: IAFKSettings;
   manual: IManualSettings;
@@ -123,11 +124,15 @@ const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
       default: "manual",
     },
 
-    crawl_interval_minutes: { type: Number, default: 30, min: 5 },
+    crawl_interval_minutes: { type: Number, default: 240, min: 5 },
     max_posts_per_crawl: { type: Number, default: 10, min: 1 },
     max_comments_per_post: { type: Number, default: 10, min: 1 },
-    crawl_batch_size: { type: Number, default: 10, min: 1 },
+    crawl_handles_per_task: { type: Number, default: 2, min: 1 },
     analyze_batch_size: { type: Number, default: 10, min: 1 },
+    afk_skip_cashtag_whitelist: {
+      type: [String],
+      default: ["WIF","BONK","PEPE","DOGE","SOL","BTC","ETH","BNB","BASE","SUI"],
+    },
 
     afk: { type: afkSettingsSchema, default: () => ({}) },
     manual: { type: manualSettingsSchema, default: () => ({}) },

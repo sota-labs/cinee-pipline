@@ -38,6 +38,8 @@ const personalityProfileSchema = new Schema<IPersonalityProfile>(
 
 // ── Main Interface ────────────────────────────────────────────────────────────
 
+export type EKolTier = "S" | "A" | "B" | "C";
+
 export interface IKolProfile extends Document {
   handle: string;
   display_name: string;
@@ -46,6 +48,7 @@ export interface IKolProfile extends Document {
   following_count: number;
   is_verified: boolean;
   account_age_days: number;
+  tier: EKolTier;
 
   personality_profile: IPersonalityProfile;
 
@@ -79,6 +82,7 @@ const kolProfileSchema = new Schema<IKolProfile>(
     following_count: { type: Number, default: 0, min: 0 },
     is_verified: { type: Boolean, default: false },
     account_age_days: { type: Number, default: 0, min: 0 },
+    tier: { type: String, enum: ["S", "A", "B", "C"], default: "B" },
 
     personality_profile: {
       type: personalityProfileSchema,

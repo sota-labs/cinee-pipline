@@ -12,6 +12,9 @@ export interface IRawPost {
   retweets: number;
   views: number;
   media_urls?: string[];
+  is_retweet?: boolean;
+  is_quote?: boolean;
+  quoted_post_url?: string;
   top_comments?: Array<{
     content: string;
     author_handle: string;
@@ -63,6 +66,9 @@ function normalizePost(raw: Record<string, unknown>): IRawPost {
     media_urls: Array.isArray(raw.media_urls)
       ? (raw.media_urls as unknown[]).map(String).filter(Boolean)
       : [],
+    is_retweet: Boolean(raw.is_retweet),
+    is_quote: Boolean(raw.is_quote),
+    ...(raw.quoted_post_url ? { quoted_post_url: String(raw.quoted_post_url) } : {}),
     ...(topComments.length > 0 ? { top_comments: topComments } : {}),
   };
 }

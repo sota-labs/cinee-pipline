@@ -61,10 +61,15 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { handle, display_name, bio, follower_count, is_verified } = req.body;
+    const { handle, display_name, bio, follower_count, is_verified, tier } = req.body;
 
     if (!handle) {
       return res.status(400).json({ error: "handle is required" });
+    }
+
+    const VALID_TIERS = ["S", "A", "B", "C"];
+    if (tier && !VALID_TIERS.includes(tier)) {
+      return res.status(400).json({ error: `Invalid tier. Must be one of: ${VALID_TIERS.join(", ")}` });
     }
 
     // Check if KOL already exists
@@ -80,6 +85,7 @@ router.post("/", async (req: Request, res: Response) => {
       follower_count: follower_count || 0,
       is_verified: is_verified || false,
       is_active: true,
+      ...(tier ? { tier } : {}),
     });
 
     log.info(`[KolsRoute] Created KOL @${kol.handle}`);
@@ -101,10 +107,20 @@ router.post("/bulk-import", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "handles array is required" });
     }
 
+    const VALID_TIERS = ["S", "A", "B", "C"];
     const results = { created: 0, existing: 0, failed: 0 };
 
-    for (const handle of handles.slice(0, 100)) {
+    for (const entry of handles.slice(0, 100)) {
       try {
+        // Accept both string and {handle, tier?} formats
+        const handle = typeof entry === "string" ? entry : entry.handle;
+        const tier = typeof entry === "object" && entry.tier ? entry.tier : undefined;
+
+        if (tier && !VALID_TIERS.includes(tier)) {
+          results.failed++;
+          continue;
+        }
+
         const normalizedHandle = handle.replace(/^@/, "").toLowerCase();
         const existing = await KolProfile.findOne({ handle: normalizedHandle });
 
@@ -116,6 +132,7 @@ router.post("/bulk-import", async (req: Request, res: Response) => {
         await KolProfile.create({
           handle: normalizedHandle,
           is_active: true,
+          ...(tier ? { tier } : {}),
         });
         results.created++;
       } catch {
@@ -164,6 +181,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
       "account_age_days",
       "is_active",
       "reputation_score",
+      "tier",
     ];
 
     const filteredUpdates: Record<string, unknown> = {};

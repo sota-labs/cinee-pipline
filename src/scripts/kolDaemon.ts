@@ -23,15 +23,10 @@ const RUN_NOW = process.argv.includes("--run-now");
 async function executeCrawl() {
   log.info("[KOLDaemon] Crawl job starting…");
   try {
-    const results = await crawlAllKolsSequential({
-      delayBetweenKolsMs: 15000,
-      maxWaitPerKolMs: 300000,
-    });
-    const totalFound = results.reduce((sum, r) => sum + r.postsFound, 0);
-    const totalSaved = results.reduce((sum, r) => sum + r.postsSaved, 0);
-    log.info(`[KOLDaemon] Crawl done — found: ${totalFound}, saved: ${totalSaved}`);
-  } catch (err: any) {
-    log.error(`[KOLDaemon] Crawl job crashed: ${err.message}`);
+    const result = await crawlAllKolsSequential();
+    log.info(`[KOLDaemon] Crawl done — spawned ${result.tasksCreated} tasks for: ${result.handles.join(", ")}`);
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Crawl job crashed: ${(err as Error).message}`);
   }
 }
 
@@ -101,8 +96,8 @@ async function startDaemon() {
 
   // Schedule jobs
   
-  // Crawl new posts every 30 minutes
-  cron.schedule("*/30 * * * *", executeCrawl);
+  // Crawl new posts every 4 hours — spawns parallel tasks (2 handles/task, covers all KOLs in 24h)
+  cron.schedule("0 */4 * * *", executeCrawl);
   
   // Analyze pending posts every 10 minutes
   cron.schedule("*/10 * * * *", executeAnalyze);

@@ -86,7 +86,8 @@ cinee-pipeline/
 │   │   ├── memoryTools.ts
 │   │   └── rateLimiter.ts
 │   └── utils/
-│       └── logger.ts             # Centralized logging
+│       ├── logger.ts             # Centralized logging
+│       └── kolPostSkipRules.ts   # AFK skip rule evaluation
 ├── docs/
 │   ├── development-roadmap.md
 │   ├── project-changelog.md
