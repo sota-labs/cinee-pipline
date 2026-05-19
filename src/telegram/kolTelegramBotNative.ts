@@ -252,10 +252,10 @@ export async function sendAFKNotification(
   const kol = post.kol_id as unknown as { handle: string };
 
   const text =
-    `🤖 *Auto\-Reply Sent*\n\n` +
+    `🤖 *Auto\\-Reply Sent*\n\n` +
     `To: @${escapeMarkdown(kol?.handle || "unknown")}\n` +
-    `Post: "${escapeMarkdown(post.content.substring(0, 100))}..."\n\n` +
-    `Reply sent successfully in AFK mode\.`;
+    `Post: "${escapeMarkdown(post.content.substring(0, 100))}\\.\\.\\.\"\n\n` +
+    `Reply sent successfully in AFK mode\\.`;
 
   try {
     await callTelegram("sendMessage", {
@@ -320,8 +320,8 @@ export async function sendMainMenu(): Promise<void> {
 
   const text =
     `🤖 *KOL Engagement Bot*\n\n` +
-    `Welcome\! Use this bot to manage KOL interactions\.\n\n` +
-    `• Auto\-crawl posts every 30 minutes\n` +
+    `Welcome\\! Use this bot to manage KOL interactions\\.\n\n` +
+    `• Auto\\-crawl posts every 30 minutes\n` +
     `• AI analyzes and suggests replies\n` +
     `• Manual approval or AFK mode\n\n` +
     `Select an option:`;
@@ -369,7 +369,7 @@ export async function sendPendingList(): Promise<void> {
   if (pending.length === 0) {
     await callTelegram("sendMessage", {
       chat_id: chatId,
-      text: "✅ *No Pending Reviews*\n\nAll caught up\!",
+      text: "✅ *No Pending Reviews*\n\nAll caught up\\!",
       parse_mode: "MarkdownV2",
     });
     return;
@@ -500,7 +500,7 @@ async function handleApprove(
   const result = await replyEngineService.approveSuggestion(suggestionId, suggestionIndex);
 
   const text = result.success
-    ? "✅ *Approved and Sent*\n\nReply has been posted successfully\."
+    ? "✅ *Approved and Sent*\n\nReply has been posted successfully\\."
     : `❌ *Approval Failed*\n\nError: ${escapeMarkdown(result.error || "Unknown error")}`;
 
   if (messageId) {
@@ -524,7 +524,7 @@ async function handleReject(
     await callTelegram("editMessageText", {
       chat_id: chatId,
       message_id: messageId,
-      text: "❌ *Rejected*\n\nThis suggestion has been rejected\.",
+      text: "❌ *Rejected*\n\nThis suggestion has been rejected\\.",
       parse_mode: "MarkdownV2",
     });
   }
