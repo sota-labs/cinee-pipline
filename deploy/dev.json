@@ -11,9 +11,9 @@
       "restart_delay": 3000
     },
     {
-      "name": "cinee-scan-post",
+      "name": "cinee-kol-daemon",
       "script": "node",
-      "args": "./dist/scripts/scanAndPostCron.js",
+      "args": "./dist/scripts/kolDaemon.js",
       "log_date_format": "YYYY-MM-DD hh:mm:ss",
       "watch": false,
       "autorestart": true,
@@ -21,19 +21,9 @@
       "restart_delay": 3000
     },
     {
-      "name": "cinee-kol-crawl",
+      "name": "cinee-reject-expired-replies",
       "script": "node",
-      "args": "./dist/scripts/kolCrawlCron.js",
-      "log_date_format": "YYYY-MM-DD hh:mm:ss",
-      "watch": false,
-      "autorestart": true,
-      "max_restarts": 10,
-      "restart_delay": 3000
-    },
-    {
-      "name": "cinee-kol-analyze",
-      "script": "node",
-      "args": "./dist/scripts/kolAnalyzeCron.js",
+      "args": "./dist/scripts/kolAutoRejectCron.js",
       "log_date_format": "YYYY-MM-DD hh:mm:ss",
       "watch": false,
       "autorestart": true,

@@ -34,47 +34,56 @@ accountRouter.get("/personality", async (_req: Request, res: Response) => {
  * Update the manual config baseline.
  * Body: Partial<IOwnAccountManualConfig>
  */
-accountRouter.patch("/personality/manual", async (req: Request, res: Response) => {
-  try {
-    const update = req.body as Partial<IOwnAccountManualConfig>;
+accountRouter.patch(
+  "/personality/manual",
+  async (req: Request, res: Response) => {
+    try {
+      const update = req.body as Partial<IOwnAccountManualConfig>;
 
-    if (!update || typeof update !== "object") {
-      return res.status(400).json({ success: false, error: "Invalid request body" });
+      if (!update || typeof update !== "object") {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid request body" });
+      }
+
+      const profile = await ownAccountService.updateManualConfig(update);
+      res.json({
+        success: true,
+        data: {
+          manual_config: profile.manual_config,
+          effective_profile: profile.effective_profile,
+        },
+      });
+    } catch (e: unknown) {
+      res.status(500).json({ success: false, error: (e as Error).message });
     }
-
-    const profile = await ownAccountService.updateManualConfig(update);
-    res.json({
-      success: true,
-      data: {
-        manual_config: profile.manual_config,
-        effective_profile: profile.effective_profile,
-      },
-    });
-  } catch (e: unknown) {
-    res.status(500).json({ success: false, error: (e as Error).message });
-  }
-});
+  },
+);
 
 /**
  * POST /api/account/personality/learn
  * Manually trigger personality learning from own post history.
  */
-accountRouter.post("/personality/learn", async (_req: Request, res: Response) => {
-  try {
-    const taskId = await ownAccountService.learnPersonality();
+accountRouter.post(
+  "/personality/learn",
+  async (_req: Request, res: Response) => {
+    try {
+      const taskId = await ownAccountService.learnPersonality();
 
-    if (!taskId) {
-      return res.status(422).json({
-        success: false,
-        error: "Not enough posts to learn from (minimum 10 posts required in last 30 days)",
-      });
+      if (!taskId) {
+        return res.status(422).json({
+          success: false,
+          error:
+            "Not enough posts to learn from (minimum 1 post required in last 30 days)",
+        });
+      }
+
+      res.json({ success: true, taskId });
+    } catch (e: unknown) {
+      res.status(500).json({ success: false, error: (e as Error).message });
     }
-
-    res.json({ success: true, taskId });
-  } catch (e: unknown) {
-    res.status(500).json({ success: false, error: (e as Error).message });
-  }
-});
+  },
+);
 
 /**
  * POST /api/account/posts/seed
@@ -88,7 +97,10 @@ accountRouter.post("/posts/seed", async (req: Request, res: Response) => {
       limit?: number;
     };
 
-    const taskId = await ownAccountCrawlerService.queueCrawlTask({ daysBack, limit });
+    const taskId = await ownAccountCrawlerService.queueCrawlTask({
+      daysBack,
+      limit,
+    });
 
     if (!taskId) {
       return res.status(422).json({
@@ -109,23 +121,31 @@ accountRouter.post("/posts/seed", async (req: Request, res: Response) => {
  * Process crawl result from cinee-worker and seed posts into DB.
  * Body: { result: string, limit?: number }
  */
-accountRouter.post("/posts/seed/result", async (req: Request, res: Response) => {
-  try {
-    const { result, limit = 100 } = req.body as {
-      result: string;
-      limit?: number;
-    };
+accountRouter.post(
+  "/posts/seed/result",
+  async (req: Request, res: Response) => {
+    try {
+      const { result, limit = 100 } = req.body as {
+        result: string;
+        limit?: number;
+      };
 
-    if (!result || typeof result !== "string") {
-      return res.status(400).json({ success: false, error: "result string is required" });
+      if (!result || typeof result !== "string") {
+        return res
+          .status(400)
+          .json({ success: false, error: "result string is required" });
+      }
+
+      const crawlResult = await ownAccountCrawlerService.processCrawlResult(
+        result,
+        limit,
+      );
+      res.json({ success: true, data: crawlResult });
+    } catch (e: unknown) {
+      res.status(500).json({ success: false, error: (e as Error).message });
     }
-
-    const crawlResult = await ownAccountCrawlerService.processCrawlResult(result, limit);
-    res.json({ success: true, data: crawlResult });
-  } catch (e: unknown) {
-    res.status(500).json({ success: false, error: (e as Error).message });
-  }
-});
+  },
+);
 
 /**
  * GET /api/account/posts/seed/count

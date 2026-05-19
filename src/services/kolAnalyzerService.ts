@@ -1,8 +1,13 @@
- /** KolAnalyzerService — AI-powered analysis for KOL posts and personality learning */
+/** KolAnalyzerService — AI-powered analysis for KOL posts and personality learning */
 import { log } from "../utils/logger.js";
 import { settings } from "../config/settings.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
-import { KolPost, type IKolPost, EKolPostStatus, ESentiment } from "../db/models/KolPost.js";
+import {
+  KolPost,
+  type IKolPost,
+  EKolPostStatus,
+  ESentiment,
+} from "../db/models/KolPost.js";
 import {
   buildPostAnalysisPrompt,
   buildCommentPatternPrompt,
@@ -104,12 +109,16 @@ export async function processPostAnalysisResult(
   }>(rawResult);
 
   if (!parsed) {
-    log.error(`[KolAnalyzer] Failed to parse analysis result for post ${postId}`);
+    log.error(
+      `[KolAnalyzer] Failed to parse analysis result for post ${postId}`,
+    );
     return null;
   }
 
   // Validate sentiment
-  const sentiment = Object.values(ESentiment).includes(parsed.sentiment as ESentiment)
+  const sentiment = Object.values(ESentiment).includes(
+    parsed.sentiment as ESentiment,
+  )
     ? (parsed.sentiment as ESentiment)
     : ESentiment.NEUTRAL;
 
@@ -134,7 +143,9 @@ export async function processCommentPatternResult(
   }>(rawResult);
 
   if (!parsed) {
-    log.error(`[KolAnalyzer] Failed to parse pattern result for post ${postId}`);
+    log.error(
+      `[KolAnalyzer] Failed to parse pattern result for post ${postId}`,
+    );
     return null;
   }
 
@@ -163,7 +174,9 @@ export async function processPersonalityResult(
   }>(rawResult);
 
   if (!parsed) {
-    log.error(`[KolAnalyzer] Failed to parse personality result for KOL ${kolId}`);
+    log.error(
+      `[KolAnalyzer] Failed to parse personality result for KOL ${kolId}`,
+    );
     return null;
   }
 
@@ -208,7 +221,9 @@ export async function processQualityCheckResult(
     isControversial: parsed.is_controversial || false,
     qualityScore: Math.max(0, Math.min(100, parsed.quality_score || 50)),
     riskFactors: parsed.risk_factors || ["unknown"],
-    recommendation: ["proceed", "caution", "skip"].includes(rec) ? rec : "caution",
+    recommendation: ["proceed", "caution", "skip"].includes(rec)
+      ? rec
+      : "caution",
   };
 }
 
@@ -237,7 +252,9 @@ export class KolAnalyzerService {
         await this.queuePostAnalysis(post);
         queued++;
       } catch (error) {
-        log.error(`[KolAnalyzer] Failed to queue analysis for post ${post._id}`);
+        log.error(
+          `[KolAnalyzer] Failed to queue analysis for post ${post._id}`,
+        );
         errors++;
       }
     }
@@ -287,7 +304,9 @@ export class KolAnalyzerService {
     );
     taskIds.push(qualityTaskId);
 
-    log.info(`[KolAnalyzer] Queued ${taskIds.length} analysis tasks for post ${post._id}`);
+    log.info(
+      `[KolAnalyzer] Queued ${taskIds.length} analysis tasks for post ${post._id}`,
+    );
     return taskIds;
   }
 
@@ -345,8 +364,10 @@ export class KolAnalyzerService {
       status: { $in: [EKolPostStatus.ANALYZED, EKolPostStatus.REPLIED] },
     }).sort({ posted_at: -1 });
 
-    if (posts.length < 5) {
-      log.info(`[KolAnalyzer] Not enough posts to learn personality for @${kol.handle}`);
+    if (posts.length < 1) {
+      log.info(
+        `[KolAnalyzer] Not enough posts to learn personality for @${kol.handle}`,
+      );
       return false;
     }
 
@@ -359,7 +380,9 @@ export class KolAnalyzerService {
     // Queue task
     await queueAnalysisTask("personality", prompt, String(kolId));
 
-    log.info(`[KolAnalyzer] Queued personality learning for @${kol.handle} (${posts.length} posts)`);
+    log.info(
+      `[KolAnalyzer] Queued personality learning for @${kol.handle} (${posts.length} posts)`,
+    );
     return true;
   }
 
@@ -407,7 +430,9 @@ export class KolAnalyzerService {
         const success = await this.learnPersonality(kol._id);
         if (success) processed++;
       } catch (error) {
-        log.error(`[KolAnalyzer] Failed to learn personality for @${kol.handle}`);
+        log.error(
+          `[KolAnalyzer] Failed to learn personality for @${kol.handle}`,
+        );
         failed++;
       }
     }

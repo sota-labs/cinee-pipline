@@ -12,7 +12,7 @@ import { Post, EPostStatus } from "../db/models/Post.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { buildOwnAccountLearningPrompt } from "../prompts/ownAccountPrompts.js";
 
-const MIN_POSTS_REQUIRED = 10;
+const MIN_POSTS_REQUIRED = 1;
 const CONFIDENCE_THRESHOLD = 60;
 
 class OwnAccountService {
@@ -32,7 +32,9 @@ class OwnAccountService {
       profile.learned_profile,
     );
     await profile.save();
-    log.info("[OwnAccount] Manual config updated, effective_profile recomputed");
+    log.info(
+      "[OwnAccount] Manual config updated, effective_profile recomputed",
+    );
     return profile;
   }
 
@@ -79,7 +81,9 @@ class OwnAccountService {
     try {
       parsed = JSON.parse(rawResult);
     } catch {
-      log.error("[OwnAccount] Failed to parse AI result for personality learning");
+      log.error(
+        "[OwnAccount] Failed to parse AI result for personality learning",
+      );
       return false;
     }
 
@@ -117,7 +121,9 @@ class OwnAccountService {
     );
     await profile.save();
 
-    log.info(`[OwnAccount] Applied learned profile (confidence: ${confidence})`);
+    log.info(
+      `[OwnAccount] Applied learned profile (confidence: ${confidence})`,
+    );
     return true;
   }
 
