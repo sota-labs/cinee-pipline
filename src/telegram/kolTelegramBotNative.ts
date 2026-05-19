@@ -951,6 +951,23 @@ export async function handleSeedCallback(
   }
 }
 
+async function handleSetMode(chatId: string, mode: EReplyMode): Promise<void> {
+  await KolSettings.findOneAndUpdate(
+    {},
+    { $set: { default_mode: mode } },
+    { upsert: true },
+  );
+
+  const label = mode === EReplyMode.AFK ? "🤖 AFK" : "👤 Manual";
+  await callTelegram("sendMessage", {
+    chat_id: chatId,
+    text: `✅ *Mode changed to ${label}*`,
+    parse_mode: "MarkdownV2",
+  });
+
+  log.info(`[KolTelegramBot] Mode switched to ${mode} by admin`);
+}
+
 export async function handleCommand(message: {
   text?: string;
   chat: { id: number };
@@ -975,6 +992,12 @@ export async function handleCommand(message: {
       break;
     case "/seed":
       await handleSeedCommand(chatId);
+      break;
+    case "/afk":
+      await handleSetMode(chatId, EReplyMode.AFK);
+      break;
+    case "/manual":
+      await handleSetMode(chatId, EReplyMode.MANUAL);
       break;
     default:
       // Unknown command
