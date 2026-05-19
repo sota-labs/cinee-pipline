@@ -110,14 +110,15 @@ export class ReplyEngineService {
    * Generate reply suggestions for an analyzed post.
    */
   async generateSuggestions(postId: string | Types.ObjectId): Promise<IKolReplySuggestion | null> {
-    const post = await KolPost.findById(postId).populate("kol_id");
-    if (!post) {
-      log.error(`[ReplyEngine] Post ${postId} not found`);
-      return null;
-    }
+    // Atomic status transition: only one cron tick can claim this post
+    const post = await KolPost.findOneAndUpdate(
+      { _id: postId, status: EKolPostStatus.ANALYZED },
+      { $set: { status: EKolPostStatus.PENDING_REPLY } },
+      { new: true },
+    ).populate("kol_id");
 
-    if (post.status !== EKolPostStatus.ANALYZED) {
-      log.warn(`[ReplyEngine] Post ${postId} not yet analyzed`);
+    if (!post) {
+      log.warn(`[ReplyEngine] Post ${postId} not available for suggestion generation (not found or already claimed)`);
       return null;
     }
 
@@ -176,10 +177,6 @@ export class ReplyEngineService {
         mode,
       },
     });
-
-    // Update post status
-    post.status = EKolPostStatus.PENDING_REPLY;
-    await post.save();
 
     log.info(
       `[ReplyEngine] Queued suggestion generation for post ${postId} ` +
