@@ -5,6 +5,7 @@ import { Schema, model, Document, Types } from "mongoose";
 
 export enum EKolPostStatus {
   NEW = "new",
+  ANALYZING = "analyzing",
   ANALYZED = "analyzed",
   PENDING_REPLY = "pending_reply",
   REPLIED = "replied",

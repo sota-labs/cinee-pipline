@@ -12,7 +12,6 @@ import {
   buildPostAnalysisPrompt,
   buildCommentPatternPrompt,
   buildPersonalityLearningPrompt,
-  buildPostQualityCheckPrompt,
 } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
@@ -46,19 +45,10 @@ export interface IPersonalityUpdate {
   avgPostLength: number;
 }
 
-export interface IPostQualityCheck {
-  isSpam: boolean;
-  isHidden: boolean;
-  isControversial: boolean;
-  qualityScore: number;
-  riskFactors: string[];
-  recommendation: "proceed" | "caution" | "skip";
-}
-
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
 interface IAnalysisTaskResult {
-  type: "post_analysis" | "comment_pattern" | "personality" | "quality_check";
+  type: "post_analysis" | "comment_pattern" | "personality";
   postId?: string;
   kolId?: string;
   result: unknown;
@@ -107,6 +97,11 @@ export async function processPostAnalysisResult(
     sentiment: string;
     trending_topics: string[];
     virality_score: number;
+    is_spam?: boolean;
+    is_controversial?: boolean;
+    quality_score?: number;
+    risk_factors?: string[];
+    recommendation?: string;
   }>(rawResult);
 
   if (!parsed) {
@@ -196,38 +191,6 @@ export async function processPersonalityResult(
   };
 }
 
-export async function processQualityCheckResult(
-  postId: string,
-  rawResult: string,
-): Promise<IPostQualityCheck | null> {
-  const parsed = safeJsonParse<{
-    is_spam: boolean;
-    is_hidden: boolean;
-    is_controversial: boolean;
-    quality_score: number;
-    risk_factors: string[];
-    recommendation: string;
-  }>(rawResult);
-
-  if (!parsed) {
-    log.error(`[KolAnalyzer] Failed to parse quality check for post ${postId}`);
-    return null;
-  }
-
-  const rec = parsed.recommendation as "proceed" | "caution" | "skip";
-
-  return {
-    isSpam: parsed.is_spam || false,
-    isHidden: parsed.is_hidden || false,
-    isControversial: parsed.is_controversial || false,
-    qualityScore: Math.max(0, Math.min(100, parsed.quality_score || 50)),
-    riskFactors: parsed.risk_factors || ["unknown"],
-    recommendation: ["proceed", "caution", "skip"].includes(rec)
-      ? rec
-      : "caution",
-  };
-}
-
 // ── Main Service ─────────────────────────────────────────────────────────────
 
 export class KolAnalyzerService {
@@ -242,7 +205,7 @@ export class KolAnalyzerService {
 
     const pendingPosts = await KolPost.find({
       status: EKolPostStatus.NEW,
-      comments: { $gt: 0 },
+      comments_crawled: true,
     })
       .sort({ crawled_at: 1 })
       .limit(analyze_batch_size);
@@ -269,8 +232,19 @@ export class KolAnalyzerService {
 
   /**
    * Queue analysis tasks for a single post.
+   * Uses atomic status transition to prevent duplicate queuing.
    */
   async queuePostAnalysis(post: IKolPost): Promise<string[]> {
+    // Atomic claim: only proceed if post is still NEW
+    const claimed = await KolPost.findOneAndUpdate(
+      { _id: post._id, status: EKolPostStatus.NEW },
+      { $set: { status: EKolPostStatus.ANALYZING } },
+    );
+    if (!claimed) {
+      log.info(`[KolAnalyzer] Post ${post._id} already claimed for analysis — skipping`);
+      return [];
+    }
+
     const taskIds: string[] = [];
 
     // 1. Post content analysis
@@ -299,15 +273,6 @@ export class KolAnalyzerService {
       );
       taskIds.push(patternTaskId);
     }
-
-    // 3. Quality check
-    const qualityPrompt = buildPostQualityCheckPrompt(post.content);
-    const qualityTaskId = await queueAnalysisTask(
-      "quality_check",
-      qualityPrompt,
-      String(post._id),
-    );
-    taskIds.push(qualityTaskId);
 
     log.info(
       `[KolAnalyzer] Queued ${taskIds.length} analysis tasks for post ${post._id}`,
@@ -361,13 +326,13 @@ export class KolAnalyzerService {
       return false;
     }
 
-    // Get recent posts (last 30 days)
+    // Get recent posts (last 30 days) — any status, we just need content for style learning
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const posts = await KolPost.find({
       kol_id: kolId,
       posted_at: { $gte: thirtyDaysAgo },
-      status: { $in: [EKolPostStatus.ANALYZED, EKolPostStatus.REPLIED] },
-    }).sort({ posted_at: -1 });
+      is_retweet: false,
+    }).sort({ posted_at: -1 }).limit(30);
 
     if (posts.length < 1) {
       log.info(

@@ -147,8 +147,10 @@ export class ReplyEngineService {
 
     // Guard: skip suggestion generation if personality hasn't been learned yet
     if (!kol.personality_profile?.writing_style) {
-      log.warn(`[ReplyEngine] KOL @${kol.handle} has no personality profile — queuing learning and skipping`);
+      log.warn(`[ReplyEngine] KOL @${kol.handle} has no personality profile — queuing learning and reverting post`);
       await kolAnalyzerService.learnPersonality(String(kol._id));
+      // Revert post back to ANALYZED so it can be retried after personality is learned
+      await KolPost.findByIdAndUpdate(post._id, { status: EKolPostStatus.ANALYZED });
       return null;
     }
 

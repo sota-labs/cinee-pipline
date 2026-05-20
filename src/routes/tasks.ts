@@ -236,6 +236,20 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
           });
         }
       }
+
+      // Handle batch crawl completion — auto process results and trigger analysis
+      if (payload.action === "batch_crawl" && Array.isArray(payload.handles)) {
+        const handles = payload.handles as string[];
+        setImmediate(async () => {
+          try {
+            log.info(`[Webhook] Auto-processing batch_crawl result for task ${task._id}`);
+            const results = await processBatchCrawlResult(task.result!, handles);
+            log.info(`[Webhook] batch_crawl processed: ${results.length} KOLs`);
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error processing batch_crawl result: ${(e as Error).message}`);
+          }
+        });
+      }
     }
 
     log.info(`Task ${task._id} (${task.type}) → completed`);

@@ -146,13 +146,10 @@ async function createBatchCrawlTask(
   const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE
     .replace(/\{\{handleList\}\}/g, handleList);
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
-
   const task = await Task.create({
     type: ETaskType.SINGLE_TASK_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: command,
+    prompt: "pending",
     status: ETaskStatus.PENDING,
     payload: {
       action: "batch_crawl",
@@ -160,6 +157,11 @@ async function createBatchCrawlTask(
       handles: kols.map(k => k.handle),
     },
   });
+
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
+  task.prompt = command;
+  await task.save();
 
   log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${task._id}`);
   return String(task._id);
@@ -182,13 +184,10 @@ async function createCommentCrawlTask(
     .replace(/\{\{API\}\}/g, API)
     .replace(/\{\{postId\}\}/g, "{postId}"); // keep placeholder for agent to fill per-post
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
-
   const task = await Task.create({
     type: ETaskType.KOL_COMMENT_CRAWL,
     agent: settings.openClawAgent,
-    prompt: command,
+    prompt: "pending",
     status: ETaskStatus.PENDING,
     payload: {
       action: "comment_crawl",
@@ -196,6 +195,11 @@ async function createCommentCrawlTask(
       postIds: posts.map(p => p.id),
     },
   });
+
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
+  task.prompt = command;
+  await task.save();
 
   log.info(`[KolCrawler] Created comment crawl task for ${posts.length} posts: ${task._id}`);
   return String(task._id);
@@ -216,15 +220,17 @@ async function createCrawlTask(
     .replace(/\{\{since\}\}/g, sinceISO)
     .replace(/\{\{limit\}\}/g, String(limit));
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
-
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: command,
+    prompt: "pending",
     status: ETaskStatus.PENDING,
   });
+
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
+  task.prompt = command;
+  await task.save();
 
   log.info(`[KolCrawler] Queued crawl task for @${handle}: ${task._id}`);
   return String(task._id);
@@ -325,7 +331,19 @@ export async function processBatchCrawlResult(
         continue;
       }
 
-      const { saved, skipped, posts: savedPosts } = await processCrawlResults(kol._id, posts);
+      // Keep only top 2 posts by engagement score per handle
+      const MAX_POSTS_PER_HANDLE = 2;
+      const topPosts = posts.length > MAX_POSTS_PER_HANDLE
+        ? [...posts]
+            .sort((a, b) => calculateEngagementScore(b) - calculateEngagementScore(a))
+            .slice(0, MAX_POSTS_PER_HANDLE)
+        : posts;
+
+      if (posts.length > MAX_POSTS_PER_HANDLE) {
+        log.info(`[KolCrawler] @${handle}: ${posts.length} posts found, keeping top ${MAX_POSTS_PER_HANDLE} by engagement`);
+      }
+
+      const { saved, skipped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
       allSavedPosts.push(...savedPosts);
 
       const now = new Date();
@@ -369,6 +387,10 @@ export async function processBatchCrawlResult(
       log.error(`[KolCrawler] Failed to create comment crawl task: ${(error as Error).message}`);
     }
   }
+
+  // Analysis is triggered by:
+  // - PATCH /api/kol-posts/:id/comments (after Phase 2 comment crawl)
+  // - kolDaemon.analyzePendingPosts() every 10 min (picks up posts with comments_crawled=true, status=NEW)
 
   const processedHandles = new Set(batchResults.map((r) => r.handle));
   for (const h of handles) {
