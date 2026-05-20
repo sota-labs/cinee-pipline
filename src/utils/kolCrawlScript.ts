@@ -68,7 +68,8 @@ export const KOL_TWEET_SCRIPT_BATCH = `
   }).filter(p =>
     p.content &&
     p.post_url &&
-    (!sinceDate || !p.posted_at || new Date(p.posted_at) > sinceDate)
+    p.posted_at &&
+    (!sinceDate || new Date(p.posted_at) > sinceDate)
   );
 })
 `;

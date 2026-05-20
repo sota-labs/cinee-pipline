@@ -92,13 +92,11 @@ ${KOL_COMMENT_SCRIPT}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
-1. Navigate to https://x.com/{handle}, wait 8s, scroll 3x (2s each)
-2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle — posts older than sinceTimestamp will be filtered out by the script
-3. For each post where comments > 10 (max 5 posts per KOL):
-   a. Navigate to post_url, wait 4s
-   b. Run COMMENT_SCRIPT via page.evaluate(), add as top_comments
-   c. Navigate back to profile
-4. Wait 10s before next handle
+1. Navigate to https://x.com/{handle}, wait 4s, scroll 2x (1s each)
+2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle
+   - STOP scrolling immediately if any visible post has posted_at <= sinceTimestamp — do not scroll further
+   - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
+3. Wait 5s before next handle
 
 Handles:
 {{handleList}}
@@ -108,12 +106,24 @@ TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
 ${KOL_TWEET_SCRIPT_BATCH}
 \`\`\`
 
+Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
+${OUTPUT_FORMAT_INSTRUCTION}`;
+
+const COMMENT_CRAWL_PROMPT_TEMPLATE = `For each post below, sequentially:
+1. Navigate to post_url, wait 3s
+2. Run COMMENT_SCRIPT via page.evaluate(), collect comments array
+3. PATCH {{API}}/api/kol-posts/{{postId}}/comments with body: {"top_comments": <comments array>}
+4. Wait 2s before next post
+
+Posts:
+{{postList}}
+
 COMMENT_SCRIPT:
 \`\`\`
 ${KOL_COMMENT_SCRIPT}
 \`\`\`
 
-Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
+Return JSON: {"results": [{"postId": "...", "comments_count": N}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 interface IKolCrawlInfo {
@@ -137,14 +147,14 @@ async function createBatchCrawlTask(
     .replace(/\{\{handleList\}\}/g, handleList);
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.SINGLE_TASK_TRIGGER,
     agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
-    payload: { 
+    payload: {
       action: "batch_crawl",
       kolCount: kols.length,
       handles: kols.map(k => k.handle),
@@ -152,6 +162,42 @@ async function createBatchCrawlTask(
   });
 
   log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${task._id}`);
+  return String(task._id);
+}
+
+/**
+ * Create a Phase 2 task to crawl comments for posts that need it.
+ * Triggered automatically after processBatchCrawlResult() saves posts.
+ */
+async function createCommentCrawlTask(
+  posts: Array<{ id: string; post_url: string }>,
+): Promise<string> {
+  const postList = posts
+    .map(p => `- postId: ${p.id} | post_url: ${p.post_url}`)
+    .join("\n");
+
+  const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
+  const prompt = COMMENT_CRAWL_PROMPT_TEMPLATE
+    .replace(/\{\{postList\}\}/g, postList)
+    .replace(/\{\{API\}\}/g, API)
+    .replace(/\{\{postId\}\}/g, "{postId}"); // keep placeholder for agent to fill per-post
+
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
+
+  const task = await Task.create({
+    type: ETaskType.KOL_COMMENT_CRAWL,
+    agent: settings.openClawAgent,
+    prompt: command,
+    status: ETaskStatus.PENDING,
+    payload: {
+      action: "comment_crawl",
+      postCount: posts.length,
+      postIds: posts.map(p => p.id),
+    },
+  });
+
+  log.info(`[KolCrawler] Created comment crawl task for ${posts.length} posts: ${task._id}`);
   return String(task._id);
 }
 
@@ -171,7 +217,7 @@ async function createCrawlTask(
     .replace(/\{\{limit\}\}/g, String(limit));
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+  const command = `agent --agent ${settings.openClawAgent} --thinking off --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
@@ -193,24 +239,24 @@ async function createCrawlTask(
 export async function processCrawlResults(
   kolId: string | Types.ObjectId,
   rawPosts: IRawPost[],
-): Promise<{ saved: number; skipped: number }> {
+): Promise<{ saved: number; skipped: number; posts: IKolPost[] }> {
   let saved = 0;
   let skipped = 0;
+  const posts: IKolPost[] = [];
 
   for (const raw of rawPosts) {
     try {
-      // Check if post already exists
       const existing = await KolPost.findOne({ post_url: raw.post_url });
       if (existing) {
         skipped++;
         continue;
       }
 
-      // Calculate engagement score
       const engagementScore = calculateEngagementScore(raw);
+      // Posts with comments <= 10 don't need comment crawling
+      const comments_crawled = (raw.comments ?? 0) <= 10;
 
-      // Create new post
-      await KolPost.create({
+      const post = await KolPost.create({
         kol_id: kolId,
         platform: "twitter",
         post_url: raw.post_url,
@@ -226,15 +272,17 @@ export async function processCrawlResults(
         is_retweet: raw.is_retweet ?? false,
         is_quote: raw.is_quote ?? false,
         ...(raw.quoted_post_url ? { quoted_post_url: raw.quoted_post_url } : {}),
+        comments_crawled,
         top_comments: (raw.top_comments || []).map((c) => ({
           content: c.content,
           author_handle: c.author_handle,
           likes: c.likes,
-          sentiment: "neutral", // Will be analyzed later
+          sentiment: "neutral",
           reply_count: c.reply_count || 0,
         })),
       });
 
+      posts.push(post);
       saved++;
     } catch (error) {
       log.error(`[KolCrawler] Failed to save post: ${(error as Error).message}`);
@@ -242,7 +290,7 @@ export async function processCrawlResults(
     }
   }
 
-  return { saved, skipped };
+  return { saved, skipped, posts };
 }
 
 function calculateEngagementScore(post: IRawPost): number {
@@ -267,6 +315,7 @@ export async function processBatchCrawlResult(
 ): Promise<ICrawlResult[]> {
   const batchResults = parseBatchCrawlResult(taskResult);
   const results: ICrawlResult[] = [];
+  const allSavedPosts: IKolPost[] = [];
 
   for (const { handle, posts } of batchResults) {
     try {
@@ -276,7 +325,8 @@ export async function processBatchCrawlResult(
         continue;
       }
 
-      const { saved, skipped } = await processCrawlResults(kol._id, posts);
+      const { saved, skipped, posts: savedPosts } = await processCrawlResults(kol._id, posts);
+      allSavedPosts.push(...savedPosts);
 
       const now = new Date();
       kol.last_crawled_at = now;
@@ -301,6 +351,22 @@ export async function processBatchCrawlResult(
         postsSaved: 0,
         errors: [(error as Error).message],
       });
+    }
+  }
+
+  // Trigger Phase 2: comment crawl for posts with comments > 10
+  const postsNeedingComments = allSavedPosts
+    .filter(p => p.comments > 10)
+    .slice(0, 15); // max 15 posts per batch (5 per handle × 3 handles)
+
+  if (postsNeedingComments.length > 0) {
+    try {
+      await createCommentCrawlTask(
+        postsNeedingComments.map(p => ({ id: String(p._id), post_url: p.post_url })),
+      );
+      log.info(`[KolCrawler] Queued comment crawl for ${postsNeedingComments.length} posts`);
+    } catch (error) {
+      log.error(`[KolCrawler] Failed to create comment crawl task: ${(error as Error).message}`);
     }
   }
 

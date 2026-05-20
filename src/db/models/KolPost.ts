@@ -101,6 +101,7 @@ export interface IKolPost extends Document {
   engagement_pattern: IEngagementPattern;
 
   crawled_at: Date;
+  comments_crawled: boolean;
   analyzed_at?: Date;
   replied_at?: Date;
   replied_comment_id?: string;
@@ -154,6 +155,7 @@ const kolPostSchema = new Schema<IKolPost>(
     },
 
     crawled_at: { type: Date, default: Date.now },
+    comments_crawled: { type: Boolean, default: false },
     analyzed_at: { type: Date },
     replied_at: { type: Date },
     replied_comment_id: { type: String },
@@ -167,6 +169,7 @@ const kolPostSchema = new Schema<IKolPost>(
 
 kolPostSchema.index({ kol_id: 1, posted_at: -1 });
 kolPostSchema.index({ status: 1, crawled_at: -1 });
+kolPostSchema.index({ status: 1, comments_crawled: 1, crawled_at: -1 });
 kolPostSchema.index({ engagement_score: -1 });
 kolPostSchema.index({ platform: 1, posted_at: -1 });
 

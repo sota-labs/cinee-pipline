@@ -113,7 +113,7 @@ export class ReplyEngineService {
   async generateSuggestions(postId: string | Types.ObjectId): Promise<IKolReplySuggestion | null> {
     // Atomic status transition: only one cron tick can claim this post
     const post = await KolPost.findOneAndUpdate(
-      { _id: postId, status: EKolPostStatus.ANALYZED },
+      { _id: postId, status: EKolPostStatus.ANALYZED, comments_crawled: true },
       { $set: { status: EKolPostStatus.PENDING_REPLY } },
       { new: true },
     ).populate("kol_id");

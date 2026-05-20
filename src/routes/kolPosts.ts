@@ -319,4 +319,26 @@ router.get("/stats/overview", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * PATCH /api/kol-posts/:id/comments — Save crawled comments and mark comments_crawled
+ */
+router.patch("/:id/comments", async (req: Request, res: Response) => {
+  try {
+    const { top_comments } = req.body;
+    if (!Array.isArray(top_comments)) {
+      return res.status(400).json({ error: "top_comments must be an array" });
+    }
+    const post = await KolPost.findByIdAndUpdate(
+      req.params.id,
+      { top_comments, comments_crawled: true },
+      { new: true },
+    );
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    res.json({ success: true, post });
+  } catch (err: unknown) {
+    log.error(`[kolPosts] PATCH /:id/comments error: ${(err as Error).message}`);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 export default router;
