@@ -62,9 +62,11 @@ async function queueAnalysisTask(
   type: IAnalysisTaskResult["type"],
   prompt: string,
   relatedId: string,
+  model?: string,
 ): Promise<string> {
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+  const modelFlag = model ? ` --model ${model}` : "";
+  const command = `agent --agent ${settings.openClawAgent}${modelFlag} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
@@ -348,7 +350,7 @@ export class KolAnalyzerService {
     });
 
     // Queue task
-    await queueAnalysisTask("personality", prompt, String(kolId));
+    await queueAnalysisTask("personality", prompt, String(kolId), settings.openClawAnalysisModel);
 
     log.info(
       `[KolAnalyzer] Queued personality learning for @${kol.handle} (${posts.length} posts)`,

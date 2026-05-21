@@ -174,7 +174,7 @@ export class ReplyEngineService {
 
     // Queue generation task via OpenClaw
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
+    const command = `agent --agent ${appSettings.openClawAgent} --model ${appSettings.openClawAnalysisModel} --message '${escapedPrompt}'`;
 
     // Create placeholder suggestion (will be filled when task completes)
     const suggestion = await KolReplySuggestion.create({

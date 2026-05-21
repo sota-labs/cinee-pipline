@@ -33,6 +33,7 @@ export interface Settings {
   port: number;
   openClawAgent: string;
   openClawCrawlModel: string;
+  openClawAnalysisModel: string;
   xUsername: string;
 }
 
@@ -159,6 +160,10 @@ export const settings: Settings = {
   publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
   openClawAgent: process.env.OPENCLAW_AGENT || "main",
-  openClawCrawlModel: process.env.OPENCLAW_CRAWL_MODEL || "openrouter/minimax/minimax-m2.5",
+  openClawCrawlModel:
+    process.env.OPENCLAW_CRAWL_MODEL || "openrouter/minimax/minimax-m2.5",
+  openClawAnalysisModel:
+    process.env.OPENCLAW_ANALYSIS_MODEL ||
+    "openrouter/anthropic/claude-sonnet-4.6",
   xUsername: process.env.X_USERNAME || "",
 };

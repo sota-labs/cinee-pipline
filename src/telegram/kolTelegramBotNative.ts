@@ -500,16 +500,11 @@ async function handleApprove(
 ): Promise<void> {
   const result = await replyEngineService.approveSuggestion(suggestionId, suggestionIndex);
 
-  const text = result.success
-    ? "✅ *Approved and Sent*\n\nReply has been posted successfully\\."
-    : `❌ *Approval Failed*\n\nError: ${escapeMarkdown(result.error || "Unknown error")}`;
-
-  if (messageId) {
-    await callTelegram("editMessageText", {
+  if (result.success && messageId) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      text,
-      parse_mode: "MarkdownV2",
+      reply_markup: { inline_keyboard: [] },
     });
   }
 }
@@ -519,14 +514,13 @@ async function handleReject(
   messageId: number | undefined,
   suggestionId: string,
 ): Promise<void> {
-  await replyEngineService.rejectSuggestion(suggestionId);
+  const success = await replyEngineService.rejectSuggestion(suggestionId);
 
-  if (messageId) {
-    await callTelegram("editMessageText", {
+  if (success && messageId) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      text: "❌ *Rejected*\n\nThis suggestion has been rejected\\.",
-      parse_mode: "MarkdownV2",
+      reply_markup: { inline_keyboard: [] },
     });
   }
 }
@@ -556,16 +550,11 @@ async function handleConfirmApprove(
 
   const result = await replyEngineService.approveSuggestion(suggestionId, index);
 
-  const text = result.success
-    ? "✅ *Confirmed and Sent*\n\nReply posted successfully\\."
-    : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
-
-  if (messageId) {
-    await callTelegram("editMessageText", {
+  if (result.success && messageId) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      text,
-      parse_mode: "MarkdownV2",
+      reply_markup: { inline_keyboard: [] },
     });
   }
 }
@@ -624,16 +613,12 @@ async function handleSelfConfirm(
   }
 
   const result = await selfReplyService.sendReply(queueId, commentId, comment.reply_content);
-  const text = result.success
-    ? "✅ *Confirmed and Queued*\n\nReply will be posted shortly\\."
-    : `❌ *Failed*\n\n${escapeMarkdown(result.error || "Unknown error")}`;
 
-  if (messageId) {
-    await callTelegram("editMessageText", {
+  if (result.success && messageId) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      text,
-      parse_mode: "MarkdownV2",
+      reply_markup: { inline_keyboard: [] },
     });
   }
 }
@@ -675,14 +660,13 @@ async function handleSelfReject(
   queueId: string,
   commentId: string,
 ): Promise<void> {
-  await selfReplyService.skipComment(queueId, commentId);
+  const success = await selfReplyService.skipComment(queueId, commentId);
 
-  if (messageId) {
-    await callTelegram("editMessageText", {
+  if (success && messageId) {
+    await callTelegram("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      text: "❌ *Rejected*\n\nThis comment has been skipped\\.",
-      parse_mode: "MarkdownV2",
+      reply_markup: { inline_keyboard: [] },
     });
   }
 }
