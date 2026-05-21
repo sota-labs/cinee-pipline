@@ -112,8 +112,7 @@ ${OUTPUT_FORMAT_INSTRUCTION}`;
 const COMMENT_CRAWL_PROMPT_TEMPLATE = `For each post below, sequentially:
 1. Navigate to post_url, wait 3s
 2. Run COMMENT_SCRIPT via page.evaluate(), collect comments array
-3. PATCH {{API}}/api/kol-posts/{{postId}}/comments with body: {"top_comments": <comments array>}
-4. Wait 2s before next post
+3. Wait 2s before next post
 
 Posts:
 {{postList}}
@@ -123,7 +122,8 @@ COMMENT_SCRIPT:
 ${KOL_COMMENT_SCRIPT}
 \`\`\`
 
-Return JSON: {"results": [{"postId": "...", "comments_count": N}]}
+Return JSON with ALL posts and their comments:
+{"results": [{"postId": "...", "post_url": "...", "comments": [{"content": "...", "author_handle": "...", "likes": 0, "reply_count": 0}]}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 interface IKolCrawlInfo {
@@ -178,11 +178,8 @@ async function createCommentCrawlTask(
     .map(p => `- postId: ${p.id} | post_url: ${p.post_url}`)
     .join("\n");
 
-  const API = process.env.PUBLIC_API_URL || "http://localhost:3000";
   const prompt = COMMENT_CRAWL_PROMPT_TEMPLATE
-    .replace(/\{\{postList\}\}/g, postList)
-    .replace(/\{\{API\}\}/g, API)
-    .replace(/\{\{postId\}\}/g, "{postId}"); // keep placeholder for agent to fill per-post
+    .replace(/\{\{postList\}\}/g, postList);
 
   const task = await Task.create({
     type: ETaskType.KOL_COMMENT_CRAWL,
@@ -400,6 +397,65 @@ export async function processBatchCrawlResult(
   }
 
   return results;
+}
+
+// ── Comment Crawl Result Processor ───────────────────────────────────────────
+
+interface IRawCommentResult {
+  postId: string;
+  post_url?: string;
+  comments: Array<{
+    content: string;
+    author_handle: string;
+    likes: number;
+    reply_count?: number;
+  }>;
+}
+
+/**
+ * Process the result of a comment crawl task.
+ * Updates each post's top_comments and sets comments_crawled = true.
+ * Returns the number of posts updated.
+ */
+export async function processCommentCrawlResult(rawResult: string): Promise<number> {
+  let parsed: { results?: IRawCommentResult[] };
+  try {
+    parsed = JSON.parse(rawResult);
+  } catch {
+    log.error("[KolCrawler] processCommentCrawlResult: failed to parse JSON");
+    return 0;
+  }
+
+  const results = parsed?.results;
+  if (!Array.isArray(results) || results.length === 0) {
+    log.warn("[KolCrawler] processCommentCrawlResult: no results in payload");
+    return 0;
+  }
+
+  let updated = 0;
+  for (const item of results) {
+    if (!item.postId) continue;
+    try {
+      const topComments = (item.comments || []).map((c) => ({
+        content: c.content || "",
+        author_handle: c.author_handle || "",
+        likes: c.likes || 0,
+        sentiment: "neutral" as const,
+        reply_count: c.reply_count || 0,
+      }));
+
+      await KolPost.findByIdAndUpdate(item.postId, {
+        top_comments: topComments,
+        comments_crawled: true,
+      });
+      updated++;
+      log.info(`[KolCrawler] Updated comments for post ${item.postId} (${topComments.length} comments)`);
+    } catch (err: unknown) {
+      log.error(`[KolCrawler] Failed to update post ${item.postId}: ${(err as Error).message}`);
+    }
+  }
+
+  return updated;
 }
 
 // ── Main Service ──────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { Task, ETaskStatus, ETaskType } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { extractResponse } from "../utils/extractResponse.js";
-import { processBatchCrawlResult } from "../services/kolCrawlerService.js";
+import { processBatchCrawlResult, processCommentCrawlResult } from "../services/kolCrawlerService.js";
 import {
   processPostAnalysisResult,
   processCommentPatternResult,
@@ -247,6 +247,34 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
             log.info(`[Webhook] batch_crawl processed: ${results.length} KOLs`);
           } catch (e: unknown) {
             log.error(`[Webhook] Error processing batch_crawl result: ${(e as Error).message}`);
+          }
+        });
+      }
+
+      // Handle comment crawl completion — update posts with crawled comments then trigger analysis
+      if (payload.action === "comment_crawl") {
+        setImmediate(async () => {
+          try {
+            log.info(`[Webhook] Auto-processing comment_crawl result for task ${task._id}`);
+            const updated = await processCommentCrawlResult(rawResult);
+            log.info(`[Webhook] comment_crawl updated ${updated} posts`);
+
+            // Trigger analysis for each updated post
+            if (updated > 0 && Array.isArray(payload.postIds)) {
+              const { kolAnalyzerService } = await import("../services/kolAnalyzerService.js");
+              for (const postId of payload.postIds as string[]) {
+                try {
+                  const post = await (await import("../db/models/KolPost.js")).KolPost.findById(postId);
+                  if (post && post.comments_crawled) {
+                    await kolAnalyzerService.queuePostAnalysis(post);
+                  }
+                } catch (e: unknown) {
+                  log.error(`[Webhook] Failed to queue analysis for post ${postId}: ${(e as Error).message}`);
+                }
+              }
+            }
+          } catch (e: unknown) {
+            log.error(`[Webhook] Error processing comment_crawl result: ${(e as Error).message}`);
           }
         });
       }
