@@ -84,12 +84,12 @@ async function queueReplyExecution(
   replyContent: string,
   suggestionId: string,
 ): Promise<string> {
-  const escapedContent = replyContent.replace(/'/g, "'\\''");
+  const escapedContent = replyContent.replace(/'/g, "'\''");
   const prompt = REPLY_EXECUTE_PROMPT_TEMPLATE
     .replace("{{post_url}}", postUrl)
     .replace("{{reply_content}}", escapedContent);
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const escapedPrompt = prompt.replace(/'/g, "'\''");
   const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
@@ -166,6 +166,9 @@ export class ReplyEngineService {
       dominantTone: post.engagement_pattern.dominant_tone,
       commonPhrases: post.engagement_pattern.common_phrases,
       emojiTrend: post.engagement_pattern.emoji_trend,
+      authorVoiceStyle: appSettings.role.authorVoiceStyle,
+      authorSlangReference: appSettings.role.authorSlangReference,
+      authorStyleFormulas: appSettings.role.authorStyleFormulas,
     });
 
     // Get settings for mode
@@ -173,7 +176,7 @@ export class ReplyEngineService {
     const mode = settings.default_mode;
 
     // Queue generation task via OpenClaw
-    const escapedPrompt = prompt.replace(/'/g, "'\\''");
+    const escapedPrompt = prompt.replace(/'/g, "'\''");
     const command = `agent --agent ${appSettings.openClawAgent} --model ${appSettings.openClawAnalysisModel} --message '${escapedPrompt}'`;
 
     // Create placeholder suggestion (will be filled when task completes)

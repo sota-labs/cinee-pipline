@@ -99,15 +99,22 @@ ${OUTPUT_FORMAT_INSTRUCTION}`;
 // ── Reply Generation Prompts ─────────────────────────────────────────────────
 
 export const REPLY_GENERATION_PROMPT = `
-Generate 3 reply suggestions for this KOL's post. Your replies should match their personality and resonate with their audience.
+Generate 3 reply suggestions for this KOL's post. You are writing as the AUTHOR — replies must sound like the author's voice, not the KOL's.
+{{author_voice_block}}
+HARD RULES:
+- lowercase always (except $TICKER)
+- max 2 slang per reply
+- no hashtags
 
-KOL PROFILE:
+---
+
+KOL PROFILE (context for what you're replying to):
 Handle: @{{handle}}
 Writing Style: {{writing_style}}
 Common Topics: {{topics}}
 Typical Tone: {{tone}}
 
-SLANG DICTIONARY (use these naturally when the context fits — don't force them):
+KOL SLANG DICTIONARY (understand their world — do NOT copy their style):
 {{slang_dictionary}}
 
 POST TO REPLY TO:
@@ -119,9 +126,9 @@ Common Phrases Used: {{common_phrases}}
 Popular Emojis: {{emoji_trend}}
 
 REQUIREMENTS:
-1. Match the KOL's personality and posting style
-2. Use slang from the dictionary above when it fits naturally
-3. Add genuine value or humor
+1. Write in the AUTHOR's voice (see AUTHOR VOICE section above)
+2. Be contextually relevant to the KOL's post and their world
+3. Add genuine value, observation, or sharp humor
 4. Avoid generic responses like "Great post!" or "Thanks for sharing"
 5. Keep replies between 5-30 words
 6. If the post asks a question, answer it or add perspective
@@ -241,6 +248,9 @@ export function buildReplyGenerationPrompt(params: {
   dominantTone: string;
   commonPhrases: string[];
   emojiTrend: string[];
+  authorVoiceStyle?: string;
+  authorSlangReference?: string;
+  authorStyleFormulas?: string;
 }): string {
   // Build slang dictionary — use examples if available, fall back to flat list
   const slangDict = params.slangExamples && params.slangExamples.length > 0
@@ -249,7 +259,23 @@ export function buildReplyGenerationPrompt(params: {
       ? params.slangs.map((s) => `- "${s}"`).join("\n")
       : "(none identified)";
 
+  // Build author voice block — only include sections that have content
+  const voiceParts: string[] = [];
+  if (params.authorVoiceStyle) {
+    voiceParts.push(`AUTHOR VOICE (you are writing as this person):\n${params.authorVoiceStyle}`);
+  }
+  if (params.authorStyleFormulas) {
+    voiceParts.push(`STYLE FORMULAS (pick the one that fits best):\n${params.authorStyleFormulas}`);
+  }
+  if (params.authorSlangReference) {
+    voiceParts.push(`CT SLANG REFERENCE (pick 0-2 that fit naturally — never force):\n${params.authorSlangReference}`);
+  }
+  const authorVoiceBlock = voiceParts.length > 0
+    ? "\n" + voiceParts.join("\n\n") + "\n"
+    : "";
+
   return REPLY_GENERATION_PROMPT
+    .replace("{{author_voice_block}}", authorVoiceBlock)
     .replace("{{handle}}", params.handle)
     .replace("{{writing_style}}", params.writingStyle)
     .replace("{{topics}}", params.topics.join(", "))

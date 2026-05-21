@@ -64,7 +64,7 @@ async function queueAnalysisTask(
   relatedId: string,
   model?: string,
 ): Promise<string> {
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const escapedPrompt = prompt.replace(/'/g, "'\''");
   const modelFlag = model ? ` --model ${model}` : "";
   const command = `agent --agent ${settings.openClawAgent}${modelFlag} --message '${escapedPrompt}'`;
 
