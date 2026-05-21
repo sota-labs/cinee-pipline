@@ -13,6 +13,7 @@ import { SelfReplyQueue, ECommentStatus } from "../db/models/SelfReplyQueue.js";
 import { Post, EPostStatus } from "../db/models/Post.js";
 import { replyEngineService } from "../services/replyEngineService.js";
 import { selfReplyService } from "../services/selfReplyService.js";
+import { ownAccountService } from "../services/ownAccountService.js";
 import type { IKolReplySuggestion } from "../db/models/KolReplySuggestion.js";
 
 // ── Edit State ───────────────────────────────────────────────────────────────
@@ -918,6 +919,18 @@ export async function handleSeedCallback(
         });
       }
       log.info(`[KolTelegramBot] Seeded post ${state.post_url}`);
+
+      // Trigger personality re-learning after new post is seeded
+      setImmediate(async () => {
+        try {
+          const taskId = await ownAccountService.learnPersonality();
+          if (taskId) {
+            log.info(`[KolTelegramBot] Queued personality learning after seed: ${taskId}`);
+          }
+        } catch (e: unknown) {
+          log.warn(`[KolTelegramBot] Personality learning after seed failed: ${(e as Error).message}`);
+        }
+      });
     } catch (e: unknown) {
       log.error(`[KolTelegramBot] Seed failed: ${(e as Error).message}`);
       if (messageId) {
