@@ -4,9 +4,10 @@
  * IMPORTANT: These are raw JS strings — no TypeScript, no imports.
  */
 
-// Used by single-KOL legacy path (KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate()
+// Used by single-KOL legacy path (KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate(TWEET_SCRIPT, sinceTimestamp)
 export const KOL_TWEET_SCRIPT = `
-(function() {
+(function(sinceTimestamp) {
+  const sinceDate = sinceTimestamp ? new Date(sinceTimestamp) : null;
   function parseCount(str) {
     if (!str) return 0;
     const s = str.replace(/,/g, '').trim();
@@ -32,8 +33,13 @@ export const KOL_TWEET_SCRIPT = `
       is_quote: !!t.querySelector('[data-testid="quoteTweet"]'),
       quoted_post_url: t.querySelector('[data-testid="quoteTweet"] a[href*="/status/"]')?.href || '',
     };
-  }).filter(p => p.content && p.post_url);
-})()
+  }).filter(p =>
+    p.content &&
+    p.post_url &&
+    p.posted_at &&
+    (!sinceDate || new Date(p.posted_at) > sinceDate)
+  );
+})
 `;
 
 // Used by batch path (BATCH_KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate(KOL_TWEET_SCRIPT_BATCH, sinceTimestamp)

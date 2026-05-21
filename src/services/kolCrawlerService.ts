@@ -73,14 +73,16 @@ export interface IComment {
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
 const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate to https://x.com/{{handle}}, wait 8s, scroll 3x (2s each).
-2. Run TWEET_SCRIPT via page.evaluate(), collect posts array.
+2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, "{{since}}"), passing the sinceTimestamp as second argument.
+   - STOP scrolling immediately if any visible post has posted_at <= "{{since}}" — do not scroll further
+   - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
 3. For each post where comments > 10 (max 5 posts):
    a. Navigate to post_url, wait 4s
    b. Run COMMENT_SCRIPT via page.evaluate(), add result as top_comments on that post
    c. Navigate back
 4. Return JSON: {"posts": <posts array with top_comments populated>}
 
-TWEET_SCRIPT:
+TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
 \`\`\`
 ${KOL_TWEET_SCRIPT}
 \`\`\`
