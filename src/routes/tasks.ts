@@ -156,10 +156,21 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
             } else if (payload.analysisType === "personality") {
               const result = await processPersonalityResult(relatedId, rawResult);
               if (result) {
-                // Not sure if there is an applyPersonalityUpdate function, let's assume it logs for now if missing
+                await kolAnalyzerService.applyPersonalityUpdate(relatedId, result);
                 log.info(`[Webhook] Applied personality to KOL ${relatedId}`);
-                if ((kolAnalyzerService as any).applyPersonalityUpdate) {
-                  await (kolAnalyzerService as any).applyPersonalityUpdate(relatedId, result);
+
+                // Retry suggestion generation for any posts that were waiting on this personality
+                const { KolPost, EKolPostStatus } = await import("../db/models/KolPost.js");
+                const waitingPosts = await KolPost.find({
+                  kol_id: relatedId,
+                  status: EKolPostStatus.ANALYZED,
+                  comments_crawled: true,
+                });
+                if (waitingPosts.length > 0) {
+                  log.info(`[Webhook] Retrying suggestion generation for ${waitingPosts.length} waiting post(s) of KOL ${relatedId}`);
+                  for (const post of waitingPosts) {
+                    await replyEngineService.generateSuggestions(post._id);
+                  }
                 }
               }
             }
