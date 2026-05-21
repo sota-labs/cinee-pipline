@@ -14,10 +14,11 @@ describe("ETaskType", () => {
     expect(ETaskType.CRON_JOB_REMOVE).toBe("cron_job_remove");
     expect(ETaskType.CRON_JOB_TRIGGER).toBe("cron_job_trigger");
     expect(ETaskType.SINGLE_TASK_TRIGGER).toBe("single_task_trigger");
+    expect(ETaskType.KOL_COMMENT_CRAWL).toBe("kol_comment_crawl");
   });
 
-  it("contains exactly 7 entries", () => {
-    expect(Object.values(ETaskType)).toHaveLength(7);
+  it("contains exactly 8 entries", () => {
+    expect(Object.values(ETaskType)).toHaveLength(8);
   });
 });
 
