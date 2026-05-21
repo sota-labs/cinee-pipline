@@ -32,6 +32,7 @@ export interface Settings {
   publicApiUrl: string;
   port: number;
   openClawAgent: string;
+  openClawCrawlModel: string;
   xUsername: string;
 }
 
@@ -158,5 +159,6 @@ export const settings: Settings = {
   publicApiUrl: process.env.PUBLIC_API_URL || "http://localhost:3000",
   port: parseInt(process.env.PORT || "3000", 10),
   openClawAgent: process.env.OPENCLAW_AGENT || "main",
+  openClawCrawlModel: process.env.OPENCLAW_CRAWL_MODEL || "openrouter/minimax/minimax-m2.5",
   xUsername: process.env.X_USERNAME || "",
 };

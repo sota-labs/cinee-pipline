@@ -82,6 +82,17 @@ async function executeDailyLearning() {
   }
 }
 
+async function executeSessionCleanup() {
+  const { execSync } = await import("node:child_process");
+  try {
+    const sessionDir = `${process.env.HOME}/.openclaw/agents/main/sessions`;
+    execSync(`find "${sessionDir}" -maxdepth 1 -mtime +3 -delete`);
+    log.info("[KOLDaemon] Session cleanup done");
+  } catch (err: any) {
+    log.warn(`[KOLDaemon] Session cleanup failed: ${err.message}`);
+  }
+}
+
 async function startDaemon() {
   await connectDb();
   log.info("[KOLDaemon] Connected to MongoDB.");
@@ -113,6 +124,9 @@ async function startDaemon() {
 
   // Run daily personality learning at 02:00 AM
   cron.schedule("0 2 * * *", executeDailyLearning, { timezone: "UTC" });
+
+  // Clean up openclaw session files older than 3 days at 03:00 AM
+  cron.schedule("0 3 * * *", executeSessionCleanup);
 
   log.info("[KOLDaemon] Daemon ready — schedules applied.");
 }

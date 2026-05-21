@@ -20,13 +20,20 @@ Your task:
 2. Determine the sentiment (positive/negative/neutral)
 3. Identify up to 3 trending topics mentioned
 4. Calculate a virality score (0-100) based on engagement rate
+5. Quick safety check: detect spam, controversial content, or hidden/flagged indicators
+6. Give a recommendation: "proceed" (safe to reply), "caution" (reply carefully), or "skip" (avoid)
 
 Respond in this exact JSON format:
 {
   "summary": "...",
   "sentiment": "positive|negative|neutral",
   "trending_topics": ["topic1", "topic2", "topic3"],
-  "virality_score": 75
+  "virality_score": 75,
+  "is_spam": false,
+  "is_controversial": false,
+  "quality_score": 85,
+  "risk_factors": ["none"],
+  "recommendation": "proceed"
 }
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
@@ -179,31 +186,6 @@ REPLY GUIDELINES:
 Respond with just the reply text (no JSON, no quotes, max 50 words):
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
-// ── Safety Check Prompts ───────────────────────────────────────────────────
-
-export const POST_QUALITY_CHECK_PROMPT = `
-Quick safety check for this post before replying.
-
-POST CONTENT:
-{{post_content}}
-
-Check for:
-1. Spam indicators (excessive hashtags, all caps, suspicious links)
-2. Controversial/harmful content
-3. Engagement authenticity (are comments organic or bot-like?)
-4. Hidden/flagged content indicators
-
-Respond in this exact JSON format:
-{
-  "is_spam": false,
-  "is_hidden": false,
-  "is_controversial": false,
-  "quality_score": 85,
-  "risk_factors": ["none"],
-  "recommendation": "proceed"
-}
-${OUTPUT_FORMAT_INSTRUCTION}`;
-
 // ── Prompt Builders ─────────────────────────────────────────────────────────
 
 export function buildPostAnalysisPrompt(params: {
@@ -296,10 +278,6 @@ export function buildSelfReplyPrompt(params: {
     .replace("{{author_trust_score}}", String(params.authorTrustScore))
     .replace("{{interaction_count}}", String(params.interactionCount))
     .replace("{{your_style}}", params.yourStyle);
-}
-
-export function buildPostQualityCheckPrompt(postContent: string): string {
-  return POST_QUALITY_CHECK_PROMPT.replace("{{post_content}}", postContent);
 }
 
 // ── Self-Reply Execution ──────────────────────────────────────────────────────

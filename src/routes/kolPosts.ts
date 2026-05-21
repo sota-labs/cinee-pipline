@@ -334,6 +334,19 @@ router.patch("/:id/comments", async (req: Request, res: Response) => {
       { new: true },
     );
     if (!post) return res.status(404).json({ error: "Post not found" });
+
+    // Trigger analysis now that comments are available
+    setImmediate(async () => {
+      try {
+        const taskIds = await kolAnalyzerService.queuePostAnalysis(post);
+        if (taskIds.length > 0) {
+          log.info(`[kolPosts] Queued analysis for post ${post._id} after comment crawl`);
+        }
+      } catch (err: unknown) {
+        log.error(`[kolPosts] Failed to queue analysis after comment crawl: ${(err as Error).message}`);
+      }
+    });
+
     res.json({ success: true, post });
   } catch (err: unknown) {
     log.error(`[kolPosts] PATCH /:id/comments error: ${(err as Error).message}`);
