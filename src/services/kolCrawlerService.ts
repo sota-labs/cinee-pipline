@@ -3,7 +3,7 @@ import { log } from "../utils/logger.js";
 import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import { KolPost, type IKolPost, EKolPostStatus } from "../db/models/KolPost.js";
-import { KolSettings } from "../db/models/KolSettings.js";
+import { KolSettings, type ITierCrawlIntervals } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
@@ -683,6 +683,77 @@ export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
   }
 
   log.info(`[KolCrawler] Spawned ${tasksCreated} tasks for handles: ${allHandles.join(", ")}`);
+  return { tasksCreated, handles: allHandles };
+}
+
+/**
+ * Crawl only KOLs whose per-tier interval has elapsed since last_crawled_at.
+ * Called every 15 minutes by kolDaemon. Does NOT modify crawlAllKolsSequential.
+ */
+export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
+  const kolSettings = await KolSettings.getSettings();
+  const intervals: ITierCrawlIntervals = kolSettings.tier_crawl_intervals ?? { S: 30, A: 120, B: 240, C: 480 };
+  const minTrustScore = kolSettings.safety.min_kol_trust_score;
+
+  const now = Date.now();
+  const cutoffS = new Date(now - intervals.S * 60_000);
+  const cutoffA = new Date(now - intervals.A * 60_000);
+  const cutoffB = new Date(now - intervals.B * 60_000);
+  const cutoffC = new Date(now - intervals.C * 60_000);
+
+  const kols = await KolProfile.find({
+    is_active: true,
+    reputation_score: { $gte: minTrustScore },
+    $or: [
+      { tier: "S", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffS } }] },
+      { tier: "A", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffA } }] },
+      { tier: "B", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffB } }] },
+      { tier: "C", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffC } }] },
+    ],
+  });
+
+  if (kols.length === 0) {
+    log.info("[KolCrawler] crawlDueKols — no KOLs due for crawl");
+    return { tasksCreated: 0, handles: [] };
+  }
+
+  const tierOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3 };
+  kols.sort(
+    (a, b) =>
+      (tierOrder[a.tier] ?? 4) - (tierOrder[b.tier] ?? 4) ||
+      (a.last_crawled_at?.getTime() ?? 0) - (b.last_crawled_at?.getTime() ?? 0),
+  );
+
+  log.info(`[KolCrawler] crawlDueKols — ${kols.length} KOLs due`);
+
+  const kolInfos: IKolCrawlInfo[] = [];
+  for (const kol of kols) {
+    const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
+    const oldestAllowed = new Date(now - MAX_CRAWL_WINDOW_MS);
+    const rawSince = cachedLastCrawled ?? kol.last_crawled_at ?? null;
+    const since =
+      rawSince && rawSince > oldestAllowed && rawSince <= new Date(now)
+        ? rawSince
+        : oldestAllowed;
+    kolInfos.push({
+      handle: kol.handle,
+      since: since.toISOString(),
+      limit: kolSettings.max_posts_per_crawl,
+    });
+  }
+
+  const chunkSize = kolSettings.crawl_handles_per_task;
+  const allHandles: string[] = [];
+  let tasksCreated = 0;
+
+  for (let i = 0; i < kolInfos.length; i += chunkSize) {
+    const chunk = kolInfos.slice(i, i + chunkSize);
+    await createBatchCrawlTask(chunk);
+    allHandles.push(...chunk.map((k) => k.handle));
+    tasksCreated++;
+  }
+
+  log.info(`[KolCrawler] crawlDueKols — spawned ${tasksCreated} tasks for: ${allHandles.join(", ")}`);
   return { tasksCreated, handles: allHandles };
 }
 

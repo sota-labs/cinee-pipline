@@ -13,20 +13,29 @@ import { connectDb } from "../db/connection.js";
 import { closeRedis } from "../db/redis.js";
 import { log } from "../utils/logger.js";
 
-import { crawlAllKolsSequential } from "../services/kolCrawlerService.js";
+import { crawlDueKols } from "../services/kolCrawlerService.js";
 import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
 import { replyEngineService } from "../services/replyEngineService.js";
 import { selfReplyService } from "../services/selfReplyService.js";
 
 const RUN_NOW = process.argv.includes("--run-now");
 
-async function executeCrawl() {
-  log.info("[KOLDaemon] Crawl job starting…");
+let isTierCrawling = false;
+
+async function executeTierCrawl() {
+  if (isTierCrawling) {
+    log.warn("[KOLDaemon] Tier crawl already in progress, skipping tick");
+    return;
+  }
+  isTierCrawling = true;
+  log.info("[KOLDaemon] Tier crawl job starting…");
   try {
-    const result = await crawlAllKolsSequential();
-    log.info(`[KOLDaemon] Crawl done — spawned ${result.tasksCreated} tasks for: ${result.handles.join(", ")}`);
+    const result = await crawlDueKols();
+    log.info(`[KOLDaemon] Tier crawl done — spawned ${result.tasksCreated} tasks for: ${result.handles.join(", ")}`);
   } catch (err: unknown) {
-    log.error(`[KOLDaemon] Crawl job crashed: ${(err as Error).message}`);
+    log.error(`[KOLDaemon] Tier crawl job crashed: ${(err as Error).message}`);
+  } finally {
+    isTierCrawling = false;
   }
 }
 
@@ -89,7 +98,7 @@ async function startDaemon() {
 
   if (RUN_NOW) {
     // Run sequentially to avoid DB overload on startup
-    await executeCrawl();
+    await executeTierCrawl();
     await executeAnalyze();
     await executeAFKReplies();
     await executeSelfReplies();
@@ -97,8 +106,8 @@ async function startDaemon() {
 
   // Schedule jobs
   
-  // Crawl new posts every 4 hours — spawns parallel tasks (2 handles/task, covers all KOLs in 24h)
-  cron.schedule("0 */4 * * *", executeCrawl);
+  // Tier-based crawl every 15 minutes — only crawls KOLs whose per-tier interval has elapsed
+  cron.schedule("*/15 * * * *", executeTierCrawl);
   
   // Analyze pending posts every 10 minutes
   cron.schedule("*/10 * * * *", executeAnalyze);

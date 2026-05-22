@@ -25,6 +25,7 @@ router.get("/", async (_req: Request, res: Response) => {
         manual: settings.manual,
         self_reply: settings.self_reply,
         safety: settings.safety,
+        tier_crawl_intervals: settings.tier_crawl_intervals,
         updated_at: settings.updated_at,
       },
     });
@@ -167,6 +168,35 @@ router.patch("/", async (req: Request, res: Response) => {
       }
     }
 
+    // Update nested Tier Crawl Intervals
+    if (updates.tier_crawl_intervals) {
+      const tci = updates.tier_crawl_intervals;
+      const clamp = (val: unknown, min: number): number | null => {
+        const n = Number(val);
+        return isNaN(n) ? null : Math.max(min, n);
+      };
+      if (tci.S !== undefined) {
+        const v = clamp(tci.S, 5);
+        if (v === null) return res.status(400).json({ error: "tier_crawl_intervals.S must be a number" });
+        settings.tier_crawl_intervals.S = v;
+      }
+      if (tci.A !== undefined) {
+        const v = clamp(tci.A, 30);
+        if (v === null) return res.status(400).json({ error: "tier_crawl_intervals.A must be a number" });
+        settings.tier_crawl_intervals.A = v;
+      }
+      if (tci.B !== undefined) {
+        const v = clamp(tci.B, 60);
+        if (v === null) return res.status(400).json({ error: "tier_crawl_intervals.B must be a number" });
+        settings.tier_crawl_intervals.B = v;
+      }
+      if (tci.C !== undefined) {
+        const v = clamp(tci.C, 60);
+        if (v === null) return res.status(400).json({ error: "tier_crawl_intervals.C must be a number" });
+        settings.tier_crawl_intervals.C = v;
+      }
+    }
+
     await settings.save();
 
     log.info("[KolSettingsRoute] Settings updated");
@@ -179,6 +209,7 @@ router.patch("/", async (req: Request, res: Response) => {
         manual: settings.manual,
         safety: settings.safety,
         self_reply: settings.self_reply,
+        tier_crawl_intervals: settings.tier_crawl_intervals,
         updated_at: settings.updated_at,
       },
     });

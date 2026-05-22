@@ -90,6 +90,23 @@ const safetySettingsSchema = new Schema<ISafetySettings>(
   { _id: false },
 );
 
+export interface ITierCrawlIntervals {
+  S: number;
+  A: number;
+  B: number;
+  C: number;
+}
+
+const tierCrawlIntervalsSchema = new Schema<ITierCrawlIntervals>(
+  {
+    S: { type: Number, default: 30,  min: 5  },
+    A: { type: Number, default: 120, min: 30 },
+    B: { type: Number, default: 240, min: 60 },
+    C: { type: Number, default: 480, min: 60 },
+  },
+  { _id: false },
+);
+
 // ── Main Interface ────────────────────────────────────────────────────────────
 
 export interface IKolSettings extends Document {
@@ -106,6 +123,7 @@ export interface IKolSettings extends Document {
   manual: IManualSettings;
   self_reply: ISelfReplySettings;
   safety: ISafetySettings;
+  tier_crawl_intervals: ITierCrawlIntervals;
 
   updated_at: Date;
 }
@@ -138,6 +156,7 @@ const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
     manual: { type: manualSettingsSchema, default: () => ({}) },
     self_reply: { type: selfReplySettingsSchema, default: () => ({}) },
     safety: { type: safetySettingsSchema, default: () => ({}) },
+    tier_crawl_intervals: { type: tierCrawlIntervalsSchema, default: () => ({}) },
   },
   {
     timestamps: { createdAt: false, updatedAt: "updated_at" },

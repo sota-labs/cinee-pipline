@@ -28,7 +28,7 @@ export type { IKolPost, ITopComment, IEngagementPattern, IAnalysisResult } from 
 export type { IKolReplySuggestion, ISuggestion } from "./models/KolReplySuggestion.js";
 export type { IKolReputationCache, IReputationMetrics } from "./models/KolReputationCache.js";
 export type { ISelfReplyQueue, IPendingComment } from "./models/SelfReplyQueue.js";
-export type { IKolSettings, IAFKSettings, IManualSettings, ISelfReplySettings, ISafetySettings } from "./models/KolSettings.js";
+export type { IKolSettings, IAFKSettings, IManualSettings, ISelfReplySettings, ISafetySettings, ITierCrawlIntervals } from "./models/KolSettings.js";
 export { EReplyStatus as ReplyStatus, EReplyTone as ReplyTone, EReplyPlatform as ReplyPlatform } from "./models/Reply.js";
 export type { IReply } from "./models/Reply.js";
 export type { IPersonaKnowledge } from "./models/PersonaKnowledge.js";

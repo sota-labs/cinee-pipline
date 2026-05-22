@@ -38,6 +38,7 @@
     "kol:crawl": "tsx src/scripts/kolCrawlCron.ts",
     "kol:analyze": "tsx src/scripts/kolAnalyzeCron.ts",
     "kol:daemon": "tsx src/scripts/kolDaemon.ts",
+    "migrate:kol-settings-tier-intervals": "tsx src/scripts/migrateKolSettingsTierIntervals.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
