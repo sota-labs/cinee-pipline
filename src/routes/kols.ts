@@ -3,7 +3,6 @@ import { Router, Request, Response } from "express";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { KolPost } from "../db/models/KolPost.js";
 import { kolCrawlerService } from "../services/kolCrawlerService.js";
-import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
 import { log } from "../utils/logger.js";
 
 const router = Router();
@@ -253,28 +252,6 @@ router.post("/:id/crawl", async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/kols/:id/learn — Trigger personality learning
- */
-router.post("/:id/learn", async (req: Request, res: Response) => {
-  try {
-    const kol = await KolProfile.findById(req.params.id);
-    if (!kol) {
-      return res.status(404).json({ error: "KOL not found" });
-    }
-
-    const success = await kolAnalyzerService.learnPersonality(String(req.params.id));
-
-    res.json({
-      message: success ? "Personality learning queued" : "Not enough posts to learn",
-      data: { success },
-    });
-  } catch (error) {
-    log.error(`[KolsRoute] Learn error: ${(error as Error).message}`);
-    res.status(500).json({ error: "Failed to learn personality" });
-  }
-});
-
-/**
  * GET /api/kols/:id/posts — Get posts for a KOL
  */
 router.get("/:id/posts", async (req: Request, res: Response) => {
@@ -302,29 +279,6 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
   } catch (error) {
     log.error(`[KolsRoute] Posts error: ${(error as Error).message}`);
     res.status(500).json({ error: "Failed to get posts" });
-  }
-});
-
-/**
- * GET /api/kols/:id/personality — Get personality profile
- */
-router.get("/:id/personality", async (req: Request, res: Response) => {
-  try {
-    const kol = await KolProfile.findById(req.params.id).select("handle personality_profile");
-
-    if (!kol) {
-      return res.status(404).json({ error: "KOL not found" });
-    }
-
-    res.json({
-      data: {
-        handle: kol.handle,
-        personality: kol.personality_profile,
-      },
-    });
-  } catch (error) {
-    log.error(`[KolsRoute] Personality error: ${(error as Error).message}`);
-    res.status(500).json({ error: "Failed to get personality" });
   }
 });
 

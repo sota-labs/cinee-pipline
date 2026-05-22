@@ -1,40 +1,5 @@
-/** KolProfile — AI-learned personality profile for Key Opinion Leaders */
-import { Schema, model, Document, Types } from "mongoose";
-
-// ── Personality Profile Sub-document ────────────────────────────────────────────
-
-export interface ISlangExample {
-  word: string;
-  context: string;
-}
-
-export interface IPersonalityProfile {
-  writing_style: string;
-  common_topics: string[];
-  slang_words: string[];
-  slang_examples: ISlangExample[];
-  emoji_pattern: string;
-  sentence_structure: string;
-  engagement_tone: string;
-  avg_post_length: number;
-}
-
-const personalityProfileSchema = new Schema<IPersonalityProfile>(
-  {
-    writing_style: { type: String, default: "" },
-    common_topics: { type: [String], default: [] },
-    slang_words: { type: [String], default: [] },
-    slang_examples: {
-      type: [{ word: { type: String }, context: { type: String } }],
-      default: [],
-    },
-    emoji_pattern: { type: String, default: "" },
-    sentence_structure: { type: String, default: "" },
-    engagement_tone: { type: String, default: "" },
-    avg_post_length: { type: Number, default: 0 },
-  },
-  { _id: false },
-);
+/** KolProfile — Key Opinion Leader profile */
+import { Schema, model, Document } from "mongoose";
 
 // ── Main Interface ────────────────────────────────────────────────────────────
 
@@ -49,8 +14,6 @@ export interface IKolProfile extends Document {
   is_verified: boolean;
   account_age_days: number;
   tier: EKolTier;
-
-  personality_profile: IPersonalityProfile;
 
   reputation_score: number;
   avg_likes_per_post: number;
@@ -83,11 +46,6 @@ const kolProfileSchema = new Schema<IKolProfile>(
     is_verified: { type: Boolean, default: false },
     account_age_days: { type: Number, default: 0, min: 0 },
     tier: { type: String, enum: ["S", "A", "B", "C"], default: "B" },
-
-    personality_profile: {
-      type: personalityProfileSchema,
-      default: () => ({}),
-    },
 
     reputation_score: { type: Number, default: 50, min: 0, max: 100 },
     avg_likes_per_post: { type: Number, default: 0, min: 0 },

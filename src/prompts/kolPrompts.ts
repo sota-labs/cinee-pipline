@@ -1,4 +1,4 @@
-/** KOL Analysis Prompts — AI prompts for personality learning and reply generation */
+/** KOL Analysis Prompts — AI prompts for post analysis and reply generation */
 import { OUTPUT_FORMAT_INSTRUCTION } from "./outputFormat.js";
 
 // ── Post Analysis Prompts ─────────────────────────────────────────────────────
@@ -60,42 +60,6 @@ Respond in this exact JSON format:
 }
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
-// ── Personality Learning Prompts ─────────────────────────────────────────────
-
-export const PERSONALITY_LEARNING_PROMPT = `
-Analyze this KOL's writing style from their recent posts to create a personality profile.
-
-KOL: @{{handle}}
-RECENT POSTS ({{post_count}} posts):
-{{posts_sample}}
-
-Your task:
-1. Identify their writing style (casual, professional, aggressive, meme-heavy, etc.)
-2. List their common discussion topics
-3. Extract slang words and phrases they frequently use, WITH a short example of how they use each one
-4. Note their emoji usage patterns
-5. Describe their typical sentence structure
-6. Identify their tone when engaging (supportive, sarcastic, educational, etc.)
-7. Estimate their average post length in words
-
-Respond in this exact JSON format:
-{
-  "writing_style": "casual, meme-heavy with technical depth",
-  "common_topics": ["crypto", "AI", "startups", "web3"],
-  "slang_words": ["ngmi", "wagmi", "ser", "gm"],
-  "slang_examples": [
-    { "word": "ngmi", "context": "mocking bad decisions: 'still holding that bag... ngmi'" },
-    { "word": "wagmi", "context": "bullish encouragement: 'just keep building, wagmi'" },
-    { "word": "ser", "context": "addressing someone directly: 'ser, this is the alpha'" },
-    { "word": "gm", "context": "casual greeting to open a post: 'gm, big news today'" }
-  ],
-  "emoji_pattern": "frequent 🔥, occasional 💎, rare 😂",
-  "sentence_structure": "short punchy sentences, occasional long threads",
-  "engagement_tone": "bullish and supportive but calls out BS",
-  "avg_post_length": 25
-}
-${OUTPUT_FORMAT_INSTRUCTION}`;
-
 // ── Reply Generation Prompts ─────────────────────────────────────────────────
 
 export const REPLY_GENERATION_PROMPT = `
@@ -108,20 +72,18 @@ HARD RULES:
 
 ---
 
-KOL PROFILE (context for what you're replying to):
+KOL CONTEXT (context for what you're replying to):
 Handle: @{{handle}}
-Writing Style: {{writing_style}}
-Common Topics: {{topics}}
-Typical Tone: {{tone}}
-
-KOL SLANG DICTIONARY (understand their world — do NOT copy their style):
-{{slang_dictionary}}
+Post Summary: {{post_summary}}
+Topics: {{trending_topics}}
+Audience Tone: {{dominant_tone}}
+Sample Comments:
+{{top_comments_sample}}
 
 POST TO REPLY TO:
 {{post_content}}
 
 ENGAGEMENT CONTEXT:
-Dominant Tone in Comments: {{dominant_tone}}
 Common Phrases Used: {{common_phrases}}
 Popular Emojis: {{emoji_trend}}
 
@@ -222,28 +184,11 @@ export function buildCommentPatternPrompt(topComments: Array<{
   return COMMENT_PATTERN_PROMPT.replace("{{top_comments}}", formatted);
 }
 
-export function buildPersonalityLearningPrompt(params: {
-  handle: string;
-  posts: Array<{ content: string; likes: number }>;
-}): string {
-  const sample = params.posts
-    .slice(0, 20)
-    .map((p, i) => `Post ${i + 1} (${p.likes} likes): "${p.content.substring(0, 200)}"`)
-    .join("\n\n");
-
-  return PERSONALITY_LEARNING_PROMPT
-    .replace("{{handle}}", params.handle)
-    .replace("{{post_count}}", String(params.posts.length))
-    .replace("{{posts_sample}}", sample);
-}
-
 export function buildReplyGenerationPrompt(params: {
   handle: string;
-  writingStyle: string;
-  topics: string[];
-  slangs: string[];
-  slangExamples?: Array<{ word: string; context: string }>;
-  tone: string;
+  postSummary: string;
+  trendingTopics: string[];
+  topComments: Array<{ content: string; author_handle: string; sentiment: string }>;
   postContent: string;
   dominantTone: string;
   commonPhrases: string[];
@@ -252,14 +197,13 @@ export function buildReplyGenerationPrompt(params: {
   authorSlangReference?: string;
   authorStyleFormulas?: string;
 }): string {
-  // Build slang dictionary — use examples if available, fall back to flat list
-  const slangDict = params.slangExamples && params.slangExamples.length > 0
-    ? params.slangExamples.map((s) => `- "${s.word}" — ${s.context}`).join("\n")
-    : params.slangs.length > 0
-      ? params.slangs.map((s) => `- "${s}"`).join("\n")
-      : "(none identified)";
+  const slicedComments = params.topComments.slice(0, 5);
+  const commentsSample = slicedComments.length > 0
+    ? slicedComments
+        .map((c, i) => `  ${i + 1}. @${c.author_handle} [${c.sentiment}]: "${c.content}"`)
+        .join("\n")
+    : "  (no comments yet)";
 
-  // Build author voice block — only include sections that have content
   const voiceParts: string[] = [];
   if (params.authorVoiceStyle) {
     voiceParts.push(`AUTHOR VOICE (you are writing as this person):\n${params.authorVoiceStyle}`);
@@ -277,14 +221,13 @@ export function buildReplyGenerationPrompt(params: {
   return REPLY_GENERATION_PROMPT
     .replace("{{author_voice_block}}", authorVoiceBlock)
     .replace("{{handle}}", params.handle)
-    .replace("{{writing_style}}", params.writingStyle)
-    .replace("{{topics}}", params.topics.join(", "))
-    .replace("{{slang_dictionary}}", slangDict)
-    .replace("{{tone}}", params.tone)
+    .replace("{{post_summary}}", params.postSummary)
+    .replace("{{trending_topics}}", params.trendingTopics.join(", ") || "(none)")
+    .replace("{{top_comments_sample}}", commentsSample)
     .replace("{{post_content}}", params.postContent)
     .replace("{{dominant_tone}}", params.dominantTone)
-    .replace("{{common_phrases}}", params.commonPhrases.join(", "))
-    .replace("{{emoji_trend}}", params.emojiTrend.join(", "));
+    .replace("{{common_phrases}}", params.commonPhrases.join(", ") || "(none)")
+    .replace("{{emoji_trend}}", params.emojiTrend.join(", ") || "(none)");
 }
 
 export function buildSelfReplyPrompt(params: {

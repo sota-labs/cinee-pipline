@@ -17,10 +17,8 @@ import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
 import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
-import { kolAnalyzerService } from "./kolAnalyzerService.js";
+import { ownAccountService } from "./ownAccountService.js";
 import type { Types } from "mongoose";
-
-// ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface IGenerateSuggestionsResult {
   suggestionId: string;
@@ -129,9 +127,10 @@ export class ReplyEngineService {
       return null;
     }
 
+    const settings = await KolSettings.getSettings();
+
     // Tier S bypasses all skip rules
     if (kol.tier !== "S") {
-      const settings = await KolSettings.getSettings();
       if (shouldSkipPost({
         content: post.content,
         isRetweet: post.is_retweet,
@@ -145,34 +144,34 @@ export class ReplyEngineService {
       }
     }
 
-    // Guard: skip suggestion generation if personality hasn't been learned yet
-    if (!kol.personality_profile?.writing_style) {
-      log.warn(`[ReplyEngine] KOL @${kol.handle} has no personality profile — queuing learning and reverting post`);
-      await kolAnalyzerService.learnPersonality(String(kol._id));
-      // Revert post back to ANALYZED so it can be retried after personality is learned
-      await KolPost.findByIdAndUpdate(post._id, { status: EKolPostStatus.ANALYZED });
-      return null;
-    }
+    // Build generation prompt using Ethan's learned personality from DB
+    const ownProfile = await ownAccountService.getProfile();
+    const ethan = ownProfile.effective_profile;
 
-    // Build generation prompt
+    const authorVoiceStyle = ethan.writing_style || appSettings.role.authorVoiceStyle;
+    const authorSlangReference = ethan.slang_words.length > 0
+      ? ethan.slang_words.join(", ")
+      : appSettings.role.authorSlangReference;
+
     const prompt = buildReplyGenerationPrompt({
       handle: kol.handle,
-      writingStyle: kol.personality_profile.writing_style,
-      topics: kol.personality_profile.common_topics,
-      slangs: kol.personality_profile.slang_words,
-      slangExamples: kol.personality_profile.slang_examples || [],
-      tone: kol.personality_profile.engagement_tone,
+      postSummary: post.analysis?.summary ?? "",
+      trendingTopics: post.analysis?.trending_topics ?? [],
+      topComments: (post.top_comments ?? []).slice(0, 5).map((c) => ({
+        content: c.content,
+        author_handle: c.author_handle,
+        sentiment: c.sentiment ?? "neutral",
+      })),
       postContent: post.content,
-      dominantTone: post.engagement_pattern.dominant_tone,
-      commonPhrases: post.engagement_pattern.common_phrases,
-      emojiTrend: post.engagement_pattern.emoji_trend,
-      authorVoiceStyle: appSettings.role.authorVoiceStyle,
-      authorSlangReference: appSettings.role.authorSlangReference,
+      dominantTone: post.engagement_pattern?.dominant_tone ?? "neutral",
+      commonPhrases: post.engagement_pattern?.common_phrases ?? [],
+      emojiTrend: post.engagement_pattern?.emoji_trend ?? [],
+      authorVoiceStyle,
+      authorSlangReference,
       authorStyleFormulas: appSettings.role.authorStyleFormulas,
     });
 
-    // Get settings for mode
-    const settings = await KolSettings.getSettings();
+    // Get mode from already-fetched settings
     const mode = settings.default_mode;
 
     // Queue generation task via OpenClaw
@@ -291,7 +290,7 @@ export class ReplyEngineService {
     if (!best) return null;
 
     const post = await KolPost.findById(suggestion.kol_post_id);
-    if (!post || post.analysis.virality_score < 30) return null;
+    if (!post || (post.analysis?.virality_score ?? 0) < 30) return null;
 
     return best;
   }

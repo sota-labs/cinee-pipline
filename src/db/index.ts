@@ -23,7 +23,7 @@ export type { ICurationSource } from "./models/CurationSource.js";
 export type { IPriorityAccount } from "./models/PriorityAccount.js";
 export type { IInteraction } from "./models/Interaction.js";
 export type { IPost, IMedia, IVideoDetails, IEditEntry } from "./models/Post.js";
-export type { IKolProfile, IPersonalityProfile } from "./models/KolProfile.js";
+export type { IKolProfile } from "./models/KolProfile.js";
 export type { IKolPost, ITopComment, IEngagementPattern, IAnalysisResult } from "./models/KolPost.js";
 export type { IKolReplySuggestion, ISuggestion } from "./models/KolReplySuggestion.js";
 export type { IKolReputationCache, IReputationMetrics } from "./models/KolReputationCache.js";

@@ -1,13 +1,12 @@
 /** Task queue routes — CRUD and status management for async OpenClaw agent jobs. */
 import { Router, type Request, type Response } from "express";
-import { Task, ETaskStatus, ETaskType } from "../db/index.js";
+import { Task, ETaskStatus } from "../db/index.js";
 import { log } from "../utils/logger.js";
 import { extractResponse } from "../utils/extractResponse.js";
 import { processBatchCrawlResult, processCommentCrawlResult } from "../services/kolCrawlerService.js";
 import {
   processPostAnalysisResult,
   processCommentPatternResult,
-  processPersonalityResult,
   kolAnalyzerService,
 } from "../services/kolAnalyzerService.js";
 import { replyEngineService } from "../services/replyEngineService.js";
@@ -150,28 +149,8 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
             } else if (payload.analysisType === "comment_pattern") {
               const result = await processCommentPatternResult(relatedId, rawResult);
               if (result) {
-                await kolAnalyzerService.applyAnalysisResults(relatedId, {} as any, result);
+                await kolAnalyzerService.applyEngagementPattern(relatedId, result);
                 log.info(`[Webhook] Applied comment_pattern to post ${relatedId}`);
-              }
-            } else if (payload.analysisType === "personality") {
-              const result = await processPersonalityResult(relatedId, rawResult);
-              if (result) {
-                await kolAnalyzerService.applyPersonalityUpdate(relatedId, result);
-                log.info(`[Webhook] Applied personality to KOL ${relatedId}`);
-
-                // Retry suggestion generation for any posts that were waiting on this personality
-                const { KolPost, EKolPostStatus } = await import("../db/models/KolPost.js");
-                const waitingPosts = await KolPost.find({
-                  kol_id: relatedId,
-                  status: EKolPostStatus.ANALYZED,
-                  comments_crawled: true,
-                });
-                if (waitingPosts.length > 0) {
-                  log.info(`[Webhook] Retrying suggestion generation for ${waitingPosts.length} waiting post(s) of KOL ${relatedId}`);
-                  for (const post of waitingPosts) {
-                    await replyEngineService.generateSuggestions(post._id);
-                  }
-                }
               }
             }
           } catch (e: any) {

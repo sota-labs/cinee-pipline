@@ -35,8 +35,8 @@ async function executeAnalyze() {
   try {
     const result = await kolAnalyzerService.analyzePendingPosts();
     log.info(`[KOLDaemon] Analyze done — queued: ${result.queued}, errors: ${result.errors}`);
-  } catch (err: any) {
-    log.error(`[KOLDaemon] Analyze job crashed: ${err.message}`);
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Analyze job crashed: ${(err as Error).message}`);
   }
 }
 
@@ -45,8 +45,8 @@ async function executeAFKReplies() {
   try {
     const result = await replyEngineService.runScheduledAFKReplies();
     log.info(`[KOLDaemon] AFK Reply done — processed: ${result.processed}, succeeded: ${result.succeeded}, failed: ${result.failed}`);
-  } catch (err: any) {
-    log.error(`[KOLDaemon] AFK Reply job crashed: ${err.message}`);
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] AFK Reply job crashed: ${(err as Error).message}`);
   }
 }
 
@@ -55,8 +55,8 @@ async function executeSelfReplies() {
   try {
     const result = await selfReplyService.processAllQueues();
     log.info(`[KOLDaemon] Self-Reply done — processed: ${result.processed}, succeeded: ${result.succeeded}, failed: ${result.failed}`);
-  } catch (err: any) {
-    log.error(`[KOLDaemon] Self-Reply job crashed: ${err.message}`);
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Self-Reply job crashed: ${(err as Error).message}`);
   }
 }
 
@@ -67,18 +67,8 @@ async function executeAutoReject() {
     if (result.rejected > 0) {
       log.info(`[KOLDaemon] Auto-Reject done — rejected: ${result.rejected}`);
     }
-  } catch (err: any) {
-    log.error(`[KOLDaemon] Auto-Reject job crashed: ${err.message}`);
-  }
-}
-
-async function executeDailyLearning() {
-  log.info("[KOLDaemon] Daily Personality Learning job starting…");
-  try {
-    const result = await kolAnalyzerService.runDailyPersonalityLearning();
-    log.info(`[KOLDaemon] Daily Learning done — processed: ${result.processed}, failed: ${result.failed}`);
-  } catch (err: any) {
-    log.error(`[KOLDaemon] Daily Learning job crashed: ${err.message}`);
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Auto-Reject job crashed: ${(err as Error).message}`);
   }
 }
 
@@ -88,8 +78,8 @@ async function executeSessionCleanup() {
     const sessionDir = `${process.env.HOME}/.openclaw/agents/main/sessions`;
     execSync(`find "${sessionDir}" -maxdepth 1 -mtime +3 -delete`);
     log.info("[KOLDaemon] Session cleanup done");
-  } catch (err: any) {
-    log.warn(`[KOLDaemon] Session cleanup failed: ${err.message}`);
+  } catch (err: unknown) {
+    log.warn(`[KOLDaemon] Session cleanup failed: ${(err as Error).message}`);
   }
 }
 
@@ -121,9 +111,6 @@ async function startDaemon() {
   
   // Process self-reply queues every 2 minutes to allow 1-3 min dynamic delay
   cron.schedule("*/2 * * * *", executeSelfReplies);
-
-  // Run daily personality learning at 02:00 AM
-  cron.schedule("0 2 * * *", executeDailyLearning, { timezone: "UTC" });
 
   // Clean up openclaw session files older than 3 days at 03:00 AM
   cron.schedule("0 3 * * *", executeSessionCleanup);
