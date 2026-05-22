@@ -15,6 +15,33 @@ import { selfReplyService } from "../services/selfReplyService.js";
 
 export const tasksRouter = Router();
 
+// ── Next Pending (worker poll) ────────────────────────────────────────────────
+
+/**
+ * GET /api/tasks/next-pending
+ * Worker calls this each poll cycle to get the next task to execute.
+ * - If a task is currently processing with a handle_group → continue that handle's flow
+ * - Otherwise → pick highest priority pending task
+ */
+tasksRouter.get("/next-pending", async (req: Request, res: Response) => {
+  try {
+    const processingTask = await Task.findOne({ status: ETaskStatus.PROCESSING })
+      .select("handle_group")
+      .lean();
+    const activeHandle = processingTask?.handle_group ?? null;
+
+    const query: Record<string, unknown> = { status: ETaskStatus.PENDING };
+    if (activeHandle) {
+      query.handle_group = activeHandle;
+    }
+
+    const task = await Task.findOne(query).sort({ priority: -1, created_at: 1 });
+    res.json({ success: true, task: task ?? null });
+  } catch (e: unknown) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
 // ── List ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -231,10 +258,12 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
       if (payload.action === "batch_crawl" && Array.isArray(payload.handles)) {
         const handles = payload.handles as string[];
         const sinceByHandle = payload.sinceByHandle as Record<string, string> | undefined;
+        const batchPriority = (payload.priority as number) ?? 0;
+        const batchHandleGroup = (payload.handle_group as string) ?? null;
         setImmediate(async () => {
           try {
             log.info(`[Webhook] Auto-processing batch_crawl result for task ${task._id}`);
-            const results = await processBatchCrawlResult(task.result!, handles, sinceByHandle);
+            const results = await processBatchCrawlResult(task.result!, handles, sinceByHandle, batchPriority, batchHandleGroup);
             log.info(`[Webhook] batch_crawl processed: ${results.length} KOLs`);
           } catch (e: unknown) {
             log.error(`[Webhook] Error processing batch_crawl result: ${(e as Error).message}`);

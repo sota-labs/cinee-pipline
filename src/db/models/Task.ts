@@ -33,6 +33,10 @@ export interface ITask extends Document {
   /** Free-form context data the worker may need (instruction, userPrompt, etc.). */
   payload?: Record<string, unknown>;
   status: ETaskStatus;
+  /** Execution priority — higher value picked first. 0 = non-KOL tasks. */
+  priority: number;
+  /** KOL handle this task belongs to. null for non-KOL tasks. */
+  handle_group?: string;
   /** Raw text output returned by the agent on success. */
   result?: string;
   /** Error message / stack logged when status = failed. */
@@ -58,6 +62,8 @@ const taskSchema = new Schema<ITask>(
       default: ETaskStatus.PENDING,
       index: true,
     },
+    priority: { type: Number, default: 0 },
+    handle_group: { type: String, default: null },
     result: { type: String },
     error_log: { type: String },
     started_at: { type: Date },
@@ -70,6 +76,7 @@ const taskSchema = new Schema<ITask>(
 );
 
 taskSchema.index({ status: 1, created_at: 1 });
+taskSchema.index({ status: 1, priority: -1, created_at: 1 });
 taskSchema.index({ ref_id: 1, type: 1 });
 
 export const Task = model<ITask>("Task", taskSchema);

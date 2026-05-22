@@ -12,6 +12,7 @@ import {
   parseBatchCrawlResult,
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
+import { tierToPriority } from "../utils/taskPriority.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -133,6 +134,7 @@ interface IKolCrawlInfo {
   handle: string;
   since: string; // ISO timestamp
   limit: number;
+  tier?: string; // used to compute task priority
 }
 
 /**
@@ -141,6 +143,8 @@ interface IKolCrawlInfo {
  */
 async function createBatchCrawlTask(
   kols: IKolCrawlInfo[],
+  priority: number,
+  handleGroup: string | null,
 ): Promise<string> {
   const handleList = kols
     .map(k => `- @${k.handle} | sinceTimestamp: "${k.since}"`)
@@ -154,11 +158,15 @@ async function createBatchCrawlTask(
     agent: settings.openClawAgent,
     prompt: "pending",
     status: ETaskStatus.PENDING,
+    priority,
+    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: {
       action: "batch_crawl",
       kolCount: kols.length,
       handles: kols.map(k => k.handle),
       sinceByHandle: Object.fromEntries(kols.map(k => [k.handle, k.since])),
+      priority,
+      handle_group: handleGroup,
     },
   });
 
@@ -177,6 +185,8 @@ async function createBatchCrawlTask(
  */
 async function createCommentCrawlTask(
   posts: Array<{ id: string; post_url: string }>,
+  priority: number,
+  handleGroup: string | null,
 ): Promise<string> {
   const postList = posts
     .map(p => `- postId: ${p.id} | post_url: ${p.post_url}`)
@@ -190,10 +200,14 @@ async function createCommentCrawlTask(
     agent: settings.openClawAgent,
     prompt: "pending",
     status: ETaskStatus.PENDING,
+    priority,
+    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: {
       action: "comment_crawl",
       postCount: posts.length,
       postIds: posts.map(p => p.id),
+      priority,
+      handle_group: handleGroup,
     },
   });
 
@@ -320,6 +334,8 @@ export async function processBatchCrawlResult(
   taskResult: string,
   handles: string[],
   sinceByHandle?: Record<string, string>,
+  priority?: number,
+  handleGroup?: string | null,
 ): Promise<ICrawlResult[]> {
   const batchResults = parseBatchCrawlResult(taskResult);
   const results: ICrawlResult[] = [];
@@ -396,6 +412,8 @@ export async function processBatchCrawlResult(
     try {
       await createCommentCrawlTask(
         postsNeedingComments.map(p => ({ id: String(p._id), post_url: p.post_url })),
+        priority ?? 0,
+        handleGroup ?? null,
       );
       log.info(`[KolCrawler] Queued comment crawl for ${postsNeedingComments.length} posts`);
     } catch (error) {
@@ -693,7 +711,8 @@ export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
 
   for (let i = 0; i < kolInfos.length; i += chunkSize) {
     const chunk = kolInfos.slice(i, i + chunkSize);
-    await createBatchCrawlTask(chunk);
+    const handleGroup = chunk.length === 1 ? chunk[0].handle : null;
+    await createBatchCrawlTask(chunk, 10, handleGroup);
     allHandles.push(...chunk.map((k) => k.handle));
     tasksCreated++;
   }
@@ -755,6 +774,7 @@ export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
       handle: kol.handle,
       since: since.toISOString(),
       limit: kolSettings.max_posts_per_crawl,
+      tier: kol.tier,
     });
   }
 
@@ -764,7 +784,9 @@ export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
 
   for (let i = 0; i < kolInfos.length; i += chunkSize) {
     const chunk = kolInfos.slice(i, i + chunkSize);
-    await createBatchCrawlTask(chunk);
+    const chunkPriority = Math.max(...chunk.map(k => tierToPriority(k.tier ?? "C")));
+    const handleGroup = chunk.length === 1 ? chunk[0].handle : null;
+    await createBatchCrawlTask(chunk, chunkPriority, handleGroup);
     allHandles.push(...chunk.map((k) => k.handle));
     tasksCreated++;
   }

@@ -18,6 +18,7 @@ import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
 import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
+import { tierToPriority } from "../utils/taskPriority.js";
 import type { Types } from "mongoose";
 
 export interface IGenerateSuggestionsResult {
@@ -81,6 +82,8 @@ async function queueReplyExecution(
   postUrl: string,
   replyContent: string,
   suggestionId: string,
+  priority?: number,
+  handleGroup?: string | null,
 ): Promise<string> {
   const escapedContent = replyContent.replace(/'/g, "'\''");
   const prompt = REPLY_EXECUTE_PROMPT_TEMPLATE
@@ -95,6 +98,8 @@ async function queueReplyExecution(
     agent: appSettings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
+    priority: priority ?? 0,
+    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { suggestionId, action: "execute_reply" },
   });
 
@@ -126,6 +131,9 @@ export class ReplyEngineService {
       log.error(`[ReplyEngine] KOL for post ${postId} not found`);
       return null;
     }
+
+    const priority = tierToPriority(kol.tier);
+    const handleGroup = kol.handle;
 
     const settings = await KolSettings.getSettings();
 
@@ -191,11 +199,15 @@ export class ReplyEngineService {
       agent: appSettings.openClawAgent,
       prompt: command,
       status: ETaskStatus.PENDING,
+      priority,
+      ...(handleGroup != null ? { handle_group: handleGroup } : {}),
       payload: {
         action: "generate_suggestions",
         postId: String(postId),
         suggestionId: String(suggestion._id),
         mode,
+        priority,
+        handle_group: handleGroup,
       },
     });
 
@@ -394,9 +406,14 @@ export class ReplyEngineService {
       return { success: false, error: "Hourly reply limit reached" };
     }
 
+    // Lookup KOL priority for task ordering
+    const kol = await KolProfile.findById(post.kol_id).select("tier handle").lean();
+    const priority = kol ? tierToPriority(kol.tier) : 0;
+    const handleGroup = kol?.handle ?? null;
+
     // Queue execution
     try {
-      const taskId = await queueReplyExecution(post.post_url, replyContent, suggestionId);
+      const taskId = await queueReplyExecution(post.post_url, replyContent, suggestionId, priority, handleGroup);
 
       suggestion.execution_status = EReplyExecutionStatus.EXECUTING;
       await suggestion.save();

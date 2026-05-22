@@ -13,6 +13,8 @@ import {
 } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
+import { KolProfile } from "../db/models/KolProfile.js";
+import { tierToPriority } from "../utils/taskPriority.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,8 @@ async function queueAnalysisTask(
   prompt: string,
   relatedId: string,
   model?: string,
+  priority?: number,
+  handleGroup?: string | null,
 ): Promise<string> {
   const escapedPrompt = prompt.replace(/'/g, "'\''");
   const modelFlag = model ? ` --model ${model}` : "";
@@ -59,6 +63,8 @@ async function queueAnalysisTask(
     agent: settings.openClawAgent,
     prompt: command,
     status: ETaskStatus.PENDING,
+    priority: priority ?? 0,
+    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { analysisType: type, relatedId },
   });
 
@@ -196,6 +202,11 @@ export class KolAnalyzerService {
       return [];
     }
 
+    // Lookup KOL tier for priority propagation
+    const kol = await KolProfile.findById(post.kol_id).select("tier handle").lean();
+    const priority = kol ? tierToPriority(kol.tier) : 0;
+    const handleGroup = kol?.handle ?? null;
+
     const taskIds: string[] = [];
 
     // 1. Post content analysis
@@ -211,6 +222,9 @@ export class KolAnalyzerService {
       "post_analysis",
       analysisPrompt,
       String(post._id),
+      undefined,
+      priority,
+      handleGroup,
     );
     taskIds.push(analysisTaskId);
 
@@ -221,6 +235,9 @@ export class KolAnalyzerService {
         "comment_pattern",
         patternPrompt,
         String(post._id),
+        undefined,
+        priority,
+        handleGroup,
       );
       taskIds.push(patternTaskId);
     }
