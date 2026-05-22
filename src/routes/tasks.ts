@@ -230,10 +230,11 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
       // Handle batch crawl completion — auto process results and trigger analysis
       if (payload.action === "batch_crawl" && Array.isArray(payload.handles)) {
         const handles = payload.handles as string[];
+        const sinceByHandle = payload.sinceByHandle as Record<string, string> | undefined;
         setImmediate(async () => {
           try {
             log.info(`[Webhook] Auto-processing batch_crawl result for task ${task._id}`);
-            const results = await processBatchCrawlResult(task.result!, handles);
+            const results = await processBatchCrawlResult(task.result!, handles, sinceByHandle);
             log.info(`[Webhook] batch_crawl processed: ${results.length} KOLs`);
           } catch (e: unknown) {
             log.error(`[Webhook] Error processing batch_crawl result: ${(e as Error).message}`);
@@ -419,7 +420,8 @@ tasksRouter.post("/:id/process-result", async (req: Request, res: Response) => {
       return res.status(422).json({ success: false, error: "Task payload has no handles" });
     }
 
-    const results = await processBatchCrawlResult(task.result, handles);
+    const sinceByHandle = payload?.sinceByHandle as Record<string, string> | undefined;
+    const results = await processBatchCrawlResult(task.result, handles, sinceByHandle);
 
     log.info(`Task ${task._id}: processed result for ${results.length} KOLs`);
     res.json({ success: true, results });

@@ -98,6 +98,7 @@ const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
 2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle
    - STOP scrolling immediately if any visible post has posted_at <= sinceTimestamp — do not scroll further
    - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
+   - IMPORTANT: Do NOT include any post where posted_at <= sinceTimestamp in your JSON output
 3. Wait 5s before next handle
 
 Handles:
@@ -157,6 +158,7 @@ async function createBatchCrawlTask(
       action: "batch_crawl",
       kolCount: kols.length,
       handles: kols.map(k => k.handle),
+      sinceByHandle: Object.fromEntries(kols.map(k => [k.handle, k.since])),
     },
   });
 
@@ -317,6 +319,7 @@ function calculateEngagementScore(post: IRawPost): number {
 export async function processBatchCrawlResult(
   taskResult: string,
   handles: string[],
+  sinceByHandle?: Record<string, string>,
 ): Promise<ICrawlResult[]> {
   const batchResults = parseBatchCrawlResult(taskResult);
   const results: ICrawlResult[] = [];
@@ -330,16 +333,29 @@ export async function processBatchCrawlResult(
         continue;
       }
 
+      // Server-side guard: drop posts older than the since timestamp used to prompt the agent
+      const sinceISO = sinceByHandle?.[handle];
+      const sinceDate = sinceISO ? new Date(sinceISO) : null;
+      const freshPosts = sinceDate
+        ? posts.filter(p => {
+            const postedAt = new Date(p.posted_at);
+            return !isNaN(postedAt.getTime()) && postedAt > sinceDate;
+          })
+        : posts;
+      if (sinceDate && freshPosts.length < posts.length) {
+        log.info(`[KolCrawler] @${handle}: dropped ${posts.length - freshPosts.length} stale posts (posted_at <= ${sinceISO})`);
+      }
+
       // Keep only top 2 posts by engagement score per handle
       const MAX_POSTS_PER_HANDLE = 2;
-      const topPosts = posts.length > MAX_POSTS_PER_HANDLE
-        ? [...posts]
+      const topPosts = freshPosts.length > MAX_POSTS_PER_HANDLE
+        ? [...freshPosts]
             .sort((a, b) => calculateEngagementScore(b) - calculateEngagementScore(a))
             .slice(0, MAX_POSTS_PER_HANDLE)
-        : posts;
+        : freshPosts;
 
-      if (posts.length > MAX_POSTS_PER_HANDLE) {
-        log.info(`[KolCrawler] @${handle}: ${posts.length} posts found, keeping top ${MAX_POSTS_PER_HANDLE} by engagement`);
+      if (freshPosts.length > MAX_POSTS_PER_HANDLE) {
+        log.info(`[KolCrawler] @${handle}: ${freshPosts.length} fresh posts, keeping top ${MAX_POSTS_PER_HANDLE} by engagement`);
       }
 
       const { saved, skipped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
