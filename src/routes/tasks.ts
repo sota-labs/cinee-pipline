@@ -38,7 +38,7 @@ tasksRouter.get("/", async (req: Request, res: Response) => {
 
     const [tasks, total] = await Promise.all([
       Task.find(filter)
-        .sort({ created_at: -1 })
+        .sort({ created_at: 1 })
         .skip(parseInt(skip as string))
         .limit(parseInt(limit as string)),
       Task.countDocuments(filter),
