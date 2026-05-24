@@ -264,18 +264,18 @@ const taskId = await queueReplyExecution(post.post_url, replyContent, suggestion
 
 ## Todo
 
-- [ ] Thêm `tier?: string` vào `IKolCrawlInfo`
-- [ ] `createBatchCrawlTask` nhận `priority` + `handleGroup`, pass vào Task + payload
-- [ ] `crawlDueKols` tính priority từ tier, pass vào `createBatchCrawlTask`
-- [ ] `crawlAllKolsSequential` pass priority=10 (no tier info)
-- [ ] `createCommentCrawlTask` nhận `priority` + `handleGroup`
-- [ ] `processBatchCrawlResult` nhận `priority` + `handleGroup`, pass vào `createCommentCrawlTask`
-- [ ] `queueAnalysisTask` nhận `priority` + `handleGroup`
-- [ ] `queuePostAnalysis` lookup KolProfile tier, pass priority + handleGroup
-- [ ] `generateSuggestions` pass priority + handleGroup vào Task + payload
-- [ ] `queueReplyExecution` nhận `priority` + `handleGroup`
-- [ ] `executeReply` lookup KolProfile tier, pass priority + handleGroup
-- [ ] Run `tsc --noEmit` — zero errors
+- [x] Thêm `tier?: string` vào `IKolCrawlInfo`
+- [x] `createBatchCrawlTask` nhận `priority` + `handleGroup`, pass vào Task + payload
+- [x] `crawlDueKols` tính priority từ tier, pass vào `createBatchCrawlTask`
+- [x] `crawlAllKolsSequential` pass priority=10 (no tier info)
+- [x] `createCommentCrawlTask` nhận `priority` + `handleGroup`
+- [x] `processBatchCrawlResult` nhận `priority` + `handleGroup`, pass vào `createCommentCrawlTask`
+- [x] `queueAnalysisTask` nhận `priority` + `handleGroup`
+- [x] `queuePostAnalysis` lookup KolProfile tier, pass priority + handleGroup
+- [x] `generateSuggestions` pass priority + handleGroup vào Task + payload
+- [x] `queueReplyExecution` nhận `priority` + `handleGroup`
+- [x] `executeReply` lookup KolProfile tier, pass priority + handleGroup
+- [x] Run `tsc --noEmit` — zero errors
 
 ## Success Criteria
 

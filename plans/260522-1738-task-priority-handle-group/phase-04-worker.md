@@ -96,9 +96,9 @@ async function poll() {
 
 ## Todo
 
-- [ ] Thêm `fetchNextPendingTask()` function
-- [ ] Cập nhật `poll()` để dùng `fetchNextPendingTask`
-- [ ] Verify log output hiển thị priority + handle_group
+- [x] Thêm `fetchNextPendingTask()` function
+- [x] Cập nhật `poll()` để dùng `fetchNextPendingTask`
+- [x] Verify log output hiển thị priority + handle_group
 
 ## Success Criteria
 

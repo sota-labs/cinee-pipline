@@ -1,8 +1,60 @@
 # Project Changelog
 
-**Last Updated:** 2026-05-21
+**Last Updated:** 2026-05-22
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-05-22] - Task Priority System & Handle-Aware Task Selection
+
+### Added
+
+- **Task Priority System** (`src/utils/taskPriority.ts`)
+  - New utility: `tierToPriority(tier: string): number`
+  - Maps KOL tier to priority: S=40, A=30, B=20, C=10
+  - Enables priority-based task execution for KOL-specific work
+
+- **Task Model Enhancements** (`src/db/models/Task.ts`)
+  - New field: `priority: number` (default: 0)
+  - New field: `handle_group?: string | null` (default: null)
+  - Compound index: `{ status: 1, priority: -1, created_at: 1 }` for efficient priority-based queries
+  - Non-KOL tasks have priority=0; KOL tasks inherit tier-based priority
+
+- **Handle-Aware Task Selection API** (`src/routes/tasks.ts`)
+  - New endpoint: `GET /api/tasks/next-pending`
+  - Returns next pending task sorted by: status → priority (descending) → created_at
+  - Filters by `handle_group` if provided in query params
+  - Enables worker to select high-priority KOL tasks first
+
+### Modified
+
+- **KOL Crawler Service** (`src/services/kolCrawlerService.ts`)
+  - `queueCrawlTask()` now propagates `priority` and `handle_group` to Task records
+  - Priority derived from KOL tier via `tierToPriority()`
+
+- **KOL Analyzer Service** (`src/services/kolAnalyzerService.ts`)
+  - `queueAnalysisTask()` now propagates `priority` and `handle_group` to Task records
+  - Analysis tasks inherit KOL tier-based priority
+
+- **Reply Engine Service** (`src/services/replyEngineService.ts`)
+  - `queueReplyTask()` now propagates `priority` and `handle_group` to Task records
+  - Reply tasks inherit KOL tier-based priority
+
+- **Worker Task Selection** (`worker/worker.js`)
+  - Updated to use `GET /api/tasks/next-pending` instead of `GET /api/tasks?status=pending`
+  - Worker now respects task priority and handle_group for intelligent task selection
+
+### Technical Details
+
+- Priority system enables Tier S KOLs to have their tasks executed first (priority 40)
+- Handle-aware selection allows workers to focus on specific KOL groups if needed
+- Backward compatible: existing tasks without priority/handle_group default to 0/null
+- Compound index optimizes query performance for high-volume task queues
+
+### Breaking Changes
+
+- None — fully backward compatible; priority and handle_group are optional fields with safe defaults
 
 ---
 

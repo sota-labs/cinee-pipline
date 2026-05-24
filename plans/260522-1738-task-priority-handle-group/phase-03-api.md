@@ -84,9 +84,9 @@ if (payload.action === "batch_crawl" && Array.isArray(payload.handles)) {
 
 ## Todo
 
-- [ ] Thêm `GET /api/tasks/next-pending` route (trước `GET /:id`)
-- [ ] Cập nhật `batch_crawl` webhook block để pass `priority` + `handle_group`
-- [ ] Run `tsc --noEmit` — zero errors
+- [x] Thêm `GET /api/tasks/next-pending` route (trước `GET /:id`)
+- [x] Cập nhật `batch_crawl` webhook block để pass `priority` + `handle_group`
+- [x] Run `tsc --noEmit` — zero errors
 
 ## Success Criteria
 

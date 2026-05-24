@@ -36,7 +36,7 @@ export interface ITask extends Document {
   /** Execution priority — higher value picked first. 0 = non-KOL tasks. */
   priority: number;
   /** KOL handle this task belongs to. null for non-KOL tasks. */
-  handle_group?: string;
+  handle_group?: string | null;
   /** Raw text output returned by the agent on success. */
   result?: string;
   /** Error message / stack logged when status = failed. */

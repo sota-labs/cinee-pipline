@@ -22,8 +22,12 @@ export const tasksRouter = Router();
  * Worker calls this each poll cycle to get the next task to execute.
  * - If a task is currently processing with a handle_group → continue that handle's flow
  * - Otherwise → pick highest priority pending task
+ *
+ * NOTE: Designed for a single-threaded worker (MAX_CONCURRENT_TASKS=1).
+ * With multiple concurrent workers, the two-query approach has a race condition —
+ * make the poll+claim atomic (findOneAndUpdate) if concurrency is ever added.
  */
-tasksRouter.get("/next-pending", async (req: Request, res: Response) => {
+tasksRouter.get("/next-pending", async (_req: Request, res: Response) => {
   try {
     const processingTask = await Task.findOne({ status: ETaskStatus.PROCESSING })
       .select("handle_group")
@@ -35,7 +39,7 @@ tasksRouter.get("/next-pending", async (req: Request, res: Response) => {
       query.handle_group = activeHandle;
     }
 
-    const task = await Task.findOne(query).sort({ priority: -1, created_at: 1 });
+    const task = await Task.findOne(query).sort({ priority: -1, created_at: 1 }).lean();
     res.json({ success: true, task: task ?? null });
   } catch (e: unknown) {
     res.status(500).json({ success: false, error: (e as Error).message });
@@ -258,8 +262,8 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
       if (payload.action === "batch_crawl" && Array.isArray(payload.handles)) {
         const handles = payload.handles as string[];
         const sinceByHandle = payload.sinceByHandle as Record<string, string> | undefined;
-        const batchPriority = (payload.priority as number) ?? 0;
-        const batchHandleGroup = (payload.handle_group as string) ?? null;
+        const batchPriority = typeof payload.priority === "number" ? payload.priority : 0;
+        const batchHandleGroup = typeof payload.handle_group === "string" ? payload.handle_group : null;
         setImmediate(async () => {
           try {
             log.info(`[Webhook] Auto-processing batch_crawl result for task ${task._id}`);

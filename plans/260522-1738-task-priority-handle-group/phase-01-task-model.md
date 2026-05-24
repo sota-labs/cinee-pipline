@@ -65,11 +65,11 @@ export function tierToPriority(tier: string): number {
 
 ## Todo
 
-- [ ] Thêm `priority` và `handle_group` vào `ITask` interface
-- [ ] Thêm fields vào `taskSchema`
-- [ ] Thêm compound index `{ status: 1, priority: -1, created_at: 1 }`
-- [ ] Tạo `src/utils/taskPriority.ts` với `tierToPriority()`
-- [ ] Run `tsc --noEmit` — zero errors
+- [x] Thêm `priority` và `handle_group` vào `ITask` interface
+- [x] Thêm fields vào `taskSchema`
+- [x] Thêm compound index `{ status: 1, priority: -1, created_at: 1 }`
+- [x] Tạo `src/utils/taskPriority.ts` với `tierToPriority()`
+- [x] Run `tsc --noEmit` — zero errors
 
 ## Success Criteria
 
