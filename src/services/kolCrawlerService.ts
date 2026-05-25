@@ -22,7 +22,7 @@ import type { Types } from "mongoose";
 
 const KOL_CRAWL_CACHE_PREFIX = "kol:crawl:";
 const KOL_CRAWL_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
-const MAX_CRAWL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h max crawl window
+const MAX_CRAWL_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h max crawl window
 
 async function getCachedLastCrawled(handle: string): Promise<Date | null> {
   try {
@@ -640,8 +640,8 @@ export class KolCrawlerService {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getDefaultSinceDate(): Date {
-  // Default: 24 hours ago
-  return new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Default: 6 hours ago
+  return new Date(Date.now() - 6 * 60 * 60 * 1000);
 }
 
 function delay(ms: number): Promise<void> {
