@@ -37,6 +37,9 @@ export const KOL_TWEET_SCRIPT = `
     p.content &&
     p.post_url &&
     p.posted_at &&
+    !p.is_retweet &&
+    !(p.is_quote && p.content.length < 30) &&
+    p.content.length >= 15 &&
     (!sinceDate || new Date(p.posted_at) > sinceDate)
   );
 })
@@ -75,6 +78,9 @@ export const KOL_TWEET_SCRIPT_BATCH = `
     p.content &&
     p.post_url &&
     p.posted_at &&
+    !p.is_retweet &&
+    !(p.is_quote && p.content.length < 30) &&
+    p.content.length >= 15 &&
     (!sinceDate || new Date(p.posted_at) > sinceDate)
   );
 })

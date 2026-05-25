@@ -40,6 +40,7 @@ export interface Settings {
   openClawAgent: string;
   openClawCrawlModel: string;
   openClawAnalysisModel: string;
+  openClawReplyModel: string;
   xUsername: string;
 }
 
@@ -214,6 +215,9 @@ export const settings: Settings = {
     process.env.OPENCLAW_CRAWL_MODEL || "openrouter/minimax/minimax-m2.5",
   openClawAnalysisModel:
     process.env.OPENCLAW_ANALYSIS_MODEL ||
+    "openrouter/minimax/minimax-m2.5",
+  openClawReplyModel:
+    process.env.OPENCLAW_REPLY_MODEL ||
     "openrouter/anthropic/claude-sonnet-4.6",
   xUsername: process.env.X_USERNAME || "",
 };

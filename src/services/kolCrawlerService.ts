@@ -61,6 +61,7 @@ export interface ICrawlResult {
   handle: string;
   postsFound: number;
   postsSaved: number;
+  dropped: number;
   errors: string[];
 }
 
@@ -260,13 +261,19 @@ async function createCrawlTask(
 export async function processCrawlResults(
   kolId: string | Types.ObjectId,
   rawPosts: IRawPost[],
-): Promise<{ saved: number; skipped: number; posts: IKolPost[] }> {
+): Promise<{ saved: number; skipped: number; dropped: number; posts: IKolPost[] }> {
   let saved = 0;
   let skipped = 0;
+  let dropped = 0;
   const posts: IKolPost[] = [];
 
   for (const raw of rawPosts) {
     try {
+      if (shouldDropAtCrawl(raw)) {
+        dropped++;
+        continue;
+      }
+
       const existing = await KolPost.findOne({ post_url: raw.post_url });
       if (existing) {
         skipped++;
@@ -311,7 +318,14 @@ export async function processCrawlResults(
     }
   }
 
-  return { saved, skipped, posts };
+  return { saved, skipped, dropped, posts };
+}
+
+function shouldDropAtCrawl(raw: IRawPost): boolean {
+  if (raw.is_retweet) return true;
+  if (raw.content.trim().length < 15) return true;
+  if (raw.is_quote && raw.content.trim().length < 30) return true;
+  return false;
 }
 
 function calculateEngagementScore(post: IRawPost): number {
@@ -374,7 +388,7 @@ export async function processBatchCrawlResult(
         log.info(`[KolCrawler] @${handle}: ${freshPosts.length} fresh posts, keeping top ${MAX_POSTS_PER_HANDLE} by engagement`);
       }
 
-      const { saved, skipped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
+      const { saved, skipped, dropped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
       allSavedPosts.push(...savedPosts);
 
       const now = new Date();
@@ -387,10 +401,11 @@ export async function processBatchCrawlResult(
         handle: kol.handle,
         postsFound: posts.length,
         postsSaved: saved,
+        dropped,
         errors: [],
       });
 
-      log.info(`[KolCrawler] @${handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped`);
+      log.info(`[KolCrawler] @${handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped, ${dropped} dropped at crawl`);
     } catch (error) {
       log.error(`[KolCrawler] Failed processing @${handle}: ${(error as Error).message}`);
       results.push({
@@ -398,6 +413,7 @@ export async function processBatchCrawlResult(
         handle,
         postsFound: 0,
         postsSaved: 0,
+        dropped: 0,
         errors: [(error as Error).message],
       });
     }
@@ -531,6 +547,7 @@ export class KolCrawlerService {
           handle: kol.handle,
           postsFound: 0,
           postsSaved: 0,
+          dropped: 0,
           errors: [(error as Error).message],
         });
       }
@@ -569,6 +586,7 @@ export class KolCrawlerService {
       handle: kol.handle,
       postsFound: 0, // Will be updated when task completes
       postsSaved: 0,
+      dropped: 0,
       errors: [],
     };
   }

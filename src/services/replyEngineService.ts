@@ -1,6 +1,5 @@
 /** ReplyEngineService — Generate suggestions and manage reply execution (AFK + Manual modes) */
 import { log } from "../utils/logger.js";
-import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { settings as appSettings } from "../config/settings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { KolPost, EKolPostStatus } from "../db/models/KolPost.js";
@@ -13,7 +12,6 @@ import {
   type ISuggestion,
 } from "../db/models/KolReplySuggestion.js";
 import { KolSettings } from "../db/models/KolSettings.js";
-import { KolReputationCache } from "../db/models/KolReputationCache.js";
 import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
 import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
@@ -85,10 +83,9 @@ async function queueReplyExecution(
   priority?: number,
   handleGroup?: string | null,
 ): Promise<string> {
-  const escapedContent = replyContent.replace(/'/g, "'\''");
   const prompt = REPLY_EXECUTE_PROMPT_TEMPLATE
     .replace("{{post_url}}", postUrl)
-    .replace("{{reply_content}}", escapedContent);
+    .replace("{{reply_content}}", replyContent);
 
   const escapedPrompt = prompt.replace(/'/g, "'\''");
   const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
@@ -105,6 +102,22 @@ async function queueReplyExecution(
 
   log.info(`[ReplyEngine] Queued reply execution task: ${task._id}`);
   return String(task._id);
+}
+
+// ── Reply Gate ──────────────────────────────────────────────────────────────
+
+type PostAnalysisExt = {
+  virality_score?: number;
+  is_spam?: boolean;
+  quality_score?: number;
+} | null | undefined;
+
+function passesReplyGate(analysis: PostAnalysisExt): boolean {
+  if (!analysis) return false;
+  if ((analysis.virality_score ?? 0) < 30) return false;
+  if (analysis.is_spam === true) return false;
+  if ((analysis.quality_score ?? 100) < 40) return false;
+  return true;
 }
 
 // ── Suggestion Generation ───────────────────────────────────────────────────
@@ -152,6 +165,19 @@ export class ReplyEngineService {
       }
     }
 
+    // Pre-reply gate: check virality, spam, quality before spending Sonnet budget
+    const analysisExt = post.analysis as PostAnalysisExt;
+    if (!passesReplyGate(analysisExt)) {
+      await KolPost.findByIdAndUpdate(post._id, { status: EKolPostStatus.SKIPPED });
+      log.info(
+        `[ReplyEngine] Post ${post._id} failed reply gate ` +
+        `(virality=${post.analysis?.virality_score ?? "n/a"}, ` +
+        `spam=${(post.analysis as PostAnalysisExt)?.is_spam ?? "n/a"}, ` +
+        `quality=${(post.analysis as PostAnalysisExt)?.quality_score ?? "n/a"})`,
+      );
+      return null;
+    }
+
     // Build generation prompt using Ethan's learned personality from DB
     const ownProfile = await ownAccountService.getProfile();
     const ethan = ownProfile.effective_profile;
@@ -183,8 +209,11 @@ export class ReplyEngineService {
     const mode = settings.default_mode;
 
     // Queue generation task via OpenClaw
+    // TODO: Prompt caching for author voice block (~550 tokens, ~$0.4/day savings)
+    // Blocked: OpenClaw CLI uses flat --message string; cache_control requires structured messages array.
+    // To enable: switch reply gen to direct Anthropic/OpenRouter API call with messages array + cache_control.
     const escapedPrompt = prompt.replace(/'/g, "'\''");
-    const command = `agent --agent ${appSettings.openClawAgent} --model ${appSettings.openClawAnalysisModel} --message '${escapedPrompt}'`;
+    const command = `agent --agent ${appSettings.openClawAgent} --model ${appSettings.openClawReplyModel} --message '${escapedPrompt}'`;
 
     // Create placeholder suggestion (will be filled when task completes)
     const suggestion = await KolReplySuggestion.create({

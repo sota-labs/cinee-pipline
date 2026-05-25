@@ -61,6 +61,8 @@ export interface IAnalysisResult {
   sentiment: ESentiment;
   trending_topics: string[];
   virality_score: number;
+  is_spam?: boolean;
+  quality_score?: number;
 }
 
 const analysisResultSchema = new Schema<IAnalysisResult>(
@@ -73,6 +75,8 @@ const analysisResultSchema = new Schema<IAnalysisResult>(
     },
     trending_topics: { type: [String], default: [] },
     virality_score: { type: Number, default: 0, min: 0, max: 100 },
+    is_spam: { type: Boolean, default: false },
+    quality_score: { type: Number, default: 100, min: 0, max: 100 },
   },
   { _id: false },
 );

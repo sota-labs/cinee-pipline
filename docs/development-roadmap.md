@@ -1,6 +1,6 @@
 # Development Roadmap
 
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-25
 
 ## Overview
 
@@ -9,6 +9,25 @@ This document tracks the project phases, milestones, and progress for the cinee-
 ---
 
 ## Completed Features
+
+### AI Cost Optimization Initiative
+**Status:** Complete (2026-05-25)
+**Estimated Savings:** ~$2.5/day direct, ~$3.8–4.2/day compounded
+
+Multi-phase optimization reducing KOL pipeline AI spend from ~$5.9/day to ~$3.4/day.
+
+**Phases Completed:**
+1. **Crawl-time Content Filter** — Drop retweets and short posts before DB insertion (~$0.7/day savings)
+2. **Pre-reply-gen Gate** — Check virality, spam, quality before Sonnet task creation (~$0.4/day savings)
+3. **Merged Analysis + Minimax Swap** — Single analysis task per post using cheaper Minimax model (~$1.01/day savings)
+4. **Prompt Caching** — Documented as blocked (OpenClaw CLI limitation; requires structured message support)
+
+**Key Components:**
+- `shouldDropAtCrawl()` filter in `kolCrawlerService`
+- `passesReplyGate()` gate in `replyEngineService`
+- `MERGED_ANALYSIS_PROMPT` and `buildMergedAnalysisPrompt()` in `kolPrompts`
+- Minimax model integration in `kolAnalyzerService`
+- `is_spam` and `quality_score` fields added to KolPost analysis subdocument
 
 ### Own Account Post Seeding for AI Learning
 **Status:** Complete (2026-05-18)

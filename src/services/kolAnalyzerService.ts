@@ -8,8 +8,7 @@ import {
   ESentiment,
 } from "../db/models/KolPost.js";
 import {
-  buildPostAnalysisPrompt,
-  buildCommentPatternPrompt,
+  buildMergedAnalysisPrompt,
 } from "../prompts/kolPrompts.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
@@ -23,6 +22,8 @@ export interface IAnalysisResult {
   sentiment: ESentiment;
   trendingTopics: string[];
   viralityScore: number;
+  isSpam: boolean;
+  qualityScore: number;
 }
 
 export interface IEngagementPattern {
@@ -117,6 +118,8 @@ export async function processPostAnalysisResult(
     sentiment,
     trendingTopics: parsed.trending_topics || [],
     viralityScore: Math.max(0, Math.min(100, parsed.virality_score || 0)),
+    isSpam: parsed.is_spam ?? false,
+    qualityScore: Math.max(0, Math.min(100, parsed.quality_score ?? 100)),
   };
 }
 
@@ -209,41 +212,27 @@ export class KolAnalyzerService {
 
     const taskIds: string[] = [];
 
-    // 1. Post content analysis
-    const analysisPrompt = buildPostAnalysisPrompt({
+    const mergedPrompt = buildMergedAnalysisPrompt({
       postContent: post.content,
       likes: post.likes,
       comments: post.comments,
       retweets: post.retweets,
       views: post.views,
+      topComments: post.top_comments,
     });
 
-    const analysisTaskId = await queueAnalysisTask(
+    const taskId = await queueAnalysisTask(
       "post_analysis",
-      analysisPrompt,
+      mergedPrompt,
       String(post._id),
-      undefined,
+      settings.openClawAnalysisModel,
       priority,
       handleGroup,
     );
-    taskIds.push(analysisTaskId);
-
-    // 2. Comment pattern analysis (if has comments)
-    if (post.top_comments.length > 0) {
-      const patternPrompt = buildCommentPatternPrompt(post.top_comments);
-      const patternTaskId = await queueAnalysisTask(
-        "comment_pattern",
-        patternPrompt,
-        String(post._id),
-        undefined,
-        priority,
-        handleGroup,
-      );
-      taskIds.push(patternTaskId);
-    }
+    taskIds.push(taskId);
 
     log.info(
-      `[KolAnalyzer] Queued ${taskIds.length} analysis tasks for post ${post._id}`,
+      `[KolAnalyzer] Queued merged analysis task for post ${post._id}`,
     );
     return taskIds;
   }
@@ -266,6 +255,8 @@ export class KolAnalyzerService {
       sentiment: analysis.sentiment,
       trending_topics: analysis.trendingTopics,
       virality_score: analysis.viralityScore,
+      is_spam: analysis.isSpam,
+      quality_score: analysis.qualityScore,
     };
 
     if (pattern) {

@@ -1,8 +1,63 @@
 # Project Changelog
 
-**Last Updated:** 2026-05-22
+**Last Updated:** 2026-05-25
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-05-25] - AI Cost Optimization: Crawl Filter, Reply Gate, Merged Analysis, Minimax Swap
+
+### Added
+
+- **Crawl-time Content Filter** (`src/services/kolCrawlerService.ts`)
+  - New function: `shouldDropAtCrawl()` filters low-value posts before DB insertion
+  - Drops retweets, posts < 15 chars, quote posts < 30 chars
+  - New field: `dropped` count in `ICrawlResult` interface
+  - Estimated savings: ~$0.7/day
+
+- **Pre-reply-gen Gate** (`src/services/replyEngineService.ts`)
+  - New function: `passesReplyGate()` checks virality, spam, quality before Sonnet task creation
+  - Gates on: `virality_score < 30`, `is_spam === true`, `quality_score < 40`
+  - Skipped posts marked with status `SKIPPED`
+  - Estimated savings: ~$0.4/day
+
+- **Merged Analysis Prompt** (`src/prompts/kolPrompts.ts`)
+  - New constant: `MERGED_ANALYSIS_PROMPT` combines post analysis + comment pattern analysis
+  - New function: `buildMergedAnalysisPrompt()` for single-pass analysis
+  - Reduces 2 analysis tasks per post to 1
+
+- **Minimax Model Swap** (`src/config/settings.ts`, `src/services/kolAnalyzerService.ts`)
+  - `openClawAnalysisModel` default changed to `openrouter/minimax/minimax-m2.5`
+  - `queuePostAnalysis()` now creates 1 merged task instead of 2
+  - Estimated savings: ~$1.01/day
+
+### Modified
+
+- **KOL Post Model** (`src/db/models/KolPost.ts`)
+  - `analysis` subdocument: added `is_spam: Boolean` and `quality_score: Number` fields
+  - Updated `IAnalysisResult` interface: added `isSpam` and `qualityScore` fields
+
+- **KOL Analyzer Service** (`src/services/kolAnalyzerService.ts`)
+  - `processPostAnalysisResult()` now returns `isSpam` and `qualityScore`
+  - `applyAnalysisResults()` stores `is_spam` and `quality_score` on post.analysis
+  - `queuePostAnalysis()` creates single merged task with Minimax model
+
+- **KOL Crawler Service** (`src/services/kolCrawlerService.ts`)
+  - `processCrawlResults()` filters posts via `shouldDropAtCrawl()` before insertion
+  - Returns `dropped` count in result object
+  - `processBatchCrawlResult()` logs dropped count per handle
+
+### Technical Details
+
+- Total estimated savings: ~$2.5/day direct, ~$3.8–4.2/day compounded
+- Phase 1 (crawl filter) reduces posts entering pipeline, compounding savings on downstream phases
+- Phase 2 (reply gate) uses `is_spam`/`quality_score` fields populated by Phase 3 (null-safe until Phase 3 lands)
+- Phase 4 (prompt caching) documented as blocked — OpenClaw CLI uses flat `--message` string which doesn't support `cache_control` structured messages
+
+### Breaking Changes
+
+- None — all changes are additive or internal optimizations
 
 ---
 

@@ -172,7 +172,8 @@ tasksRouter.patch("/:id/complete", async (req: Request, res: Response) => {
             if (payload.analysisType === "post_analysis") {
               const result = await processPostAnalysisResult(relatedId, rawResult);
               if (result) {
-                await kolAnalyzerService.applyAnalysisResults(relatedId, result);
+                const pattern = await processCommentPatternResult(relatedId, rawResult);
+                await kolAnalyzerService.applyAnalysisResults(relatedId, result, pattern ?? undefined);
                 log.info(`[Webhook] Applied post_analysis to post ${relatedId}, triggering generateSuggestions`);
                 // Auto-trigger suggestion generation
                 await replyEngineService.generateSuggestions(relatedId);

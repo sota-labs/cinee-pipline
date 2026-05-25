@@ -60,6 +60,73 @@ Respond in this exact JSON format:
 }
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
+// ── Merged Analysis Prompt ────────────────────────────────────────────────────
+
+export const MERGED_ANALYSIS_PROMPT = `Analyze this social media post and its comments in one pass.
+
+POST CONTENT:
+{{post_content}}
+
+ENGAGEMENT METRICS:
+- Likes: {{likes}}
+- Comments: {{comments}}
+- Retweets: {{retweets}}
+- Views: {{views}}
+
+TOP COMMENTS:
+{{top_comments}}
+
+Your task:
+1. Write a concise 2-3 sentence summary of the post
+2. Determine the sentiment (positive/negative/neutral)
+3. Identify up to 3 trending topics mentioned
+4. Calculate a virality score (0-100) based on engagement rate
+5. Quick safety check: detect spam or low-quality content
+6. Give a quality score (0-100) for reply-worthiness
+7. Identify the dominant comment tone (humor/agreement/debate/curiosity/questions)
+8. Extract common phrases/slangs from comments
+9. Note emoji patterns frequently used in comments
+10. Calculate the percentage of comments that are questions
+
+Respond in this exact JSON format:
+{
+  "summary": "...",
+  "sentiment": "positive|negative|neutral",
+  "trending_topics": ["topic1", "topic2"],
+  "virality_score": 75,
+  "is_spam": false,
+  "quality_score": 85,
+  "dominant_tone": "humor|agreement|debate|curiosity|questions",
+  "common_phrases": ["phrase1", "phrase2"],
+  "emoji_trend": ["emoji1", "emoji2"],
+  "question_ratio": 0.3,
+  "successful_reply_types": "short witty responses|detailed explanations|agreement with added value"
+}
+${OUTPUT_FORMAT_INSTRUCTION}`;
+
+export function buildMergedAnalysisPrompt(params: {
+  postContent: string;
+  likes: number;
+  comments: number;
+  retweets: number;
+  views: number;
+  topComments: Array<{ content: string; author_handle: string; likes: number }>;
+}): string {
+  const formatted = params.topComments.length > 0
+    ? params.topComments
+        .map((c, i) => `${i + 1}. @${c.author_handle}: "${c.content}" (${c.likes} likes)`)
+        .join("\n")
+    : "(no comments)";
+
+  return MERGED_ANALYSIS_PROMPT
+    .replace("{{post_content}}", params.postContent)
+    .replace("{{likes}}", String(params.likes))
+    .replace("{{comments}}", String(params.comments))
+    .replace("{{retweets}}", String(params.retweets))
+    .replace("{{views}}", String(params.views))
+    .replace("{{top_comments}}", formatted);
+}
+
 // ── Reply Generation Prompts ─────────────────────────────────────────────────
 
 export const REPLY_GENERATION_PROMPT = `
