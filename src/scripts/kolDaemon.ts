@@ -117,8 +117,8 @@ async function startDaemon() {
 
   // Schedule jobs
   
-  // Tier-based crawl every 15 minutes — only crawls KOLs whose per-tier interval has elapsed
-  cron.schedule("*/15 * * * *", executeTierCrawl);
+  // Tier-based crawl every hour — only crawls KOLs whose per-tier interval has elapsed
+  cron.schedule("0 * * * *", executeTierCrawl);
   
   // Analyze pending posts every 10 minutes
   cron.schedule("*/10 * * * *", executeAnalyze);
