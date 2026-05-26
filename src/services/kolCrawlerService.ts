@@ -12,7 +12,7 @@ import {
   parseBatchCrawlResult,
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
-import { tierToPriority } from "../utils/taskPriority.js";
+import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -409,8 +409,8 @@ export async function processBatchCrawlResult(
       const postsNeedingComments = savedPosts.filter(p => p.comments > 10).slice(0, 15);
       if (postsNeedingComments.length > 0) {
         try {
-          // Use KOL tier priority so comment→analyze→reply pipeline runs before next handle's crawl
-          const commentPriority = tierToPriority(kol.tier);
+          // Pipeline boost (+5) ensures comment task beats a same-tier batch crawl task
+          const commentPriority = tierToPipelinePriority(kol.tier);
           await createCommentCrawlTask(
             postsNeedingComments.map(p => ({ id: String(p._id), post_url: p.post_url })),
             commentPriority,

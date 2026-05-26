@@ -13,7 +13,7 @@ import {
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
-import { tierToPriority } from "../utils/taskPriority.js";
+import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -205,9 +205,9 @@ export class KolAnalyzerService {
       return [];
     }
 
-    // Lookup KOL tier for priority propagation
+    // Lookup KOL tier for priority propagation — pipeline boost ensures analyze runs before next crawl
     const kol = await KolProfile.findById(post.kol_id).select("tier handle").lean();
-    const priority = kol ? tierToPriority(kol.tier) : 0;
+    const priority = kol ? tierToPipelinePriority(kol.tier) : 0;
     const handleGroup = kol?.handle ?? null;
 
     const taskIds: string[] = [];

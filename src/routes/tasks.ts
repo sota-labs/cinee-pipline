@@ -67,9 +67,13 @@ tasksRouter.get("/", async (req: Request, res: Response) => {
     if (type) filter.type = type;
     if (ref_id) filter.ref_id = ref_id;
 
+    // When fetching pending tasks (worker poll), sort by priority desc so high-priority
+    // tasks (comment→analyze→reply pipeline) run before new batch crawls
+    const isPendingQuery = filter.status === "pending";
+
     const [tasks, total] = await Promise.all([
       Task.find(filter)
-        .sort({ created_at: 1 })
+        .sort(isPendingQuery ? { priority: -1, created_at: 1 } : { created_at: 1 })
         .skip(parseInt(skip as string))
         .limit(parseInt(limit as string)),
       Task.countDocuments(filter),

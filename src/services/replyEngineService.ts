@@ -16,7 +16,7 @@ import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
 import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
-import { tierToPriority } from "../utils/taskPriority.js";
+import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
 import type { Types } from "mongoose";
 
 export interface IGenerateSuggestionsResult {
@@ -145,7 +145,7 @@ export class ReplyEngineService {
       return null;
     }
 
-    const priority = tierToPriority(kol.tier);
+    const priority = tierToPipelinePriority(kol.tier);
     const handleGroup = kol.handle;
 
     const settings = await KolSettings.getSettings();
@@ -435,9 +435,9 @@ export class ReplyEngineService {
       return { success: false, error: "Hourly reply limit reached" };
     }
 
-    // Lookup KOL priority for task ordering
+    // Lookup KOL priority for task ordering — pipeline boost ensures reply runs before next crawl
     const kol = await KolProfile.findById(post.kol_id).select("tier handle").lean();
-    const priority = kol ? tierToPriority(kol.tier) : 0;
+    const priority = kol ? tierToPipelinePriority(kol.tier) : 0;
     const handleGroup = kol?.handle ?? null;
 
     // Queue execution
