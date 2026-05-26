@@ -274,6 +274,14 @@ export async function processCrawlResults(
         continue;
       }
 
+      // Hard guard: reject posts older than MAX_CRAWL_WINDOW_MS regardless of agent output
+      const postedAt = new Date(raw.posted_at);
+      if (isNaN(postedAt.getTime()) || postedAt < new Date(Date.now() - MAX_CRAWL_WINDOW_MS)) {
+        log.warn(`[KolCrawler] Dropping stale post ${raw.post_url} (posted_at: ${raw.posted_at})`);
+        dropped++;
+        continue;
+      }
+
       const existing = await KolPost.findOne({ post_url: raw.post_url });
       if (existing) {
         skipped++;

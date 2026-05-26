@@ -213,6 +213,11 @@ export async function sendSuggestionForReview(
 
   let text = `📱 *New KOL Post from @${escapeMarkdown(handle)}*\n\n`;
   text += `📝 *Post:*\n${escapeMarkdown(post.content.substring(0, 200))}${post.content.length > 200 ? "\\.\\.\\." : ""}\n\n`;
+
+  if (post.analysis?.summary) {
+    text += `🔍 *Summary:*\n${escapeMarkdown(post.analysis.summary)}\n\n`;
+  }
+
   text += `💡 *AI Suggestions:*\n`;
 
   suggestion.suggestions.forEach((s, i) => {
