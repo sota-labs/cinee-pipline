@@ -193,7 +193,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
     const kol = await KolProfile.findByIdAndUpdate(
       req.params.id,
       filteredUpdates,
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     if (!kol) {

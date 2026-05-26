@@ -180,7 +180,7 @@ export async function incStats(input: IncStatsInput): Promise<IPriorityAccount |
         relationship_tier: ERelationshipTier.STRANGER,
       },
     },
-    { new: true, upsert: true },
+    { returnDocument: 'after', upsert: true },
   );
 
   return refreshScores(account);

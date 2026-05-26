@@ -63,7 +63,7 @@ export async function updateTopicConfig(
   id: string,
   data: Partial<ITopicConfig>,
 ): Promise<ITopicConfig | null> {
-  return TopicConfig.findByIdAndUpdate(id, { $set: data }, { new: true }).lean() as Promise<ITopicConfig | null>;
+  return TopicConfig.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' }).lean() as Promise<ITopicConfig | null>;
 }
 
 /** Delete a topic config by ID. */
@@ -81,7 +81,7 @@ export async function activateTopicConfig(id: string): Promise<ITopicConfig | nu
   return TopicConfig.findByIdAndUpdate(
     id,
     { $set: { is_active: true } },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean() as Promise<ITopicConfig | null>;
 }
 

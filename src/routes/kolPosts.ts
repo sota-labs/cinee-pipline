@@ -263,7 +263,7 @@ router.post("/replies/:id/skip", async (req: Request, res: Response) => {
       {
         execution_status: "skipped" as const,
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     if (!suggestion) {
@@ -331,7 +331,7 @@ router.patch("/:id/comments", async (req: Request, res: Response) => {
     const post = await KolPost.findByIdAndUpdate(
       req.params.id,
       { top_comments, comments_crawled: true },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!post) return res.status(404).json({ error: "Post not found" });
 

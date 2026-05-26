@@ -133,7 +133,7 @@ export class ReplyEngineService {
     const post = await KolPost.findOneAndUpdate(
       { _id: postId, status: EKolPostStatus.ANALYZED, comments_crawled: true },
       { $set: { status: EKolPostStatus.PENDING_REPLY } },
-      { new: true },
+      { returnDocument: 'after' },
     ).populate("kol_id");
 
     if (!post) {

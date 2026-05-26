@@ -327,7 +327,7 @@ export class SelfReplyService {
     const queue = await SelfReplyQueue.findByIdAndUpdate(
       queueId,
       { queue_status: EQueueStatus.PAUSED },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return !!queue;
   }
@@ -339,7 +339,7 @@ export class SelfReplyService {
     const queue = await SelfReplyQueue.findByIdAndUpdate(
       queueId,
       { queue_status: EQueueStatus.ACTIVE },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return !!queue;
   }

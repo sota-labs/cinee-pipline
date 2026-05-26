@@ -56,7 +56,7 @@ tasksRouter.get("/next-pending", async (req: Request, res: Response) => {
       const task = await Task.findOneAndUpdate(
         query,
         { $set: { status: ETaskStatus.PROCESSING, started_at: new Date() } },
-        { sort: { priority: -1, created_at: 1 }, new: true },
+        { sort: { priority: -1, created_at: 1 }, returnDocument: 'after' },
       ).lean();
 
       if (!task) break;

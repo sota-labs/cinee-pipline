@@ -204,7 +204,7 @@ export class ReputationCheckerService {
           trust_score: parsed.trust_score,
           recommendation: parsed.recommendation as EReputationRecommendation,
         },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: 'after' },
       );
 
       log.info(`[ReputationChecker] Cached reputation for @${handle}: ${parsed.trust_score}/100`);

@@ -64,7 +64,7 @@ toolsRouter.patch("/db/posts/:id", async (req: Request, res: Response) => {
     const post = await Post.findByIdAndUpdate(
       req.params.id as string,
       { $set: req.body },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!post) return res.status(404).json({ success: false, error: "Post not found" });
     res.json({ success: true, post });
@@ -222,7 +222,7 @@ toolsRouter.post("/db/persona", async (req: Request, res: Response) => {
     const knowledge = await PersonaKnowledge.findOneAndUpdate(
       { topic: req.body.topic },
       { $set: req.body },
-      { upsert: true, new: true, runValidators: true }
+      { upsert: true, returnDocument: 'after', runValidators: true }
     );
     res.json({ success: true, id: knowledge._id, knowledge });
   } catch (e: any) {
@@ -298,7 +298,7 @@ toolsRouter.post("/db/curation", async (req: Request, res: Response) => {
         CurationSource.findOneAndUpdate(
           { source_url: item.source_url },
           { $set: item },
-          { upsert: true, new: true, runValidators: true },
+          { upsert: true, returnDocument: 'after', runValidators: true },
         ),
       ),
     );
@@ -407,7 +407,7 @@ toolsRouter.patch("/db/curation/:id", async (req: Request, res: Response) => {
     const source = await CurationSource.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true, runValidators: true },
+      { returnDocument: 'after', runValidators: true },
     );
     if (!source)
       return res
