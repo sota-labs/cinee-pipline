@@ -155,33 +155,28 @@ export async function sendConfirmationRequest(
   const kol = post.kol_id as unknown as { handle: string };
   const handle = kol?.handle || "unknown";
 
-  const selected = suggestion.suggestions.find(
-    (s) => s.id === suggestion.selected_suggestion_id,
-  );
-  if (!selected) return null;
-
   let text = `🤖 *Reply to @${escapeMarkdown(handle)}*\n\n`;
-  text += `📝 *Post:* ${escapeMarkdown(post.content.substring(0, 150))}${post.content.length > 150 ? "\\.\\.\\." : ""}\n\n`;
-  text += `💬 *Reply:* "${escapeMarkdown(selected.content)}"\n`;
-  text += `📊 Confidence: ${escapeMarkdown(String(selected.confidence))}% \\| Tone: ${escapeMarkdown(selected.tone)}\n\n`;
-  text += `⏱ _Auto\\-reject in 1 hour if no response_`;
+  text += `📝 *Post:*\n${escapeMarkdown(post.content.substring(0, 200))}${post.content.length > 200 ? "\\.\\.\\." : ""}\n\n`;
 
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: "✅ Confirm", callback_data: `kol_confirm:${suggestion._id}` },
-        { text: "✏️ Edit", callback_data: `kol_edit:${suggestion._id}` },
-        { text: "❌ Reject", callback_data: `kol_confirm_reject:${suggestion._id}` },
-      ],
-    ],
-  };
+  if (post.analysis?.summary) {
+    text += `🔍 *Summary:*\n${escapeMarkdown(post.analysis.summary)}\n\n`;
+  }
+
+  text += `💡 *AI Suggestions:*\n`;
+  suggestion.suggestions.forEach((s, i) => {
+    const marker = s.id === suggestion.selected_suggestion_id ? "⭐" : `${i + 1}\\.`;
+    text += `${marker} "${escapeMarkdown(s.content)}"\n`;
+    text += `   Confidence: ${escapeMarkdown(String(s.confidence))}% \\| Tone: ${escapeMarkdown(s.tone)}\n\n`;
+  });
+
+  text += `⏱ _Auto\\-reject in 1 hour if no response_`;
 
   try {
     const result = await callTelegram("sendMessage", {
       chat_id: chatId,
       text,
       parse_mode: "MarkdownV2",
-      reply_markup: keyboard,
+      reply_markup: buildSuggestionKeyboard(String(suggestion._id), suggestion.suggestions.length),
     });
 
     await KolReplySuggestion.findByIdAndUpdate(suggestion._id, {
