@@ -348,12 +348,11 @@ export async function processBatchCrawlResult(
   taskResult: string,
   handles: string[],
   sinceByHandle?: Record<string, string>,
-  priority?: number,
+  _priority?: number,
   handleGroup?: string | null,
 ): Promise<ICrawlResult[]> {
   const batchResults = parseBatchCrawlResult(taskResult);
   const results: ICrawlResult[] = [];
-  const allSavedPosts: IKolPost[] = [];
 
   for (const { handle, posts } of batchResults) {
     try {
@@ -389,7 +388,6 @@ export async function processBatchCrawlResult(
       }
 
       const { saved, skipped, dropped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
-      allSavedPosts.push(...savedPosts);
 
       const now = new Date();
       kol.last_crawled_at = now;
@@ -406,6 +404,23 @@ export async function processBatchCrawlResult(
       });
 
       log.info(`[KolCrawler] @${handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped, ${dropped} dropped at crawl`);
+
+      // Trigger Phase 2 immediately after saving posts for this KOL
+      const postsNeedingComments = savedPosts.filter(p => p.comments > 10).slice(0, 15);
+      if (postsNeedingComments.length > 0) {
+        try {
+          // Use KOL tier priority so comment→analyze→reply pipeline runs before next handle's crawl
+          const commentPriority = tierToPriority(kol.tier);
+          await createCommentCrawlTask(
+            postsNeedingComments.map(p => ({ id: String(p._id), post_url: p.post_url })),
+            commentPriority,
+            handleGroup ?? null,
+          );
+          log.info(`[KolCrawler] Queued comment crawl for ${postsNeedingComments.length} posts (@${handle})`);
+        } catch (error) {
+          log.error(`[KolCrawler] Failed to create comment crawl task for @${handle}: ${(error as Error).message}`);
+        }
+      }
     } catch (error) {
       log.error(`[KolCrawler] Failed processing @${handle}: ${(error as Error).message}`);
       results.push({
@@ -416,24 +431,6 @@ export async function processBatchCrawlResult(
         dropped: 0,
         errors: [(error as Error).message],
       });
-    }
-  }
-
-  // Trigger Phase 2: comment crawl for posts with comments > 10
-  const postsNeedingComments = allSavedPosts
-    .filter(p => p.comments > 10)
-    .slice(0, 15); // max 15 posts per batch (5 per handle × 3 handles)
-
-  if (postsNeedingComments.length > 0) {
-    try {
-      await createCommentCrawlTask(
-        postsNeedingComments.map(p => ({ id: String(p._id), post_url: p.post_url })),
-        priority ?? 0,
-        handleGroup ?? null,
-      );
-      log.info(`[KolCrawler] Queued comment crawl for ${postsNeedingComments.length} posts`);
-    } catch (error) {
-      log.error(`[KolCrawler] Failed to create comment crawl task: ${(error as Error).message}`);
     }
   }
 
