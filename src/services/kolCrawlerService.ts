@@ -13,6 +13,7 @@ import {
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
+import { buildAgentCommand } from "../utils/agentCommand.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -172,8 +173,7 @@ async function createBatchCrawlTask(
   });
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
-  task.prompt = command;
+  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
   await task.save();
 
   log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${task._id}`);
@@ -213,8 +213,7 @@ async function createCommentCrawlTask(
   });
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
-  task.prompt = command;
+  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
   await task.save();
 
   log.info(`[KolCrawler] Created comment crawl task for ${posts.length} posts: ${task._id}`);
@@ -244,8 +243,7 @@ async function createCrawlTask(
   });
 
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const command = `agent --agent ${settings.openClawAgent} --model ${settings.openClawCrawlModel} --thinking off --message '${escapedPrompt}'`;
-  task.prompt = command;
+  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
   await task.save();
 
   log.info(`[KolCrawler] Queued crawl task for @${handle}: ${task._id}`);

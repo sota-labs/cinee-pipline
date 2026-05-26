@@ -17,6 +17,7 @@ import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
+import { buildAgentCommand } from "../utils/agentCommand.js";
 import type { Types } from "mongoose";
 
 export interface IGenerateSuggestionsResult {
@@ -88,17 +89,19 @@ async function queueReplyExecution(
     .replace("{{reply_content}}", replyContent);
 
   const escapedPrompt = prompt.replace(/'/g, "'\''");
-  const command = `agent --agent ${appSettings.openClawAgent} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: appSettings.openClawAgent,
-    prompt: command,
+    prompt: "pending",
     status: ETaskStatus.PENDING,
     priority: priority ?? 0,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { suggestionId, action: "execute_reply" },
   });
+
+  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: appSettings.openClawAgent, escapedPrompt });
+  await task.save();
 
   log.info(`[ReplyEngine] Queued reply execution task: ${task._id}`);
   return String(task._id);
@@ -213,7 +216,6 @@ export class ReplyEngineService {
     // Blocked: OpenClaw CLI uses flat --message string; cache_control requires structured messages array.
     // To enable: switch reply gen to direct Anthropic/OpenRouter API call with messages array + cache_control.
     const escapedPrompt = prompt.replace(/'/g, "'\''");
-    const command = `agent --agent ${appSettings.openClawAgent} --model ${appSettings.openClawReplyModel} --message '${escapedPrompt}'`;
 
     // Create placeholder suggestion (will be filled when task completes)
     const suggestion = await KolReplySuggestion.create({
@@ -226,7 +228,7 @@ export class ReplyEngineService {
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
       agent: appSettings.openClawAgent,
-      prompt: command,
+      prompt: "pending",
       status: ETaskStatus.PENDING,
       priority,
       ...(handleGroup != null ? { handle_group: handleGroup } : {}),
@@ -239,6 +241,9 @@ export class ReplyEngineService {
         handle_group: handleGroup,
       },
     });
+
+    task.prompt = buildAgentCommand({ taskId: String(task._id), agent: appSettings.openClawAgent, model: appSettings.openClawReplyModel, escapedPrompt });
+    await task.save();
 
     log.info(
       `[ReplyEngine] Queued suggestion generation for post ${postId} ` +

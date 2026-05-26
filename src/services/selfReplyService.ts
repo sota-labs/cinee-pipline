@@ -10,6 +10,7 @@ import { buildSelfReplyPrompt, buildExecuteReplyPrompt } from "../prompts/kolPro
 import { settings } from "../config/settings.js";
 import type { IPendingComment } from "../db/models/SelfReplyQueue.js";
 import type { Types } from "mongoose";
+import { buildAgentCommand } from "../utils/agentCommand.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -248,14 +249,15 @@ export class SelfReplyService {
     try {
       const promptText = buildExecuteReplyPrompt(queue.post_url, commentId, replyContent);
       const escapedPrompt = promptText.replace(/'/g, "'\\''");
-      const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
       const task = await Task.create({
         type: ETaskType.SINGLE_TASK_TRIGGER,
         agent: settings.openClawAgent,
-        prompt: command,
+        prompt: "pending",
         status: ETaskStatus.PENDING,
         payload: { action: "execute_self_reply", queueId, commentId },
       });
+      task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, escapedPrompt });
+      await task.save();
 
       log.info(`[SelfReply] Queued execute task ${task._id} for comment ${commentId}`);
       return { success: true, replyId: String(task._id) };
@@ -428,12 +430,11 @@ export class SelfReplyService {
     });
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
-    const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
 
     const task = await Task.create({
       type: ETaskType.CRON_JOB_TRIGGER,
       agent: settings.openClawAgent,
-      prompt: command,
+      prompt: "pending",
       status: ETaskStatus.PENDING,
       payload: {
         analysisType: "self_reply_generation",
@@ -441,6 +442,8 @@ export class SelfReplyService {
         comment_id: comment.comment_id,
       },
     });
+    task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, escapedPrompt });
+    await task.save();
 
     // Mark comment as queued so it won't be picked up again
     const c = queue.pending_comments.find((pc) => pc.comment_id === comment.comment_id);

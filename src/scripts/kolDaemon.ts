@@ -12,6 +12,7 @@ import cron from "node-cron";
 import { connectDb } from "../db/connection.js";
 import { closeRedis } from "../db/redis.js";
 import { log } from "../utils/logger.js";
+import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 
 import { crawlDueKols } from "../services/kolCrawlerService.js";
 import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
@@ -82,13 +83,28 @@ async function executeAutoReject() {
 }
 
 async function executeSessionCleanup() {
-  const { execSync } = await import("node:child_process");
   try {
     const sessionDir = `${process.env.HOME}/.openclaw/agents/main/sessions`;
-    execSync(`find "${sessionDir}" -maxdepth 1 -mtime +3 -delete`);
-    log.info("[KOLDaemon] Session cleanup done");
+    // Only delete files that are explicitly marked as done (.deleted, .reset)
+    // or worker-prefixed session files older than 2h — never touch active .jsonl files
+    const command = [
+      `find "${sessionDir}" -maxdepth 1 -name "*.deleted.*" -delete`,
+      `find "${sessionDir}" -maxdepth 1 -name "*.reset.*" -delete`,
+      `find "${sessionDir}" -maxdepth 1 -name "worker-*.jsonl" -mmin +120 -delete`,
+      `find "${sessionDir}" -maxdepth 1 -name "worker-*.trajectory.jsonl" -mmin +120 -delete`,
+      `find "${sessionDir}" -maxdepth 1 -name "worker-*.trajectory-path.json" -mmin +120 -delete`,
+    ].join(" && ");
+    await Task.create({
+      type: ETaskType.SHELL_EXEC,
+      agent: "",
+      prompt: "",
+      status: ETaskStatus.PENDING,
+      priority: 0,
+      payload: { command },
+    });
+    log.info("[KOLDaemon] Session cleanup task queued");
   } catch (err: unknown) {
-    log.warn(`[KOLDaemon] Session cleanup failed: ${(err as Error).message}`);
+    log.warn(`[KOLDaemon] Failed to queue session cleanup task: ${(err as Error).message}`);
   }
 }
 
@@ -121,8 +137,8 @@ async function startDaemon() {
   // Process self-reply queues every 2 minutes to allow 1-3 min dynamic delay
   cron.schedule("*/2 * * * *", executeSelfReplies);
 
-  // Clean up openclaw session files older than 3 days at 03:00 AM
-  cron.schedule("0 3 * * *", executeSessionCleanup);
+  // Clean up openclaw session files older than 3 days, every 2 hours
+  cron.schedule("0 */2 * * *", executeSessionCleanup);
 
   log.info("[KOLDaemon] Daemon ready — schedules applied.");
 }

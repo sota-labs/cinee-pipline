@@ -14,6 +14,7 @@ import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
+import { buildAgentCommand } from "../utils/agentCommand.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -56,18 +57,19 @@ async function queueAnalysisTask(
   handleGroup?: string | null,
 ): Promise<string> {
   const escapedPrompt = prompt.replace(/'/g, "'\''");
-  const modelFlag = model ? ` --model ${model}` : "";
-  const command = `agent --agent ${settings.openClawAgent}${modelFlag} --message '${escapedPrompt}'`;
 
   const task = await Task.create({
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: command,
+    prompt: "pending",
     status: ETaskStatus.PENDING,
     priority: priority ?? 0,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { analysisType: type, relatedId },
   });
+
+  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model, escapedPrompt });
+  await task.save();
 
   log.info(`[KolAnalyzer] Queued ${type} task: ${task._id}`);
   return String(task._id);

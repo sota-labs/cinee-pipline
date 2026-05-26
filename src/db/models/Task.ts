@@ -17,6 +17,7 @@ export enum ETaskType {
   CRON_JOB_TRIGGER = "cron_job_trigger",
   SINGLE_TASK_TRIGGER = "single_task_trigger",
   KOL_COMMENT_CRAWL = "kol_comment_crawl",
+  SHELL_EXEC = "shell_exec",
 }
 
 export interface ITask extends Document {
