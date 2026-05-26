@@ -74,12 +74,12 @@ export interface IComment {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate to https://x.com/{{handle}}, wait 8s, scroll 3x (2s each).
+const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s, scroll 3x (2s each).
 2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, "{{since}}"), passing the sinceTimestamp as second argument.
    - STOP scrolling immediately if any visible post has posted_at <= "{{since}}" — do not scroll further
    - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
 3. For each post where comments > 10 (max 5 posts):
-   a. Navigate to post_url, wait 4s
+   a. Navigate (target=host) to post_url, wait 4s
    b. Run COMMENT_SCRIPT via page.evaluate(), add result as top_comments on that post
    c. Navigate back
 4. Return JSON: {"posts": <posts array with top_comments populated>}
@@ -96,7 +96,7 @@ ${KOL_COMMENT_SCRIPT}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
-1. Navigate to https://x.com/{handle}, wait 4s, scroll 2x (1s each)
+1. Navigate (target=host) to https://x.com/{handle}, wait 4s, scroll 2x (1s each)
 2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle
    - STOP scrolling immediately if any visible post has posted_at <= sinceTimestamp — do not scroll further
    - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
@@ -115,7 +115,7 @@ Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const COMMENT_CRAWL_PROMPT_TEMPLATE = `For each post below, sequentially:
-1. Navigate to post_url, wait 3s
+1. Navigate (target=host) to post_url, wait 3s
 2. Run COMMENT_SCRIPT via page.evaluate(), collect comments array
 3. Wait 2s before next post
 

@@ -37,7 +37,7 @@ interface IRawOwnPost {
 // ── Prompt Template ────────────────────────────────────────────────────────────
 
 const OWN_ACCOUNT_CRAWL_PROMPT = `Crawl own account posts for AI learning:
-1. Navigate to https://x.com/{{handle}}, wait 8s, scroll 5x (2s each) to load more posts
+1. Navigate to https://x.com/{{handle}}, wait 4s, scroll 5x (2s each) to load more posts
 2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp) with sinceTimestamp: "{{since}}"
 3. Return JSON: {"handle": "{{handle}}", "posts": <posts array>}
 
@@ -54,7 +54,9 @@ class OwnAccountCrawlerService {
    * Queue a crawl task for the own account.
    * Returns the task ID — cinee-worker will execute it and call back with results.
    */
-  async queueCrawlTask(options: IOwnAccountCrawlOptions = {}): Promise<string | null> {
+  async queueCrawlTask(
+    options: IOwnAccountCrawlOptions = {},
+  ): Promise<string | null> {
     const handle = settings.xUsername;
     if (!handle) {
       log.error("[OwnAccountCrawler] X_USERNAME not configured");
@@ -64,9 +66,10 @@ class OwnAccountCrawlerService {
     const daysBack = options.daysBack ?? 30;
     const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
 
-    const prompt = OWN_ACCOUNT_CRAWL_PROMPT
-      .replace(/\{\{handle\}\}/g, handle)
-      .replace(/\{\{since\}\}/g, since.toISOString());
+    const prompt = OWN_ACCOUNT_CRAWL_PROMPT.replace(
+      /\{\{handle\}\}/g,
+      handle,
+    ).replace(/\{\{since\}\}/g, since.toISOString());
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
     const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
@@ -84,7 +87,9 @@ class OwnAccountCrawlerService {
       },
     });
 
-    log.info(`[OwnAccountCrawler] Queued crawl task for @${handle}: ${task._id}`);
+    log.info(
+      `[OwnAccountCrawler] Queued crawl task for @${handle}: ${task._id}`,
+    );
     return String(task._id);
   }
 
@@ -115,10 +120,14 @@ class OwnAccountCrawlerService {
     }
 
     const data = parsed as Record<string, unknown>;
-    const posts = Array.isArray(data.posts) ? (data.posts as IRawOwnPost[]) : [];
+    const posts = Array.isArray(data.posts)
+      ? (data.posts as IRawOwnPost[])
+      : [];
 
     result.postsFound = posts.length;
-    log.info(`[OwnAccountCrawler] Processing ${posts.length} posts from @${handle}`);
+    log.info(
+      `[OwnAccountCrawler] Processing ${posts.length} posts from @${handle}`,
+    );
 
     const toProcess = posts.slice(0, limit);
 
