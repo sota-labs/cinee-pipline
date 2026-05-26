@@ -13,7 +13,7 @@ import {
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
-import { buildAgentCommand } from "../utils/agentCommand.js";
+import { buildAgentCommand, generateTaskId } from "../utils/agentCommand.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -155,10 +155,14 @@ async function createBatchCrawlTask(
   const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE
     .replace(/\{\{handleList\}\}/g, handleList);
 
-  const task = await Task.create({
+  const taskId = generateTaskId();
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+
+  await Task.create({
+    _id: taskId,
     type: ETaskType.SINGLE_TASK_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: "pending",
+    prompt: buildAgentCommand({ taskId: String(taskId), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt }),
     status: ETaskStatus.PENDING,
     priority,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
@@ -172,12 +176,8 @@ async function createBatchCrawlTask(
     },
   });
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
-  await task.save();
-
-  log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${task._id}`);
-  return String(task._id);
+  log.info(`[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${taskId}`);
+  return String(taskId);
 }
 
 /**
@@ -196,10 +196,14 @@ async function createCommentCrawlTask(
   const prompt = COMMENT_CRAWL_PROMPT_TEMPLATE
     .replace(/\{\{postList\}\}/g, postList);
 
-  const task = await Task.create({
+  const taskId = generateTaskId();
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+
+  await Task.create({
+    _id: taskId,
     type: ETaskType.KOL_COMMENT_CRAWL,
     agent: settings.openClawAgent,
-    prompt: "pending",
+    prompt: buildAgentCommand({ taskId: String(taskId), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt }),
     status: ETaskStatus.PENDING,
     priority,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
@@ -212,12 +216,8 @@ async function createCommentCrawlTask(
     },
   });
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
-  await task.save();
-
-  log.info(`[KolCrawler] Created comment crawl task for ${posts.length} posts: ${task._id}`);
-  return String(task._id);
+  log.info(`[KolCrawler] Created comment crawl task for ${posts.length} posts: ${taskId}`);
+  return String(taskId);
 }
 
 /**
@@ -235,19 +235,19 @@ async function createCrawlTask(
     .replace(/\{\{since\}\}/g, sinceISO)
     .replace(/\{\{limit\}\}/g, String(limit));
 
-  const task = await Task.create({
+  const taskId = generateTaskId();
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+
+  await Task.create({
+    _id: taskId,
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: "pending",
+    prompt: buildAgentCommand({ taskId: String(taskId), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt }),
     status: ETaskStatus.PENDING,
   });
 
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model: settings.openClawCrawlModel, escapedPrompt });
-  await task.save();
-
-  log.info(`[KolCrawler] Queued crawl task for @${handle}: ${task._id}`);
-  return String(task._id);
+  log.info(`[KolCrawler] Queued crawl task for @${handle}: ${taskId}`);
+  return String(taskId);
 }
 
 // ── Crawl Result Processor ───────────────────────────────────────────────────

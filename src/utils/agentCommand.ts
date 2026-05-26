@@ -1,3 +1,15 @@
+import { Types } from "mongoose";
+
+/**
+ * Pre-generate a MongoDB ObjectId to use as both task._id and --session-id.
+ * Pass this to Task.create({ _id: taskId }) and buildAgentCommand({ taskId }).
+ * This eliminates the two-step create→save race where a worker could pick up
+ * a task with prompt: "pending" before the second save completes.
+ */
+export function generateTaskId(): Types.ObjectId {
+  return new Types.ObjectId();
+}
+
 /**
  * Build an openclaw agent command with a deterministic session ID derived from task._id.
  * This prevents session takeover errors caused by random session IDs being reused

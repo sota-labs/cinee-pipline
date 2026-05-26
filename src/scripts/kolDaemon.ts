@@ -85,22 +85,17 @@ async function executeAutoReject() {
 async function executeSessionCleanup() {
   try {
     const sessionDir = `${process.env.HOME}/.openclaw/agents/main/sessions`;
-    // Only delete files that are explicitly marked as done (.deleted, .reset)
-    // or worker-prefixed session files older than 2h — never touch active .jsonl files
-    const command = [
-      `find "${sessionDir}" -maxdepth 1 -name "*.deleted.*" -delete`,
-      `find "${sessionDir}" -maxdepth 1 -name "*.reset.*" -delete`,
-      `find "${sessionDir}" -maxdepth 1 -name "worker-*.jsonl" -mmin +120 -delete`,
-      `find "${sessionDir}" -maxdepth 1 -name "worker-*.trajectory.jsonl" -mmin +120 -delete`,
-      `find "${sessionDir}" -maxdepth 1 -name "worker-*.trajectory-path.json" -mmin +120 -delete`,
-    ].join(" && ");
     await Task.create({
       type: ETaskType.SHELL_EXEC,
       agent: "",
       prompt: "",
       status: ETaskStatus.PENDING,
       priority: 0,
-      payload: { command },
+      payload: {
+        action: "session_cleanup",
+        sessionDir,
+        olderThanMinutes: 120,
+      },
     });
     log.info("[KOLDaemon] Session cleanup task queued");
   } catch (err: unknown) {

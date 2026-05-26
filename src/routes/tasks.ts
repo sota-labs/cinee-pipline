@@ -18,29 +18,58 @@ export const tasksRouter = Router();
 // ── Next Pending (worker poll) ────────────────────────────────────────────────
 
 /**
- * GET /api/tasks/next-pending
- * Worker calls this each poll cycle to get the next task to execute.
- * - If a task is currently processing with a handle_group → continue that handle's flow
- * - Otherwise → pick highest priority pending task
- *
- * NOTE: Designed for a single-threaded worker (MAX_CONCURRENT_TASKS=1).
- * With multiple concurrent workers, the two-query approach has a race condition —
- * make the poll+claim atomic (findOneAndUpdate) if concurrency is ever added.
+ * GET /api/tasks/next-pending?limit=N
+ * Returns up to N pending tasks with distinct handle_groups, atomically claimed as PROCESSING.
+ * Excludes handle_groups already being processed to prevent session conflicts.
  */
-tasksRouter.get("/next-pending", async (_req: Request, res: Response) => {
+tasksRouter.get("/next-pending", async (req: Request, res: Response) => {
   try {
-    const processingTask = await Task.findOne({ status: ETaskStatus.PROCESSING })
+    const limit = Math.max(1, parseInt((req.query.limit as string) ?? "1", 10));
+
+    // Find all handle_groups currently being processed
+    const processingTasks = await Task.find({ status: ETaskStatus.PROCESSING })
       .select("handle_group")
       .lean();
-    const activeHandle = processingTask?.handle_group ?? null;
+    const busyHandleGroups = new Set(
+      processingTasks.map((t) => t.handle_group).filter((h): h is string => h != null),
+    );
 
-    const query: Record<string, unknown> = { status: ETaskStatus.PENDING };
-    if (activeHandle) {
-      query.handle_group = activeHandle;
+    const claimed: unknown[] = [];
+    const seenHandleGroups = new Set<string>();
+    let nullHandleClaimed = false;
+
+    while (claimed.length < limit) {
+      const excludeHandles = [...busyHandleGroups, ...seenHandleGroups];
+
+      const query: Record<string, unknown> = { status: ETaskStatus.PENDING };
+      const orClauses: Record<string, unknown>[] = [
+        { handle_group: { $nin: excludeHandles } },
+        { handle_group: { $exists: false } },
+      ];
+      if (!nullHandleClaimed) {
+        orClauses.push({ handle_group: null });
+      }
+      if (excludeHandles.length > 0 || nullHandleClaimed) {
+        query.$or = orClauses;
+      }
+
+      const task = await Task.findOneAndUpdate(
+        query,
+        { $set: { status: ETaskStatus.PROCESSING, started_at: new Date() } },
+        { sort: { priority: -1, created_at: 1 }, new: true },
+      ).lean();
+
+      if (!task) break;
+
+      claimed.push(task);
+      if (task.handle_group) {
+        seenHandleGroups.add(task.handle_group as string);
+      } else {
+        nullHandleClaimed = true;
+      }
     }
 
-    const task = await Task.findOne(query).sort({ priority: -1, created_at: 1 }).lean();
-    res.json({ success: true, task: task ?? null });
+    res.json({ success: true, tasks: claimed });
   } catch (e: unknown) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }

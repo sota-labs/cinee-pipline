@@ -14,7 +14,7 @@ import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { KolProfile } from "../db/models/KolProfile.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
-import { buildAgentCommand } from "../utils/agentCommand.js";
+import { buildAgentCommand, generateTaskId } from "../utils/agentCommand.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -56,23 +56,22 @@ async function queueAnalysisTask(
   priority?: number,
   handleGroup?: string | null,
 ): Promise<string> {
-  const escapedPrompt = prompt.replace(/'/g, "'\''");
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const taskId = generateTaskId();
 
-  const task = await Task.create({
+  await Task.create({
+    _id: taskId,
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: settings.openClawAgent,
-    prompt: "pending",
+    prompt: buildAgentCommand({ taskId: String(taskId), agent: settings.openClawAgent, model, escapedPrompt }),
     status: ETaskStatus.PENDING,
     priority: priority ?? 0,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { analysisType: type, relatedId },
   });
 
-  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: settings.openClawAgent, model, escapedPrompt });
-  await task.save();
-
-  log.info(`[KolAnalyzer] Queued ${type} task: ${task._id}`);
-  return String(task._id);
+  log.info(`[KolAnalyzer] Queued ${type} task: ${taskId}`);
+  return String(taskId);
 }
 
 // ── Result Processors ─────────────────────────────────────────────────────────

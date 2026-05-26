@@ -17,7 +17,7 @@ import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
-import { buildAgentCommand } from "../utils/agentCommand.js";
+import { buildAgentCommand, generateTaskId } from "../utils/agentCommand.js";
 import type { Types } from "mongoose";
 
 export interface IGenerateSuggestionsResult {
@@ -88,23 +88,22 @@ async function queueReplyExecution(
     .replace("{{post_url}}", postUrl)
     .replace("{{reply_content}}", replyContent);
 
-  const escapedPrompt = prompt.replace(/'/g, "'\''");
+  const escapedPrompt = prompt.replace(/'/g, "'\\''");
+  const taskId = generateTaskId();
 
-  const task = await Task.create({
+  await Task.create({
+    _id: taskId,
     type: ETaskType.CRON_JOB_TRIGGER,
     agent: appSettings.openClawAgent,
-    prompt: "pending",
+    prompt: buildAgentCommand({ taskId: String(taskId), agent: appSettings.openClawAgent, escapedPrompt }),
     status: ETaskStatus.PENDING,
     priority: priority ?? 0,
     ...(handleGroup != null ? { handle_group: handleGroup } : {}),
     payload: { suggestionId, action: "execute_reply" },
   });
 
-  task.prompt = buildAgentCommand({ taskId: String(task._id), agent: appSettings.openClawAgent, escapedPrompt });
-  await task.save();
-
-  log.info(`[ReplyEngine] Queued reply execution task: ${task._id}`);
-  return String(task._id);
+  log.info(`[ReplyEngine] Queued reply execution task: ${taskId}`);
+  return String(taskId);
 }
 
 // ── Reply Gate ──────────────────────────────────────────────────────────────
@@ -225,10 +224,12 @@ export class ReplyEngineService {
       execution_status: EReplyExecutionStatus.PENDING,
     });
 
-    const task = await Task.create({
+    const taskId = generateTaskId();
+    await Task.create({
+      _id: taskId,
       type: ETaskType.CRON_JOB_TRIGGER,
       agent: appSettings.openClawAgent,
-      prompt: "pending",
+      prompt: buildAgentCommand({ taskId: String(taskId), agent: appSettings.openClawAgent, model: appSettings.openClawReplyModel, escapedPrompt }),
       status: ETaskStatus.PENDING,
       priority,
       ...(handleGroup != null ? { handle_group: handleGroup } : {}),
@@ -242,12 +243,9 @@ export class ReplyEngineService {
       },
     });
 
-    task.prompt = buildAgentCommand({ taskId: String(task._id), agent: appSettings.openClawAgent, model: appSettings.openClawReplyModel, escapedPrompt });
-    await task.save();
-
     log.info(
       `[ReplyEngine] Queued suggestion generation for post ${postId} ` +
-        `(task: ${task._id}, suggestion: ${suggestion._id})`,
+        `(task: ${taskId}, suggestion: ${suggestion._id})`,
     );
 
     return suggestion;
