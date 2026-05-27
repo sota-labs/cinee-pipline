@@ -128,16 +128,16 @@ ${OUTPUT_FORMAT_INSTRUCTION}`;
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
 
 For each handle below, sequentially:
-1. Navigate (target=host) to https://x.com/{handle}, wait 4s.
-2. Repeat up to 3 times:
+1. Navigate (target=host) to https://x.com/{handle}, wait 3s.
+2. Repeat up to 2 times:
    a. Call page.evaluate with the TWEET_SCRIPT function below, passing the sinceTimestamp for that handle as the argument.
       The exact call is: page.evaluate(TWEET_SCRIPT, "<sinceTimestamp for this handle>")
       TWEET_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
       It returns an object: { posts: [...], shouldStop: boolean }
    b. Collect all items from result.posts.
-   c. If result.shouldStop === true, STOP — do not scroll further for this handle.
-   d. Otherwise scroll down (1s), then repeat.
-3. Wait 5s before next handle.
+   c. If result.shouldStop === true, STOP immediately — do not scroll, move to next handle.
+   d. Otherwise scroll down once (1s wait), then repeat.
+3. Wait 3s before next handle.
 
 Handles:
 {{handleList}}
