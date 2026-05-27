@@ -5,6 +5,7 @@
  */
 
 // Used by single-KOL legacy path (KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate(TWEET_SCRIPT, sinceTimestamp)
+// Returns { posts: [...], shouldStop: boolean } — shouldStop=true means a stale post was found, stop scrolling.
 export const KOL_TWEET_SCRIPT = `
 (function(sinceTimestamp) {
   const sinceDate = sinceTimestamp ? new Date(sinceTimestamp) : null;
@@ -16,7 +17,8 @@ export const KOL_TWEET_SCRIPT = `
     return parseInt(s) || 0;
   }
   const tweets = [...document.querySelectorAll('[data-testid="tweet"]')];
-  return tweets.map(t => {
+  let shouldStop = false;
+  const posts = tweets.map(t => {
     const timeEl = t.querySelector('time');
     const linkEl = timeEl?.closest('a');
     return {
@@ -33,19 +35,24 @@ export const KOL_TWEET_SCRIPT = `
       is_quote: !!t.querySelector('[data-testid="quoteTweet"]'),
       quoted_post_url: t.querySelector('[data-testid="quoteTweet"] a[href*="/status/"]')?.href || '',
     };
-  }).filter(p =>
-    p.content &&
-    p.post_url &&
-    p.posted_at &&
-    !p.is_retweet &&
-    !(p.is_quote && p.content.length < 30) &&
-    p.content.length >= 15 &&
-    (!sinceDate || new Date(p.posted_at) > sinceDate)
-  );
+  }).filter(p => {
+    if (p.posted_at && sinceDate && new Date(p.posted_at) <= sinceDate) {
+      shouldStop = true;
+      return false;
+    }
+    return p.content &&
+      p.post_url &&
+      p.posted_at &&
+      !p.is_retweet &&
+      !(p.is_quote && p.content.length < 30) &&
+      p.content.length >= 15;
+  });
+  return { posts, shouldStop };
 })
 `;
 
 // Used by batch path (BATCH_KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate(KOL_TWEET_SCRIPT_BATCH, sinceTimestamp)
+// Returns { posts: [...], shouldStop: boolean } — shouldStop=true means a stale post was found, stop scrolling.
 export const KOL_TWEET_SCRIPT_BATCH = `
 (function(sinceTimestamp) {
   const sinceDate = sinceTimestamp ? new Date(sinceTimestamp) : null;
@@ -57,7 +64,8 @@ export const KOL_TWEET_SCRIPT_BATCH = `
     return parseInt(s) || 0;
   }
   const tweets = [...document.querySelectorAll('[data-testid="tweet"]')];
-  return tweets.map(t => {
+  let shouldStop = false;
+  const posts = tweets.map(t => {
     const timeEl = t.querySelector('time');
     const linkEl = timeEl?.closest('a');
     return {
@@ -74,15 +82,19 @@ export const KOL_TWEET_SCRIPT_BATCH = `
       is_quote: !!t.querySelector('[data-testid="quoteTweet"]'),
       quoted_post_url: t.querySelector('[data-testid="quoteTweet"] a[href*="/status/"]')?.href || '',
     };
-  }).filter(p =>
-    p.content &&
-    p.post_url &&
-    p.posted_at &&
-    !p.is_retweet &&
-    !(p.is_quote && p.content.length < 30) &&
-    p.content.length >= 15 &&
-    (!sinceDate || new Date(p.posted_at) > sinceDate)
-  );
+  }).filter(p => {
+    if (p.posted_at && sinceDate && new Date(p.posted_at) <= sinceDate) {
+      shouldStop = true;
+      return false;
+    }
+    return p.content &&
+      p.post_url &&
+      p.posted_at &&
+      !p.is_retweet &&
+      !(p.is_quote && p.content.length < 30) &&
+      p.content.length >= 15;
+  });
+  return { posts, shouldStop };
 })
 `;
 

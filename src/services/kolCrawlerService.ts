@@ -96,15 +96,17 @@ export interface IComment {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s, scroll 3x (2s each).
-2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, "{{since}}"), passing the sinceTimestamp as second argument.
-   - STOP scrolling immediately if any visible post has posted_at <= "{{since}}" — do not scroll further
-   - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
-3. For each post where comments > 10 (max 5 posts):
+const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s.
+2. Repeat up to 3 times:
+   a. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, "{{since}}") — returns { posts, shouldStop }.
+   b. Collect all posts from result.posts.
+   c. If result.shouldStop === true, STOP immediately — do not scroll further.
+   d. Otherwise scroll down (2s), then repeat.
+3. For each collected post where comments > 10 (max 5 posts):
    a. Navigate (target=host) to post_url, wait 4s
    b. Run COMMENT_SCRIPT via page.evaluate(), add result as top_comments on that post
    c. Navigate back
-4. Return JSON: {"posts": <posts array with top_comments populated>}
+4. Return JSON: {"posts": <collected posts array with top_comments populated>}
 
 TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
 \`\`\`
@@ -118,12 +120,13 @@ ${KOL_COMMENT_SCRIPT}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
 const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
-1. Navigate (target=host) to https://x.com/{handle}, wait 4s, scroll 2x (1s each)
-2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp), passing the sinceTimestamp shown for that handle
-   - STOP scrolling immediately if any visible post has posted_at <= sinceTimestamp — do not scroll further
-   - Only process posts returned by the script (already filtered to newer than sinceTimestamp)
-   - IMPORTANT: Do NOT include any post where posted_at <= sinceTimestamp in your JSON output
-3. Wait 5s before next handle
+1. Navigate (target=host) to https://x.com/{handle}, wait 4s.
+2. Repeat up to 3 times:
+   a. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp) — returns { posts, shouldStop }.
+   b. Collect all posts from result.posts.
+   c. If result.shouldStop === true, STOP immediately — do not scroll further for this handle.
+   d. Otherwise scroll down (1s), then repeat.
+3. Wait 5s before next handle.
 
 Handles:
 {{handleList}}
