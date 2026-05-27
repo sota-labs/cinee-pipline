@@ -96,42 +96,53 @@ export interface IComment {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const KOL_CRAWL_PROMPT_TEMPLATE = `1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s.
+const KOL_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
+
+1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s.
 2. Repeat up to 3 times:
-   a. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, "{{since}}") — returns { posts, shouldStop }.
-   b. Collect all posts from result.posts.
-   c. If result.shouldStop === true, STOP immediately — do not scroll further.
+   a. Call page.evaluate with the TWEET_SCRIPT function below, passing "{{since}}" as the argument.
+      The exact call is: page.evaluate(TWEET_SCRIPT, "{{since}}")
+      TWEET_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
+      It returns an object: { posts: [...], shouldStop: boolean }
+   b. Collect all items from result.posts.
+   c. If result.shouldStop === true, STOP — do not scroll further.
    d. Otherwise scroll down (2s), then repeat.
 3. For each collected post where comments > 10 (max 5 posts):
    a. Navigate (target=host) to post_url, wait 4s
-   b. Run COMMENT_SCRIPT via page.evaluate(), add result as top_comments on that post
+   b. Call page.evaluate with the COMMENT_SCRIPT function below (no arguments).
+      Add the returned array as top_comments on that post.
    c. Navigate back
 4. Return JSON: {"posts": <collected posts array with top_comments populated>}
 
-TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
+TWEET_SCRIPT — pass this function directly to page.evaluate as the first argument:
 \`\`\`
 ${KOL_TWEET_SCRIPT}
 \`\`\`
 
-COMMENT_SCRIPT:
+COMMENT_SCRIPT — pass this function directly to page.evaluate as the first argument:
 \`\`\`
 ${KOL_COMMENT_SCRIPT}
 \`\`\`
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
-const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `For each handle below, sequentially:
+const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
+
+For each handle below, sequentially:
 1. Navigate (target=host) to https://x.com/{handle}, wait 4s.
 2. Repeat up to 3 times:
-   a. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp) — returns { posts, shouldStop }.
-   b. Collect all posts from result.posts.
-   c. If result.shouldStop === true, STOP immediately — do not scroll further for this handle.
+   a. Call page.evaluate with the TWEET_SCRIPT function below, passing the sinceTimestamp for that handle as the argument.
+      The exact call is: page.evaluate(TWEET_SCRIPT, "<sinceTimestamp for this handle>")
+      TWEET_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
+      It returns an object: { posts: [...], shouldStop: boolean }
+   b. Collect all items from result.posts.
+   c. If result.shouldStop === true, STOP — do not scroll further for this handle.
    d. Otherwise scroll down (1s), then repeat.
 3. Wait 5s before next handle.
 
 Handles:
 {{handleList}}
 
-TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
+TWEET_SCRIPT — pass this function directly to page.evaluate as the first argument:
 \`\`\`
 ${KOL_TWEET_SCRIPT_BATCH}
 \`\`\`
@@ -139,15 +150,20 @@ ${KOL_TWEET_SCRIPT_BATCH}
 Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 
-const COMMENT_CRAWL_PROMPT_TEMPLATE = `For each post below, sequentially:
+const COMMENT_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact script provided below.
+
+For each post below, sequentially:
 1. Navigate (target=host) to post_url, wait 3s
-2. Run COMMENT_SCRIPT via page.evaluate(), collect comments array
+2. Call page.evaluate with the COMMENT_SCRIPT function below (no arguments).
+   The exact call is: page.evaluate(COMMENT_SCRIPT)
+   COMMENT_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
+   It returns an array of comment objects.
 3. Wait 2s before next post
 
 Posts:
 {{postList}}
 
-COMMENT_SCRIPT:
+COMMENT_SCRIPT — pass this function directly to page.evaluate as the first argument:
 \`\`\`
 ${KOL_COMMENT_SCRIPT}
 \`\`\`
