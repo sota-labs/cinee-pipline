@@ -48,7 +48,7 @@ export const KOL_TWEET_SCRIPT = `
       p.content.length >= 15;
   });
   return { posts, shouldStop };
-})
+})(arguments[0])
 `;
 
 // Used by batch path (BATCH_KOL_CRAWL_PROMPT_TEMPLATE) via page.evaluate(KOL_TWEET_SCRIPT_BATCH, sinceTimestamp)
@@ -95,7 +95,7 @@ export const KOL_TWEET_SCRIPT_BATCH = `
       p.content.length >= 15;
   });
   return { posts, shouldStop };
-})
+})(arguments[0])
 `;
 
 // Run on a post detail page — skip index 0 (original tweet), take next 10 (top comments)
