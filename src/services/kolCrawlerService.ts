@@ -15,8 +15,7 @@ import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
 import {
-  KOL_TWEET_SCRIPT,
-  KOL_TWEET_SCRIPT_BATCH,
+  buildTweetScript,
   KOL_COMMENT_SCRIPT,
 } from "../utils/kolCrawlScript.js";
 import {
@@ -96,59 +95,68 @@ export interface IComment {
 
 // ── OpenClaw Integration ─────────────────────────────────────────────────────
 
-const KOL_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
+function buildSingleCrawlPrompt(handle: string, since: string): string {
+  const tweetScript = buildTweetScript(since);
+  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
 
-1. Navigate (target=host) to https://x.com/{{handle}}, wait 8s.
+1. Navigate (target=host) to https://x.com/${handle}, wait 8s.
 2. Repeat up to 3 times:
-   a. Call page.evaluate with the TWEET_SCRIPT function below, passing "{{since}}" as the argument.
-      The exact call is: page.evaluate(TWEET_SCRIPT, "{{since}}")
-      TWEET_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
+   a. Call page.evaluate with the exact TWEET_SCRIPT string below (copy it verbatim, no modifications).
+      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT)
       It returns an object: { posts: [...], shouldStop: boolean }
    b. Collect all items from result.posts.
    c. If result.shouldStop === true, STOP — do not scroll further.
    d. Otherwise scroll down (2s), then repeat.
 3. For each collected post where comments > 10 (max 5 posts):
    a. Navigate (target=host) to post_url, wait 4s
-   b. Call page.evaluate with the COMMENT_SCRIPT function below (no arguments).
+   b. Call page.evaluate with the exact COMMENT_SCRIPT string below (copy it verbatim).
       Add the returned array as top_comments on that post.
    c. Navigate back
 4. Return JSON: {"posts": <collected posts array with top_comments populated>}
 
-TWEET_SCRIPT — pass this function directly to page.evaluate as the first argument:
+TWEET_SCRIPT (copy verbatim into page.evaluate — do NOT pass any arguments):
 \`\`\`
-${KOL_TWEET_SCRIPT}
+${tweetScript}
 \`\`\`
 
-COMMENT_SCRIPT — pass this function directly to page.evaluate as the first argument:
+COMMENT_SCRIPT (copy verbatim into page.evaluate):
 \`\`\`
 ${KOL_COMMENT_SCRIPT}
 \`\`\`
 ${OUTPUT_FORMAT_INSTRUCTION}`;
+}
 
-const BATCH_KOL_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
+function buildBatchCrawlPrompt(kols: IKolCrawlInfo[]): string {
+  const handleList = kols
+    .map((k) => {
+      const tweetScript = buildTweetScript(k.since);
+      return `- @${k.handle} | sinceTimestamp: "${k.since}"
+  TWEET_SCRIPT for @${k.handle}:
+  \`\`\`
+  ${tweetScript}
+  \`\`\``;
+    })
+    .join("\n\n");
+
+  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
 
 For each handle below, sequentially:
 1. Navigate (target=host) to https://x.com/{handle}, wait 3s.
 2. Repeat up to 2 times:
-   a. Call page.evaluate with the TWEET_SCRIPT function below, passing the sinceTimestamp for that handle as the argument.
-      The exact call is: page.evaluate(TWEET_SCRIPT, "<sinceTimestamp for this handle>")
-      TWEET_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
+   a. Call page.evaluate with the TWEET_SCRIPT for that handle (copy it verbatim, no modifications, no arguments).
+      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT_FOR_THIS_HANDLE)
       It returns an object: { posts: [...], shouldStop: boolean }
    b. Collect all items from result.posts.
    c. If result.shouldStop === true, STOP immediately — do not scroll, move to next handle.
    d. Otherwise scroll down once (1s wait), then repeat.
 3. Wait 3s before next handle.
 
-Handles:
-{{handleList}}
-
-TWEET_SCRIPT — pass this function directly to page.evaluate as the first argument:
-\`\`\`
-${KOL_TWEET_SCRIPT_BATCH}
-\`\`\`
+Handles and their scripts:
+${handleList}
 
 Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
 ${OUTPUT_FORMAT_INSTRUCTION}`;
+}
 
 const COMMENT_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact script provided below.
 
@@ -188,14 +196,7 @@ async function createBatchCrawlTask(
   priority: number,
   handleGroup: string | null,
 ): Promise<string> {
-  const handleList = kols
-    .map((k) => `- @${k.handle} | sinceTimestamp: "${k.since}"`)
-    .join("\n");
-
-  const prompt = BATCH_KOL_CRAWL_PROMPT_TEMPLATE.replace(
-    /\{\{handleList\}\}/g,
-    handleList,
-  );
+  const prompt = buildBatchCrawlPrompt(kols);
 
   const taskId = generateTaskId();
   const escapedPrompt = prompt.replace(/'/g, "'\\''");
@@ -288,9 +289,7 @@ async function createCrawlTask(
   limit: number,
 ): Promise<string> {
   const sinceISO = since.toISOString();
-  const prompt = KOL_CRAWL_PROMPT_TEMPLATE.replace(/\{\{handle\}\}/g, handle)
-    .replace(/\{\{since\}\}/g, sinceISO)
-    .replace(/\{\{limit\}\}/g, String(limit));
+  const prompt = buildSingleCrawlPrompt(handle, sinceISO);
 
   const taskId = generateTaskId();
   const escapedPrompt = prompt.replace(/'/g, "'\\''");

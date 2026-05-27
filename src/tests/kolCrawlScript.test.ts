@@ -1,28 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { KOL_TWEET_SCRIPT, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
+import { buildTweetScript, KOL_COMMENT_SCRIPT } from "../utils/kolCrawlScript.js";
+
+const TEST_SINCE = "2026-05-27T05:00:00.000Z";
 
 // ── Script validity ───────────────────────────────────────────────────────────
 
-describe("KOL_TWEET_SCRIPT", () => {
-  it("is a non-empty string", () => {
-    expect(typeof KOL_TWEET_SCRIPT).toBe("string");
-    expect(KOL_TWEET_SCRIPT.length).toBeGreaterThan(0);
+describe("buildTweetScript", () => {
+  it("returns a non-empty string", () => {
+    const script = buildTweetScript(TEST_SINCE);
+    expect(typeof script).toBe("string");
+    expect(script.length).toBeGreaterThan(0);
   });
 
   it("is syntactically valid JavaScript", () => {
-    expect(() => new Function(KOL_TWEET_SCRIPT)).not.toThrow();
+    const script = buildTweetScript(TEST_SINCE);
+    expect(() => new Function(script)).not.toThrow();
+  });
+
+  it("embeds sinceTimestamp directly in the script", () => {
+    const script = buildTweetScript(TEST_SINCE);
+    expect(script).toContain(TEST_SINCE);
+  });
+
+  it("does not use arguments[0]", () => {
+    const script = buildTweetScript(TEST_SINCE);
+    expect(script).not.toContain("arguments[0]");
   });
 
   it("contains expected data-testid selectors", () => {
-    expect(KOL_TWEET_SCRIPT).toContain('[data-testid="tweet"]');
-    expect(KOL_TWEET_SCRIPT).toContain('[data-testid="tweetText"]');
-    expect(KOL_TWEET_SCRIPT).toContain('[data-testid="like"]');
-    expect(KOL_TWEET_SCRIPT).toContain('[data-testid="reply"]');
-    expect(KOL_TWEET_SCRIPT).toContain('[data-testid="retweet"]');
+    const script = buildTweetScript(TEST_SINCE);
+    expect(script).toContain('[data-testid="tweet"]');
+    expect(script).toContain('[data-testid="tweetText"]');
+    expect(script).toContain('[data-testid="like"]');
+    expect(script).toContain('[data-testid="reply"]');
+    expect(script).toContain('[data-testid="retweet"]');
   });
 
   it("contains parseCount helper", () => {
-    expect(KOL_TWEET_SCRIPT).toContain("parseCount");
+    const script = buildTweetScript(TEST_SINCE);
+    expect(script).toContain("parseCount");
+  });
+
+  it("contains shouldStop logic", () => {
+    const script = buildTweetScript(TEST_SINCE);
+    expect(script).toContain("shouldStop");
   });
 });
 

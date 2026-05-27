@@ -4,7 +4,7 @@ import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { Post, EPostStatus } from "../db/models/Post.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { settings } from "../config/settings.js";
-import { KOL_TWEET_SCRIPT_BATCH } from "../utils/kolCrawlScript.js";
+import { buildTweetScript } from "../utils/kolCrawlScript.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,18 +34,28 @@ interface IRawOwnPost {
   media_urls?: string[];
 }
 
-// ── Prompt Template ────────────────────────────────────────────────────────────
+// ── Prompt Builder ─────────────────────────────────────────────────────────────
 
-const OWN_ACCOUNT_CRAWL_PROMPT = `Crawl own account posts for AI learning:
-1. Navigate to https://x.com/{{handle}}, wait 4s, scroll 5x (2s each) to load more posts
-2. Run TWEET_SCRIPT via page.evaluate(TWEET_SCRIPT, sinceTimestamp) with sinceTimestamp: "{{since}}"
-3. Return JSON: {"handle": "{{handle}}", "posts": <posts array>}
+function buildOwnAccountCrawlPrompt(handle: string, since: Date): string {
+  const tweetScript = buildTweetScript(since.toISOString());
+  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact script provided below.
 
-TWEET_SCRIPT (call as: page.evaluate(TWEET_SCRIPT, sinceTimestamp)):
+1. Navigate (target=host) to https://x.com/${handle}, wait 4s.
+2. Repeat up to 5 times:
+   a. Call page.evaluate with the exact TWEET_SCRIPT string below (copy it verbatim, no modifications, no arguments).
+      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT)
+      It returns an object: { posts: [...], shouldStop: boolean }
+   b. Collect all items from result.posts.
+   c. If result.shouldStop === true, STOP — do not scroll further.
+   d. Otherwise scroll down (2s), then repeat.
+3. Return JSON: {"handle": "${handle}", "posts": <collected posts array>}
+
+TWEET_SCRIPT (copy verbatim into page.evaluate — do NOT pass any arguments):
 \`\`\`
-${KOL_TWEET_SCRIPT_BATCH}
+${tweetScript}
 \`\`\`
 ${OUTPUT_FORMAT_INSTRUCTION}`;
+}
 
 // ── Service ────────────────────────────────────────────────────────────────────
 
@@ -66,10 +76,7 @@ class OwnAccountCrawlerService {
     const daysBack = options.daysBack ?? 30;
     const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
 
-    const prompt = OWN_ACCOUNT_CRAWL_PROMPT.replace(
-      /\{\{handle\}\}/g,
-      handle,
-    ).replace(/\{\{since\}\}/g, since.toISOString());
+    const prompt = buildOwnAccountCrawlPrompt(handle, since);
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
     const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
