@@ -100,28 +100,24 @@ function escapeMarkdown(text: string): string {
 // ── Keyboard Builders ────────────────────────────────────────────────────────
 
 function buildSuggestionKeyboard(suggestionId: string, suggestionCount: number) {
-  const buttons = [];
+  const count = Math.min(suggestionCount, 3);
 
-  // Approve buttons for each suggestion
-  for (let i = 0; i < Math.min(suggestionCount, 3); i++) {
-    buttons.push([{
-      text: `✅ Approve ${i + 1}`,
-      callback_data: `kol_approve:${suggestionId}:${i}`,
-    }]);
-  }
+  // All approve buttons on one row
+  const approveRow = Array.from({ length: count }, (_, i) => ({
+    text: `✅ ${i + 1}`,
+    callback_data: `kol_approve:${suggestionId}:${i}`,
+  }));
 
-  // Edit and reject
-  buttons.push([
-    { text: "✏️ Edit", callback_data: `kol_edit:${suggestionId}:0` },
-    { text: "❌ Reject", callback_data: `kol_reject:${suggestionId}` },
-  ]);
-
-  // View post
-  buttons.push([
-    { text: "🔗 View Post", callback_data: `kol_view:${suggestionId}` },
-  ]);
-
-  return { inline_keyboard: buttons };
+  return {
+    inline_keyboard: [
+      approveRow,
+      [
+        { text: "✏️ Edit", callback_data: `kol_edit:${suggestionId}:0` },
+        { text: "❌ Reject", callback_data: `kol_reject:${suggestionId}` },
+        { text: "🔗 View", callback_data: `kol_view:${suggestionId}` },
+      ],
+    ],
+  };
 }
 
 function buildMainMenuKeyboard() {
