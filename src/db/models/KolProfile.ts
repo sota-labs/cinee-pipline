@@ -23,6 +23,7 @@ export interface IKolProfile extends Document {
 
   is_active: boolean;
   last_crawled_at: Date | null;
+  x_user_id?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -55,6 +56,7 @@ const kolProfileSchema = new Schema<IKolProfile>(
 
     is_active: { type: Boolean, default: true },
     last_crawled_at: { type: Date, default: null },
+    x_user_id: { type: String, default: null, index: true, sparse: true },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

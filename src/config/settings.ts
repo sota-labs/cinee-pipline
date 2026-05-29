@@ -42,6 +42,7 @@ export interface Settings {
   openClawAnalysisModel: string;
   openClawReplyModel: string;
   xUsername: string;
+  xApiBearerToken: string;
 }
 
 // ── Role config loader ───────────────────────────────────────────────────────
@@ -220,4 +221,5 @@ export const settings: Settings = {
     process.env.OPENCLAW_REPLY_MODEL ||
     "openrouter/anthropic/claude-sonnet-4.6",
   xUsername: process.env.X_USERNAME || "",
+  xApiBearerToken: process.env.X_API_BEARER_TOKEN || "",
 };

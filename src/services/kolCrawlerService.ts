@@ -1,6 +1,5 @@
 /** KolCrawlerService — Crawl posts from tracked KOLs with Redis caching */
 import { log } from "../utils/logger.js";
-import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import {
   KolPost,
@@ -12,21 +11,19 @@ import {
   type ITierCrawlIntervals,
 } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
-import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
-import {
-  buildTweetScript,
-  KOL_COMMENT_SCRIPT,
-} from "../utils/kolCrawlScript.js";
 import {
   parseBatchCrawlResult,
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
 import {
-  tierToPriority,
-  tierToPipelinePriority,
-} from "../utils/taskPriority.js";
-import { buildAgentCommand, generateTaskId } from "../utils/agentCommand.js";
+  getUserIdByHandle,
+  getUserTweets,
+  getTweetReplies,
+  XRateLimitError,
+  XUserNotFoundError,
+} from "./platforms/x/xApiClient.js";
+import { mapTweetToPost, mapRepliesToComments } from "./platforms/x/xResultMapper.js";
 
 // Get Redis client
 const redis = getRedis();
@@ -91,224 +88,6 @@ export interface IComment {
   author_handle: string;
   likes: number;
   reply_count: number;
-}
-
-// ── OpenClaw Integration ─────────────────────────────────────────────────────
-
-function buildSingleCrawlPrompt(handle: string, since: string): string {
-  const tweetScript = buildTweetScript(since);
-  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
-
-1. Navigate (target=host) to https://x.com/${handle}, wait 8s.
-2. Repeat up to 3 times:
-   a. Call page.evaluate with the exact TWEET_SCRIPT string below (copy it verbatim, no modifications).
-      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT)
-      It returns an object: { posts: [...], shouldStop: boolean }
-   b. Collect all items from result.posts.
-   c. If result.shouldStop === true, STOP — do not scroll further.
-   d. Otherwise scroll down (2s), then repeat.
-3. For each collected post where comments > 10 (max 5 posts):
-   a. Navigate (target=host) to post_url, wait 4s
-   b. Call page.evaluate with the exact COMMENT_SCRIPT string below (copy it verbatim).
-      Add the returned array as top_comments on that post.
-   c. Navigate back
-4. Return JSON: {"posts": <collected posts array with top_comments populated>}
-
-TWEET_SCRIPT (copy verbatim into page.evaluate — do NOT pass any arguments):
-\`\`\`
-${tweetScript}
-\`\`\`
-
-COMMENT_SCRIPT (copy verbatim into page.evaluate):
-\`\`\`
-${KOL_COMMENT_SCRIPT}
-\`\`\`
-${OUTPUT_FORMAT_INSTRUCTION}`;
-}
-
-function buildBatchCrawlPrompt(kols: IKolCrawlInfo[]): string {
-  const handleList = kols
-    .map((k) => {
-      const tweetScript = buildTweetScript(k.since);
-      return `- @${k.handle} | sinceTimestamp: "${k.since}"
-  TWEET_SCRIPT for @${k.handle}:
-  \`\`\`
-  ${tweetScript}
-  \`\`\``;
-    })
-    .join("\n\n");
-
-  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact scripts provided below.
-
-For each handle below, sequentially:
-1. Navigate (target=host) to https://x.com/{handle}, wait 3s.
-2. Repeat up to 2 times:
-   a. Call page.evaluate with the TWEET_SCRIPT for that handle (copy it verbatim, no modifications, no arguments).
-      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT_FOR_THIS_HANDLE)
-      It returns an object: { posts: [...], shouldStop: boolean }
-   b. Collect all items from result.posts.
-   c. If result.shouldStop === true, STOP immediately — do not scroll, move to next handle.
-   d. Otherwise scroll down once (1s wait), then repeat.
-3. Wait 3s before next handle.
-
-Handles and their scripts:
-${handleList}
-
-Return JSON: {"results": [{"handle": "...", "posts": [...]}]}
-${OUTPUT_FORMAT_INSTRUCTION}`;
-}
-
-const COMMENT_CRAWL_PROMPT_TEMPLATE = `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact script provided below.
-
-For each post below, sequentially:
-1. Navigate (target=host) to post_url, wait 3s
-2. Call page.evaluate with the COMMENT_SCRIPT function below (no arguments).
-   The exact call is: page.evaluate(COMMENT_SCRIPT)
-   COMMENT_SCRIPT is the function defined in the code block below — pass it as-is, do not rewrite it.
-   It returns an array of comment objects.
-3. Wait 2s before next post
-
-Posts:
-{{postList}}
-
-COMMENT_SCRIPT — pass this function directly to page.evaluate as the first argument:
-\`\`\`
-${KOL_COMMENT_SCRIPT}
-\`\`\`
-
-Return JSON with ALL posts and their comments:
-{"results": [{"postId": "...", "post_url": "...", "comments": [{"content": "...", "author_handle": "...", "likes": 0, "reply_count": 0}]}]}
-${OUTPUT_FORMAT_INSTRUCTION}`;
-
-interface IKolCrawlInfo {
-  handle: string;
-  since: string; // ISO timestamp
-  limit: number;
-  tier?: string; // used to compute task priority
-}
-
-/**
- * Create a single batch task to crawl multiple KOLs.
- * Much more efficient than creating separate tasks for each KOL.
- */
-async function createBatchCrawlTask(
-  kols: IKolCrawlInfo[],
-  priority: number,
-  handleGroup: string | null,
-): Promise<string> {
-  const prompt = buildBatchCrawlPrompt(kols);
-
-  const taskId = generateTaskId();
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-
-  await Task.create({
-    _id: taskId,
-    type: ETaskType.SINGLE_TASK_TRIGGER,
-    agent: settings.openClawAgent,
-    prompt: buildAgentCommand({
-      taskId: String(taskId),
-      agent: settings.openClawAgent,
-      model: settings.openClawCrawlModel,
-      escapedPrompt,
-    }),
-    status: ETaskStatus.PENDING,
-    priority,
-    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
-    payload: {
-      action: "batch_crawl",
-      kolCount: kols.length,
-      handles: kols.map((k) => k.handle),
-      sinceByHandle: Object.fromEntries(kols.map((k) => [k.handle, k.since])),
-      priority,
-      handle_group: handleGroup,
-    },
-  });
-
-  log.info(
-    `[KolCrawler] Created batch crawl task for ${kols.length} KOLs: ${taskId}`,
-  );
-  return String(taskId);
-}
-
-/**
- * Create a Phase 2 task to crawl comments for posts that need it.
- * Triggered automatically after processBatchCrawlResult() saves posts.
- */
-async function createCommentCrawlTask(
-  posts: Array<{ id: string; post_url: string }>,
-  priority: number,
-  handleGroup: string | null,
-): Promise<string> {
-  const postList = posts
-    .map((p) => `- postId: ${p.id} | post_url: ${p.post_url}`)
-    .join("\n");
-
-  const prompt = COMMENT_CRAWL_PROMPT_TEMPLATE.replace(
-    /\{\{postList\}\}/g,
-    postList,
-  );
-
-  const taskId = generateTaskId();
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-
-  await Task.create({
-    _id: taskId,
-    type: ETaskType.KOL_COMMENT_CRAWL,
-    agent: settings.openClawAgent,
-    prompt: buildAgentCommand({
-      taskId: String(taskId),
-      agent: settings.openClawAgent,
-      model: settings.openClawCrawlModel,
-      escapedPrompt,
-    }),
-    status: ETaskStatus.PENDING,
-    priority,
-    ...(handleGroup != null ? { handle_group: handleGroup } : {}),
-    payload: {
-      action: "comment_crawl",
-      postCount: posts.length,
-      postIds: posts.map((p) => p.id),
-      priority,
-      handle_group: handleGroup,
-    },
-  });
-
-  log.info(
-    `[KolCrawler] Created comment crawl task for ${posts.length} posts: ${taskId}`,
-  );
-  return String(taskId);
-}
-
-/**
- * Create a Task record for OpenClaw to execute crawling (single KOL - legacy).
- * The actual browser automation runs in isolated session.
- */
-async function createCrawlTask(
-  handle: string,
-  since: Date,
-  limit: number,
-): Promise<string> {
-  const sinceISO = since.toISOString();
-  const prompt = buildSingleCrawlPrompt(handle, sinceISO);
-
-  const taskId = generateTaskId();
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-
-  await Task.create({
-    _id: taskId,
-    type: ETaskType.CRON_JOB_TRIGGER,
-    agent: settings.openClawAgent,
-    prompt: buildAgentCommand({
-      taskId: String(taskId),
-      agent: settings.openClawAgent,
-      model: settings.openClawCrawlModel,
-      escapedPrompt,
-    }),
-    status: ETaskStatus.PENDING,
-  });
-
-  log.info(`[KolCrawler] Queued crawl task for @${handle}: ${taskId}`);
-  return String(taskId);
 }
 
 // ── Crawl Result Processor ───────────────────────────────────────────────────
@@ -500,29 +279,23 @@ export async function processBatchCrawlResult(
         `[KolCrawler] @${handle}: ${posts.length} found, ${saved} saved, ${skipped} skipped, ${dropped} dropped at crawl`,
       );
 
-      // Trigger Phase 2 immediately after saving posts for this KOL
+      // Inline comment crawl via X API for posts with >10 comments
       const postsNeedingComments = savedPosts
         .filter((p) => p.comments > 10)
-        .slice(0, 15);
-      if (postsNeedingComments.length > 0) {
+        .slice(0, 5);
+      for (const post of postsNeedingComments) {
         try {
-          // Pipeline boost (+5) ensures comment task beats a same-tier batch crawl task
-          const commentPriority = tierToPipelinePriority(kol.tier);
-          await createCommentCrawlTask(
-            postsNeedingComments.map((p) => ({
-              id: String(p._id),
-              post_url: p.post_url,
-            })),
-            commentPriority,
-            handleGroup ?? null,
-          );
-          log.info(
-            `[KolCrawler] Queued comment crawl for ${postsNeedingComments.length} posts (@${handle})`,
-          );
-        } catch (error) {
-          log.error(
-            `[KolCrawler] Failed to create comment crawl task for @${handle}: ${(error as Error).message}`,
-          );
+          const tweetId = post.post_url.split("/").pop();
+          if (!tweetId) continue;
+          const { tweets: replyTweets, includes: replyIncludes } = await getTweetReplies(tweetId);
+          const comments = mapRepliesToComments(replyTweets, replyIncludes);
+          await KolPost.findByIdAndUpdate(post._id, {
+            top_comments: comments.map(c => ({ ...c, sentiment: "neutral" as const })),
+            comments_crawled: true,
+          });
+          log.info(`[KolCrawler] Fetched ${comments.length} comments for post ${post._id} (@${handle})`);
+        } catch (err) {
+          log.warn(`[KolCrawler] Comment crawl failed for post ${post._id}: ${(err as Error).message}`);
         }
       }
     } catch (error) {
@@ -670,42 +443,96 @@ export class KolCrawlerService {
   }
 
   /**
-   * Crawl a specific KOL.
+   * Crawl a specific KOL via X API.
    */
   async crawlKol(
     kol: IKolProfile,
     options?: Partial<ICrawlOptions>,
   ): Promise<ICrawlResult> {
-    const settings = await KolSettings.getSettings();
-    const limit = options?.limit ?? settings.max_posts_per_crawl;
-
-    // Determine since date - use Redis cache first, fallback to DB
+    // Determine since date — Redis cache → DB → default
     const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-    const since =
+    const sinceDate =
       options?.since ??
       cachedLastCrawled ??
       kol.last_crawled_at ??
       getDefaultSinceDate();
 
-    // Queue crawl task via OpenClaw
-    const taskId = await createCrawlTask(kol.handle, since, limit);
+    // Derive sinceId from most recent saved post for this KOL
+    const latestPost = await KolPost.findOne({ kol_id: kol._id })
+      .sort({ posted_at: -1 })
+      .select("post_url")
+      .lean();
+    const sinceId = latestPost?.post_url
+      ? latestPost.post_url.split("/").pop()
+      : undefined;
 
-    // Update last_crawled_at in both DB and Redis
-    const now = new Date();
-    kol.last_crawled_at = now;
-    await kol.save();
-    await setCachedLastCrawled(kol.handle, now);
+    try {
+      const userId = await getUserIdByHandle(kol.handle);
+      const { tweets, includes } = await getUserTweets(userId, sinceId);
 
-    log.info(`[KolCrawler] Queued crawl for @${kol.handle} (task: ${taskId})`);
+      // Filter by sinceDate as a secondary guard
+      const freshTweets = tweets.filter(t => {
+        if (!t.created_at) return true;
+        return new Date(t.created_at) > sinceDate;
+      });
 
-    return {
-      kolId: kol._id,
-      handle: kol.handle,
-      postsFound: 0, // Will be updated when task completes
-      postsSaved: 0,
-      dropped: 0,
-      errors: [],
-    };
+      const rawPosts = freshTweets.map(t => mapTweetToPost(t, kol.handle, includes));
+
+      // Keep top 2 by engagement score (same cap as processBatchCrawlResult)
+      const MAX_POSTS = 2;
+      const topPosts = rawPosts.length > MAX_POSTS
+        ? [...rawPosts]
+            .sort((a, b) => calculateEngagementScore(b) - calculateEngagementScore(a))
+            .slice(0, MAX_POSTS)
+        : rawPosts;
+
+      const { saved, skipped, dropped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
+
+      const now = new Date();
+      kol.last_crawled_at = now;
+      await kol.save();
+      await setCachedLastCrawled(kol.handle, now);
+
+      log.info(`[KolCrawler] @${kol.handle}: ${tweets.length} fetched, ${saved} saved, ${skipped} skipped, ${dropped} dropped`);
+
+      // Inline comment crawl for posts with >10 comments
+      const postsNeedingComments = savedPosts.filter(p => p.comments > 10).slice(0, 5);
+      for (const post of postsNeedingComments) {
+        try {
+          const tweetId = post.post_url.split("/").pop();
+          if (!tweetId) continue;
+          const { tweets: replyTweets, includes: replyIncludes } = await getTweetReplies(tweetId);
+          const comments = mapRepliesToComments(replyTweets, replyIncludes);
+          await KolPost.findByIdAndUpdate(post._id, {
+            top_comments: comments.map(c => ({ ...c, sentiment: "neutral" as const })),
+            comments_crawled: true,
+          });
+        } catch (err) {
+          log.warn(`[KolCrawler] Comment crawl failed for post ${post._id}: ${(err as Error).message}`);
+        }
+      }
+
+      return {
+        kolId: kol._id,
+        handle: kol.handle,
+        postsFound: tweets.length,
+        postsSaved: saved,
+        dropped,
+        errors: [],
+      };
+    } catch (err) {
+      if (err instanceof XRateLimitError) {
+        log.warn(`[KolCrawler] Rate limit hit for @${kol.handle}, skipping cycle. Retry after ${err.retryAfter.toISOString()}`);
+        return { kolId: kol._id, handle: kol.handle, postsFound: 0, postsSaved: 0, dropped: 0, errors: [err.message] };
+      }
+      if (err instanceof XUserNotFoundError) {
+        log.warn(`[KolCrawler] @${kol.handle} not found on X, deactivating`);
+        kol.is_active = false;
+        await kol.save();
+        return { kolId: kol._id, handle: kol.handle, postsFound: 0, postsSaved: 0, dropped: 0, errors: [err.message] };
+      }
+      throw err;
+    }
   }
 
   /**
@@ -792,10 +619,8 @@ export interface ICrawlSpawnResult {
 }
 
 /**
- * Spawn multiple batch crawl tasks (fire-and-forget).
- * Each task covers `crawl_handles_per_task` handles (default 2).
- * Handles per run = ceil(total_active / 6) to cover all KOLs every 24h (6 runs/day).
- * Results are processed asynchronously via POST /api/tasks/:id/process-result.
+ * Crawl a round-robin slice of active KOLs (fire-and-forget style, now synchronous).
+ * Covers all handles in 24h across 6 runs (every 4h).
  */
 export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
   const kolSettings = await KolSettings.getSettings();
@@ -811,11 +636,9 @@ export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
     return { tasksCreated: 0, handles: [] };
   }
 
-  // Cover all handles in 24h across 6 runs (every 4h)
   const RUNS_PER_DAY = 6;
   const handlesPerRun = Math.ceil(totalKols / RUNS_PER_DAY);
 
-  // Round-robin: null last_crawled_at sorts first — new KOLs get priority
   const kols = await KolProfile.find({
     is_active: true,
     reputation_score: { $gte: minTrustScore },
@@ -823,50 +646,29 @@ export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
     .sort({ last_crawled_at: 1 })
     .limit(handlesPerRun);
 
-  log.info(
-    `[KolCrawler] Spawning tasks for ${kols.length}/${totalKols} KOLs (${handlesPerRun} per run)`,
-  );
+  log.info(`[KolCrawler] Crawling ${kols.length}/${totalKols} KOLs`);
 
-  // Build KOL info list with their last crawled times
-  const kolInfos: IKolCrawlInfo[] = [];
-  for (const kol of kols) {
-    const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-    const now = new Date();
-    const oldestAllowed = new Date(now.getTime() - MAX_CRAWL_WINDOW_MS);
-    const rawSince = cachedLastCrawled ?? kol.last_crawled_at ?? null;
-    const since =
-      rawSince && rawSince > oldestAllowed && rawSince <= now
-        ? rawSince
-        : oldestAllowed;
-    kolInfos.push({
-      handle: kol.handle,
-      since: since.toISOString(),
-      limit: kolSettings.max_posts_per_crawl,
-    });
-  }
-
-  // Split into chunks and create one task per chunk (fire-and-forget)
-  const chunkSize = kolSettings.crawl_handles_per_task;
   const allHandles: string[] = [];
-  let tasksCreated = 0;
+  let crawled = 0;
 
-  for (let i = 0; i < kolInfos.length; i += chunkSize) {
-    const chunk = kolInfos.slice(i, i + chunkSize);
-    const handleGroup = chunk.length === 1 ? chunk[0].handle : null;
-    await createBatchCrawlTask(chunk, 10, handleGroup);
-    allHandles.push(...chunk.map((k) => k.handle));
-    tasksCreated++;
+  for (const kol of kols) {
+    try {
+      await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
+      allHandles.push(kol.handle);
+      crawled++;
+      await delay(5000);
+    } catch (err) {
+      log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(err as Error).message}`);
+    }
   }
 
-  log.info(
-    `[KolCrawler] Spawned ${tasksCreated} tasks for handles: ${allHandles.join(", ")}`,
-  );
-  return { tasksCreated, handles: allHandles };
+  log.info(`[KolCrawler] Crawled ${crawled} KOLs: ${allHandles.join(", ")}`);
+  return { tasksCreated: crawled, handles: allHandles };
 }
 
 /**
  * Crawl only KOLs whose per-tier interval has elapsed since last_crawled_at.
- * Called every 15 minutes by kolDaemon. Does NOT modify crawlAllKolsSequential.
+ * Called every 15 minutes by kolDaemon.
  */
 export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
   const kolSettings = await KolSettings.getSettings();
@@ -888,34 +690,10 @@ export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
     is_active: true,
     reputation_score: { $gte: minTrustScore },
     $or: [
-      {
-        tier: "S",
-        $or: [
-          { last_crawled_at: null },
-          { last_crawled_at: { $lte: cutoffS } },
-        ],
-      },
-      {
-        tier: "A",
-        $or: [
-          { last_crawled_at: null },
-          { last_crawled_at: { $lte: cutoffA } },
-        ],
-      },
-      {
-        tier: "B",
-        $or: [
-          { last_crawled_at: null },
-          { last_crawled_at: { $lte: cutoffB } },
-        ],
-      },
-      {
-        tier: "C",
-        $or: [
-          { last_crawled_at: null },
-          { last_crawled_at: { $lte: cutoffC } },
-        ],
-      },
+      { tier: "S", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffS } }] },
+      { tier: "A", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffA } }] },
+      { tier: "B", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffB } }] },
+      { tier: "C", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffC } }] },
     ],
   });
 
@@ -933,42 +711,25 @@ export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
 
   log.info(`[KolCrawler] crawlDueKols — ${kols.length} KOLs due`);
 
-  const kolInfos: IKolCrawlInfo[] = [];
-  for (const kol of kols) {
-    const cachedLastCrawled = await getCachedLastCrawled(kol.handle);
-    const oldestAllowed = new Date(now - MAX_CRAWL_WINDOW_MS);
-    const rawSince = cachedLastCrawled ?? kol.last_crawled_at ?? null;
-    const since =
-      rawSince && rawSince > oldestAllowed && rawSince <= new Date(now)
-        ? rawSince
-        : oldestAllowed;
-    kolInfos.push({
-      handle: kol.handle,
-      since: since.toISOString(),
-      limit: kolSettings.max_posts_per_crawl,
-      tier: kol.tier,
-    });
-  }
-
-  const chunkSize = kolSettings.crawl_handles_per_task;
   const allHandles: string[] = [];
-  let tasksCreated = 0;
+  let crawled = 0;
 
-  for (let i = 0; i < kolInfos.length; i += chunkSize) {
-    const chunk = kolInfos.slice(i, i + chunkSize);
-    const chunkPriority = Math.max(
-      ...chunk.map((k) => tierToPriority(k.tier ?? "C")),
-    );
-    const handleGroup = chunk.length === 1 ? chunk[0].handle : null;
-    await createBatchCrawlTask(chunk, chunkPriority, handleGroup);
-    allHandles.push(...chunk.map((k) => k.handle));
-    tasksCreated++;
+  for (const kol of kols) {
+    try {
+      await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
+      allHandles.push(kol.handle);
+      crawled++;
+    } catch (err) {
+      if (err instanceof XRateLimitError) {
+        log.warn(`[KolCrawler] Rate limit hit during crawlDueKols, stopping batch`);
+        break;
+      }
+      log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(err as Error).message}`);
+    }
   }
 
-  log.info(
-    `[KolCrawler] crawlDueKols — spawned ${tasksCreated} tasks for: ${allHandles.join(", ")}`,
-  );
-  return { tasksCreated, handles: allHandles };
+  log.info(`[KolCrawler] crawlDueKols — crawled ${crawled}: ${allHandles.join(", ")}`);
+  return { tasksCreated: crawled, handles: allHandles };
 }
 
 // ── Singleton Export ─────────────────────────────────────────────────────────
