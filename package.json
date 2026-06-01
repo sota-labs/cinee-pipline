@@ -38,6 +38,7 @@
     "kol:crawl": "tsx src/scripts/kolCrawlCron.ts",
     "kol:analyze": "tsx src/scripts/kolAnalyzeCron.ts",
     "kol:daemon": "tsx src/scripts/kolDaemon.ts",
+    "stream:kol": "tsx src/scripts/kolStreamWorker.ts",
     "migrate:kol-settings-tier-intervals": "tsx src/scripts/migrateKolSettingsTierIntervals.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -48,7 +49,8 @@
     "express": "^4.21.0",
     "ioredis": "^5.4.0",
     "mongoose": "^9.3.1",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "p-limit": "3.1.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.0",

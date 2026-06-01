@@ -99,8 +99,8 @@ export interface ITierCrawlIntervals {
 
 const tierCrawlIntervalsSchema = new Schema<ITierCrawlIntervals>(
   {
-    S: { type: Number, default: 30,  min: 5  },
-    A: { type: Number, default: 120, min: 30 },
+    S: { type: Number, default: 120, min: 5  },
+    A: { type: Number, default: 240, min: 30 },
     B: { type: Number, default: 240, min: 60 },
     C: { type: Number, default: 480, min: 60 },
   },
@@ -116,6 +116,7 @@ export interface IKolSettings extends Document {
   max_posts_per_crawl: number;
   max_comments_per_post: number;
   crawl_handles_per_task: number;
+  crawl_concurrency: number;
   analyze_batch_size: number;
   afk_skip_cashtag_whitelist: string[];
 
@@ -146,6 +147,7 @@ const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
     max_posts_per_crawl: { type: Number, default: 10, min: 1 },
     max_comments_per_post: { type: Number, default: 10, min: 1 },
     crawl_handles_per_task: { type: Number, default: 2, min: 1 },
+    crawl_concurrency: { type: Number, default: 5, min: 1, max: 20 },
     analyze_batch_size: { type: Number, default: 10, min: 1 },
     afk_skip_cashtag_whitelist: {
       type: [String],

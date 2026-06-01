@@ -1,4 +1,5 @@
 /** KolCrawlerService — Crawl posts from tracked KOLs with Redis caching */
+import pLimit from "p-limit";
 import { log } from "../utils/logger.js";
 import { KolProfile, type IKolProfile } from "../db/models/KolProfile.js";
 import {
@@ -236,30 +237,12 @@ export async function processBatchCrawlResult(
         );
       }
 
-      // Keep only top 2 posts by engagement score per handle
-      const MAX_POSTS_PER_HANDLE = 2;
-      const topPosts =
-        freshPosts.length > MAX_POSTS_PER_HANDLE
-          ? [...freshPosts]
-              .sort(
-                (a, b) =>
-                  calculateEngagementScore(b) - calculateEngagementScore(a),
-              )
-              .slice(0, MAX_POSTS_PER_HANDLE)
-          : freshPosts;
-
-      if (freshPosts.length > MAX_POSTS_PER_HANDLE) {
-        log.info(
-          `[KolCrawler] @${handle}: ${freshPosts.length} fresh posts, keeping top ${MAX_POSTS_PER_HANDLE} by engagement`,
-        );
-      }
-
       const {
         saved,
         skipped,
         dropped,
         posts: savedPosts,
-      } = await processCrawlResults(kol._id, topPosts);
+      } = await processCrawlResults(kol._id, freshPosts);
 
       const now = new Date();
       kol.last_crawled_at = now;
@@ -398,46 +381,40 @@ export async function processCommentCrawlResult(
 
 export class KolCrawlerService {
   /**
-   * Crawl all active KOLs.
-   * Creates tasks for OpenClaw to execute.
+   * Crawl all active KOLs in parallel (concurrency controlled by KolSettings.crawl_concurrency).
    */
   async crawlAllKols(): Promise<ICrawlResult[]> {
     const settings = await KolSettings.getSettings();
     const minTrustScore = settings.safety.min_kol_trust_score;
 
-    // Get all active KOLs with good reputation
     const kols = await KolProfile.find({
       is_active: true,
       reputation_score: { $gte: minTrustScore },
     });
 
-    log.info(`[KolCrawler] Starting crawl for ${kols.length} KOLs`);
+    log.info(`[KolCrawler] Starting crawl for ${kols.length} KOLs (concurrency: ${settings.crawl_concurrency})`);
 
-    const results: ICrawlResult[] = [];
+    const limit = pLimit(settings.crawl_concurrency);
 
-    for (const kol of kols) {
-      try {
-        const result = await this.crawlKol(kol, {
-          limit: settings.max_posts_per_crawl,
-        });
-        results.push(result);
-
-        // Rate limiting: 5 second delay between KOLs
-        await delay(5000);
-      } catch (error) {
-        log.error(
-          `[KolCrawler] Failed to crawl @${kol.handle}: ${(error as Error).message}`,
-        );
-        results.push({
-          kolId: kol._id,
-          handle: kol.handle,
-          postsFound: 0,
-          postsSaved: 0,
-          dropped: 0,
-          errors: [(error as Error).message],
-        });
-      }
-    }
+    const results = await Promise.all(
+      kols.map((kol) =>
+        limit(async () => {
+          try {
+            return await this.crawlKol(kol, { limit: settings.max_posts_per_crawl });
+          } catch (error) {
+            log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(error as Error).message}`);
+            return {
+              kolId: kol._id,
+              handle: kol.handle,
+              postsFound: 0,
+              postsSaved: 0,
+              dropped: 0,
+              errors: [(error as Error).message],
+            } as ICrawlResult;
+          }
+        }),
+      ),
+    );
 
     return results;
   }
@@ -478,15 +455,7 @@ export class KolCrawlerService {
 
       const rawPosts = freshTweets.map(t => mapTweetToPost(t, kol.handle, includes));
 
-      // Keep top 2 by engagement score (same cap as processBatchCrawlResult)
-      const MAX_POSTS = 2;
-      const topPosts = rawPosts.length > MAX_POSTS
-        ? [...rawPosts]
-            .sort((a, b) => calculateEngagementScore(b) - calculateEngagementScore(a))
-            .slice(0, MAX_POSTS)
-        : rawPosts;
-
-      const { saved, skipped, dropped, posts: savedPosts } = await processCrawlResults(kol._id, topPosts);
+      const { saved, skipped, dropped, posts: savedPosts } = await processCrawlResults(kol._id, rawPosts);
 
       const now = new Date();
       kol.last_crawled_at = now;
@@ -607,10 +576,6 @@ function getDefaultSinceDate(): Date {
   return new Date(Date.now() - 2 * 60 * 60 * 1000);
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // ── Parallel Crawl Export ─────────────────────────────────────────────────────
 
 export interface ICrawlSpawnResult {
@@ -619,7 +584,7 @@ export interface ICrawlSpawnResult {
 }
 
 /**
- * Crawl a round-robin slice of active KOLs (fire-and-forget style, now synchronous).
+ * Crawl a round-robin slice of active KOLs in parallel.
  * Covers all handles in 24h across 6 runs (every 4h).
  */
 export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
@@ -646,24 +611,30 @@ export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
     .sort({ last_crawled_at: 1 })
     .limit(handlesPerRun);
 
-  log.info(`[KolCrawler] Crawling ${kols.length}/${totalKols} KOLs`);
+  log.info(`[KolCrawler] Crawling ${kols.length}/${totalKols} KOLs (concurrency: ${kolSettings.crawl_concurrency})`);
 
+  const limit = pLimit(kolSettings.crawl_concurrency);
   const allHandles: string[] = [];
-  let crawled = 0;
 
-  for (const kol of kols) {
-    try {
-      await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
-      allHandles.push(kol.handle);
-      crawled++;
-      await delay(5000);
-    } catch (err) {
-      log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(err as Error).message}`);
+  const results = await Promise.allSettled(
+    kols.map((kol) =>
+      limit(async () => {
+        await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
+        return kol.handle;
+      }),
+    ),
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      allHandles.push(result.value);
+    } else {
+      log.error(`[KolCrawler] Crawl failed: ${result.reason}`);
     }
   }
 
-  log.info(`[KolCrawler] Crawled ${crawled} KOLs: ${allHandles.join(", ")}`);
-  return { tasksCreated: crawled, handles: allHandles };
+  log.info(`[KolCrawler] Crawled ${allHandles.length} KOLs: ${allHandles.join(", ")}`);
+  return { tasksCreated: allHandles.length, handles: allHandles };
 }
 
 /**
@@ -709,27 +680,37 @@ export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
       (a.last_crawled_at?.getTime() ?? 0) - (b.last_crawled_at?.getTime() ?? 0),
   );
 
-  log.info(`[KolCrawler] crawlDueKols — ${kols.length} KOLs due`);
+  log.info(`[KolCrawler] crawlDueKols — ${kols.length} KOLs due (concurrency: ${kolSettings.crawl_concurrency})`);
 
+  const limit = pLimit(kolSettings.crawl_concurrency);
   const allHandles: string[] = [];
-  let crawled = 0;
+  let rateLimitHit = false;
 
-  for (const kol of kols) {
-    try {
-      await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
-      allHandles.push(kol.handle);
-      crawled++;
-    } catch (err) {
-      if (err instanceof XRateLimitError) {
-        log.warn(`[KolCrawler] Rate limit hit during crawlDueKols, stopping batch`);
-        break;
+  const results = await Promise.allSettled(
+    kols.map((kol) =>
+      limit(async () => {
+        if (rateLimitHit) return null;
+        await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
+        return kol.handle;
+      }),
+    ),
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) {
+      allHandles.push(result.value);
+    } else if (result.status === "rejected") {
+      if (result.reason instanceof XRateLimitError) {
+        log.warn("[KolCrawler] Rate limit hit during crawlDueKols, stopping batch");
+        rateLimitHit = true;
+      } else {
+        log.error(`[KolCrawler] Crawl failed: ${result.reason}`);
       }
-      log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(err as Error).message}`);
     }
   }
 
-  log.info(`[KolCrawler] crawlDueKols — crawled ${crawled}: ${allHandles.join(", ")}`);
-  return { tasksCreated: crawled, handles: allHandles };
+  log.info(`[KolCrawler] crawlDueKols — crawled ${allHandles.length}: ${allHandles.join(", ")}`);
+  return { tasksCreated: allHandles.length, handles: allHandles };
 }
 
 // ── Singleton Export ─────────────────────────────────────────────────────────

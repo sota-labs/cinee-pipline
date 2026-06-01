@@ -2,6 +2,9 @@
 import { settings } from "../../../config/settings.js";
 import { KolProfile } from "../../../db/models/KolProfile.js";
 
+export { getStreamRules, addStreamRules, deleteStreamRules, connectFilteredStream } from "./xStreamTypes.js";
+export type { IStreamRule, IStreamRuleAdd } from "./xStreamTypes.js";
+
 const X_API_BASE = "https://api.twitter.com/2";
 
 // ── Error types ───────────────────────────────────────────────────────────────
