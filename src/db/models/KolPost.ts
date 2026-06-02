@@ -107,6 +107,9 @@ export interface IKolPost extends Document {
 
   crawled_at: Date;
   comments_crawled: boolean;
+  /** Set when the post transitions to ANALYZING. Cleared on terminal state.
+   *  Used to detect stuck analyze tasks (OpenClaw crashes, lost webhooks). */
+  analyze_started_at?: Date;
   analyzed_at?: Date;
   replied_at?: Date;
   replied_comment_id?: string;
@@ -161,6 +164,7 @@ const kolPostSchema = new Schema<IKolPost>(
 
     crawled_at: { type: Date, default: Date.now },
     comments_crawled: { type: Boolean, default: false },
+    analyze_started_at: { type: Date },
     analyzed_at: { type: Date },
     replied_at: { type: Date },
     replied_comment_id: { type: String },
@@ -175,6 +179,7 @@ const kolPostSchema = new Schema<IKolPost>(
 kolPostSchema.index({ kol_id: 1, posted_at: -1 });
 kolPostSchema.index({ status: 1, crawled_at: -1 });
 kolPostSchema.index({ status: 1, comments_crawled: 1, crawled_at: -1 });
+kolPostSchema.index({ status: 1, analyze_started_at: 1 });
 kolPostSchema.index({ engagement_score: -1 });
 kolPostSchema.index({ platform: 1, posted_at: -1 });
 

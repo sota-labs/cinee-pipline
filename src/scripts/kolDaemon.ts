@@ -28,7 +28,8 @@ async function executeAnalyze() {
   log.info("[KOLDaemon] Analyze job starting…");
   try {
     const result = await kolAnalyzerService.analyzePendingPosts();
-    log.info(`[KOLDaemon] Analyze done — queued: ${result.queued}, errors: ${result.errors}`);
+    const sweepNote = result.swept > 0 ? ` (swept ${result.swept} stuck)` : "";
+    log.info(`[KOLDaemon] Analyze done — queued: ${result.queued}, errors: ${result.errors}${sweepNote}`);
   } catch (err: unknown) {
     log.error(`[KOLDaemon] Analyze job crashed: ${(err as Error).message}`);
   }
@@ -127,7 +128,7 @@ async function startDaemon() {
   cron.schedule("0 */2 * * *", () => tickBatchCrawl(["S", "A"]));
   cron.schedule("0 */3 * * *", () => tickBatchCrawl(["B"]));
   cron.schedule("0 */4 * * *", () => tickBatchCrawl(["C"]));
-  cron.schedule("*/10 * * * *", executeAnalyze);
+  cron.schedule("*/1 * * * *", executeAnalyze);
   cron.schedule("*/10 * * * *", executeAFKReplies);
   cron.schedule("*/10 * * * *", executeAutoReject);
   cron.schedule("*/2 * * * *", executeSelfReplies);

@@ -155,6 +155,9 @@ export interface IKolSettings extends Document {
   crawl_handles_per_task: number;
   crawl_concurrency: number;
   analyze_batch_size: number;
+  /** Posts stuck in ANALYZING longer than this are reset to NEW by the next analyze tick.
+   *  Should be > 2× expected OpenClaw analyze latency (typically 3–5 min). */
+  analyze_stuck_threshold_minutes: number;
   afk_skip_cashtag_whitelist: string[];
 
   afk: IAFKSettings;
@@ -188,6 +191,7 @@ const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
     crawl_handles_per_task: { type: Number, default: 2, min: 1 },
     crawl_concurrency: { type: Number, default: 5, min: 1, max: 20 },
     analyze_batch_size: { type: Number, default: 10, min: 1 },
+    analyze_stuck_threshold_minutes: { type: Number, default: 15, min: 1 },
     afk_skip_cashtag_whitelist: {
       type: [String],
       default: ["WIF","BONK","PEPE","DOGE","SOL","BTC","ETH","BNB","BASE","SUI"],

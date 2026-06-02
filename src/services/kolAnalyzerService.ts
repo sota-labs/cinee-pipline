@@ -156,12 +156,38 @@ export async function processCommentPatternResult(
 
 export class KolAnalyzerService {
   /**
+   * Reset posts stuck in ANALYZING back to NEW. Recovers from OpenClaw
+   * crashes, lost webhooks, or other failures that left the post in a
+   * half-processed state.
+   *
+   * Returns the number of posts reset.
+   */
+  async sweepStuckAnalyzingPosts(): Promise<number> {
+    const { analyze_stuck_threshold_minutes } = await KolSettings.getSettings();
+    const cutoff = new Date(Date.now() - analyze_stuck_threshold_minutes * 60_000);
+
+    const result = await KolPost.updateMany(
+      { status: EKolPostStatus.ANALYZING, analyze_started_at: { $lte: cutoff } },
+      { $set: { status: EKolPostStatus.NEW, analyze_started_at: null } },
+    );
+
+    if (result.modifiedCount > 0) {
+      log.warn(
+        `[KolAnalyzer] Swept ${result.modifiedCount} stuck ANALYZING posts back to NEW (threshold: ${analyze_stuck_threshold_minutes} min)`,
+      );
+    }
+    return result.modifiedCount;
+  }
+
+  /**
    * Analyze all NEW posts that haven't been analyzed yet.
    */
   async analyzePendingPosts(): Promise<{
     queued: number;
     errors: number;
+    swept: number;
   }> {
+    const swept = await this.sweepStuckAnalyzingPosts();
     const { analyze_batch_size } = await KolSettings.getSettings();
 
     const pendingPosts = await KolPost.find({
@@ -188,7 +214,7 @@ export class KolAnalyzerService {
       }
     }
 
-    return { queued, errors };
+    return { queued, errors, swept };
   }
 
   /**
@@ -199,7 +225,7 @@ export class KolAnalyzerService {
     // Atomic claim: only proceed if post is still NEW
     const claimed = await KolPost.findOneAndUpdate(
       { _id: post._id, status: EKolPostStatus.NEW },
-      { $set: { status: EKolPostStatus.ANALYZING } },
+      { $set: { status: EKolPostStatus.ANALYZING, analyze_started_at: new Date() } },
     );
     if (!claimed) {
       log.info(`[KolAnalyzer] Post ${post._id} already claimed for analysis — skipping`);
@@ -271,6 +297,7 @@ export class KolAnalyzerService {
 
     post.status = EKolPostStatus.ANALYZED;
     post.analyzed_at = new Date();
+    post.analyze_started_at = undefined;
 
     await post.save();
     log.info(`[KolAnalyzer] Applied analysis to post ${postId}`);
