@@ -99,13 +99,50 @@ export interface ITierCrawlIntervals {
 
 const tierCrawlIntervalsSchema = new Schema<ITierCrawlIntervals>(
   {
-    S: { type: Number, default: 120, min: 5  },
+    S: { type: Number, default: 15, min: 5  },
     A: { type: Number, default: 240, min: 30 },
     B: { type: Number, default: 240, min: 60 },
     C: { type: Number, default: 480, min: 60 },
   },
   { _id: false },
 );
+
+export interface IPrimeWindow {
+  start_hour: number;  // 0-23, server-local (UTC)
+  end_hour: number;    // 1-24, strictly > start_hour (or wrap-around midnight)
+}
+
+const primeWindowSchema = new Schema<IPrimeWindow>(
+  {
+    start_hour: { type: Number, default: 9, min: 0, max: 23 },
+    end_hour:   { type: Number, default: 13, min: 1, max: 24 },
+  },
+  { _id: false },
+);
+
+export interface ITierBatchIntervals {
+  A: number;  // minutes, >= 5
+  B: number;  // >= 30
+  C: number;  // >= 30
+}
+
+const tierBatchIntervalsSchema = new Schema<ITierBatchIntervals>(
+  {
+    A: { type: Number, default: 120, min: 5  },
+    B: { type: Number, default: 180, min: 30 },
+    C: { type: Number, default: 240, min: 60 },
+  },
+  { _id: false },
+);
+
+export function isWithinPrimeWindow(pw: IPrimeWindow, now: Date = new Date()): boolean {
+  const h = now.getUTCHours();
+  const { start_hour: s, end_hour: e } = pw;
+  if (s === e) return false; // empty window
+  if (s < e) return h >= s && h < e;
+  // wrap-around midnight (e.g. 22..2)
+  return h >= s || h < e;
+}
 
 // ── Main Interface ────────────────────────────────────────────────────────────
 
@@ -125,6 +162,8 @@ export interface IKolSettings extends Document {
   self_reply: ISelfReplySettings;
   safety: ISafetySettings;
   tier_crawl_intervals: ITierCrawlIntervals;
+  prime_window: IPrimeWindow;
+  tier_batch_intervals: ITierBatchIntervals;
 
   updated_at: Date;
 }
@@ -159,6 +198,8 @@ const kolSettingsSchema = new Schema<IKolSettings, KolSettingsModel>(
     self_reply: { type: selfReplySettingsSchema, default: () => ({}) },
     safety: { type: safetySettingsSchema, default: () => ({}) },
     tier_crawl_intervals: { type: tierCrawlIntervalsSchema, default: () => ({}) },
+    prime_window: { type: primeWindowSchema, default: () => ({}) },
+    tier_batch_intervals: { type: tierBatchIntervalsSchema, default: () => ({}) },
   },
   {
     timestamps: { createdAt: false, updatedAt: "updated_at" },

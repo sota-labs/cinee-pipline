@@ -2,7 +2,9 @@
  * Standalone daemon — KOL unified workflow job.
  *
  * Runs scheduled tasks for KOL crawling, analyzing, AFK replies, and self-replies.
- * Can also be triggered immediately with the --run-now flag.
+ * The cron-scheduled logic lives in kolScheduleService (testable); this script
+ * is a thin wrapper that wires the schedules to node-cron and the process
+ * lifecycle.
  *
  * Usage:
  *   npm run kol:daemon          # start daemon
@@ -13,32 +15,14 @@ import { connectDb } from "../db/connection.js";
 import { closeRedis } from "../db/redis.js";
 import { log } from "../utils/logger.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
-
-import { crawlDueKols } from "../services/kolCrawlerService.js";
 import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
 import { replyEngineService } from "../services/replyEngineService.js";
 import { selfReplyService } from "../services/selfReplyService.js";
+import { runPrimePolling, runBatchCrawl } from "../services/kolScheduleService.js";
 
 const RUN_NOW = process.argv.includes("--run-now");
 
-let isTierCrawling = false;
-
-async function executeTierCrawl() {
-  if (isTierCrawling) {
-    log.warn("[KOLDaemon] Tier crawl already in progress, skipping tick");
-    return;
-  }
-  isTierCrawling = true;
-  log.info("[KOLDaemon] Tier crawl job starting…");
-  try {
-    const result = await crawlDueKols();
-    log.info(`[KOLDaemon] Tier crawl done — spawned ${result.tasksCreated} tasks for: ${result.handles.join(", ")}`);
-  } catch (err: unknown) {
-    log.error(`[KOLDaemon] Tier crawl job crashed: ${(err as Error).message}`);
-  } finally {
-    isTierCrawling = false;
-  }
-}
+// ── Analyze / Reply / Cleanup (unchanged) ────────────────────────────────────
 
 async function executeAnalyze() {
   log.info("[KOLDaemon] Analyze job starting…");
@@ -103,36 +87,50 @@ async function executeSessionCleanup() {
   }
 }
 
+// ── Schedule wrappers ───────────────────────────────────────────────────────
+
+async function tickPrimePolling() {
+  try {
+    const r = await runPrimePolling();
+    if (!r.skipped && !r.outsideWindow) {
+      log.info(`[KOLDaemon] Prime poll — polled ${r.polled} KOLs`);
+    }
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Prime poll crashed: ${(err as Error).message}`);
+  }
+}
+
+async function tickBatchCrawl(tiers: Array<"S" | "A" | "B" | "C">) {
+  try {
+    const r = await runBatchCrawl(tiers);
+    if (!r.busy) {
+      log.info(`[KOLDaemon] Batch [${tiers.join(",")}] — created ${r.created} tasks, skipped ${r.skipped}`);
+    }
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Batch [${tiers.join(",")}] crashed: ${(err as Error).message}`);
+  }
+}
+
 async function startDaemon() {
   await connectDb();
   log.info("[KOLDaemon] Connected to MongoDB.");
 
   if (RUN_NOW) {
-    // Run sequentially to avoid DB overload on startup
-    await executeTierCrawl();
+    await tickPrimePolling();
     await executeAnalyze();
     await executeAFKReplies();
     await executeSelfReplies();
   }
 
   // Schedule jobs
-  
-  // Tier-based crawl every 1.5 hours — only crawls KOLs whose per-tier interval has elapsed
-  cron.schedule("0 */2 * * *", executeTierCrawl);
-  
-  // Analyze pending posts every 10 minutes
+  cron.schedule("*/15 * * * *", tickPrimePolling);
+  cron.schedule("0 */2 * * *", () => tickBatchCrawl(["S", "A"]));
+  cron.schedule("0 */3 * * *", () => tickBatchCrawl(["B"]));
+  cron.schedule("0 */4 * * *", () => tickBatchCrawl(["C"]));
   cron.schedule("*/10 * * * *", executeAnalyze);
-  
-  // Execute scheduled AFK replies every 10 minutes
   cron.schedule("*/10 * * * *", executeAFKReplies);
-
-  // Auto-reject expired manual suggestions every 10 minutes
   cron.schedule("*/10 * * * *", executeAutoReject);
-  
-  // Process self-reply queues every 2 minutes to allow 1-3 min dynamic delay
   cron.schedule("*/2 * * * *", executeSelfReplies);
-
-  // Clean up openclaw session files older than 3 days, every 2 hours
   cron.schedule("0 */2 * * *", executeSessionCleanup);
 
   log.info("[KOLDaemon] Daemon ready — schedules applied.");

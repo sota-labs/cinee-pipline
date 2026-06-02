@@ -304,11 +304,23 @@ mergeProfiles(manual: ManualConfig, learned: LearnedProfile): EffectiveProfile
 
 ## Workflow: KOL Crawl → Analyze → Reply
 
+KOL crawling uses a hybrid schedule (server-local time, default UTC). See
+`docs/notes/prime-window-and-batch-schedule.md` for the rationale.
+
+| Cron | Function | Tiers | Path |
+|------|----------|-------|------|
+| `*/15 * * * *` | `runPrimePolling` (in `kolScheduleService`) | S | X API poll (only inside `prime_window`) |
+| `0 */2 * * *` | `runBatchCrawl(["S","A"])` | S off-prime, A | OpenClaw batch task |
+| `0 */3 * * *` | `runBatchCrawl(["B"])` | B | OpenClaw batch task |
+| `0 */4 * * *` | `runBatchCrawl(["C"])` | C | OpenClaw batch task |
+
 ```
-1. KOL Crawl Cron (Every 30 min)
-   └─> kolCrawlCron.ts triggers
-   └─> Fetches posts from tracked KOLs via OpenClaw
-   └─> Stores in KolPost collection with status="pending"
+1. KOL Crawl (continuous; 4 jobs inside kolDaemon)
+   └─> Tier S (prime window only): X API direct polling every 15 min
+   └─> Tier S (off-prime) + Tier A: OpenClaw batch every 2h
+   └─> Tier B: OpenClaw batch every 3h
+   └─> Tier C: OpenClaw batch every 4h
+   └─> All paths write to KolPost collection (deduped by post_url)
    └─> Updates last_crawled_at in KolProfile
 
 2. KOL Analyze Cron (Every 60 min)

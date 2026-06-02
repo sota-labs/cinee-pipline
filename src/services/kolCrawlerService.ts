@@ -9,14 +9,16 @@ import {
 } from "../db/models/KolPost.js";
 import {
   KolSettings,
-  type ITierCrawlIntervals,
 } from "../db/models/KolSettings.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
+import { settings } from "../config/settings.js";
 import { getRedis } from "../db/redis.js";
 import {
   parseBatchCrawlResult,
   type IRawPost,
 } from "../utils/kolCrawlResultParser.js";
+import { buildTweetScript } from "../utils/kolCrawlScript.js";
+import { OUTPUT_FORMAT_INSTRUCTION } from "../prompts/outputFormat.js";
 import {
   getUserIdByHandle,
   getUserTweets,
@@ -381,45 +383,6 @@ export async function processCommentCrawlResult(
 
 export class KolCrawlerService {
   /**
-   * Crawl all active KOLs in parallel (concurrency controlled by KolSettings.crawl_concurrency).
-   */
-  async crawlAllKols(): Promise<ICrawlResult[]> {
-    const settings = await KolSettings.getSettings();
-    const minTrustScore = settings.safety.min_kol_trust_score;
-
-    const kols = await KolProfile.find({
-      is_active: true,
-      reputation_score: { $gte: minTrustScore },
-    });
-
-    log.info(`[KolCrawler] Starting crawl for ${kols.length} KOLs (concurrency: ${settings.crawl_concurrency})`);
-
-    const limit = pLimit(settings.crawl_concurrency);
-
-    const results = await Promise.all(
-      kols.map((kol) =>
-        limit(async () => {
-          try {
-            return await this.crawlKol(kol, { limit: settings.max_posts_per_crawl });
-          } catch (error) {
-            log.error(`[KolCrawler] Failed to crawl @${kol.handle}: ${(error as Error).message}`);
-            return {
-              kolId: kol._id,
-              handle: kol.handle,
-              postsFound: 0,
-              postsSaved: 0,
-              dropped: 0,
-              errors: [(error as Error).message],
-            } as ICrawlResult;
-          }
-        }),
-      ),
-    );
-
-    return results;
-  }
-
-  /**
    * Crawl a specific KOL via X API.
    */
   async crawlKol(
@@ -576,141 +539,144 @@ function getDefaultSinceDate(): Date {
   return new Date(Date.now() - 2 * 60 * 60 * 1000);
 }
 
-// ── Parallel Crawl Export ─────────────────────────────────────────────────────
+// ── OpenClaw Batch Task Factory ──────────────────────────────────────────────
 
-export interface ICrawlSpawnResult {
+/** Build the OpenClaw agent prompt for a KOL batch crawl. */
+function buildKolBatchCrawlPrompt(handle: string, sinceISO: string): string {
+  const tweetScript = buildTweetScript(sinceISO);
+  return `IMPORTANT: Do NOT write your own JavaScript. Use ONLY the exact script provided below.
+
+1. Navigate (target=host) to https://x.com/${handle}, wait 4s.
+2. Repeat up to 5 times:
+   a. Call page.evaluate with the exact TWEET_SCRIPT string below (copy it verbatim, no modifications, no arguments).
+      The script is a self-contained IIFE — call it as: page.evaluate(TWEET_SCRIPT)
+      It returns an object: { posts: [...], shouldStop: boolean }
+   b. Collect all items from result.posts.
+   c. If result.shouldStop === true, STOP — do not scroll further.
+   d. Otherwise scroll down (2s), then repeat.
+3. Return JSON: {"handle": "${handle}", "posts": <collected posts array>}
+
+TWEET_SCRIPT (copy verbatim into page.evaluate — do NOT pass any arguments):
+\`\`\`
+${tweetScript}
+\`\`\`
+${OUTPUT_FORMAT_INSTRUCTION}`;
+}
+
+export interface ICreateBatchTasksOptions {
+  /** When true, ignore `last_crawled_at` and enqueue a task for every active KOL in the tiers. Default: false. */
+  forceAll?: boolean;
+  /** Per-tier cap to avoid quota blow-up. Default: 50. */
+  maxPerTier?: number;
+}
+
+export interface ICreateBatchTasksResult {
   tasksCreated: number;
   handles: string[];
+  skipped: string[];
 }
 
 /**
- * Crawl a round-robin slice of active KOLs in parallel.
- * Covers all handles in 24h across 6 runs (every 4h).
+ * Query KOLs due for the given tiers and create one OpenClaw Task record per KOL.
+ * The cinee-worker picks up each Task, runs the browser script, and POSTs results
+ * back to /api/tasks/:id/complete. The webhook routes/tasks.ts:296-310 then calls
+ * processBatchCrawlResult() — this function only generates the Tasks.
  */
-export async function crawlAllKolsSequential(): Promise<ICrawlSpawnResult> {
+export async function createBatchCrawlTasks(
+  tiers: Array<"S" | "A" | "B" | "C">,
+  options?: ICreateBatchTasksOptions,
+): Promise<ICreateBatchTasksResult> {
+  const forceAll = options?.forceAll ?? false;
+  const maxPerTier = options?.maxPerTier ?? 50;
+  const result: ICreateBatchTasksResult = { tasksCreated: 0, handles: [], skipped: [] };
+
+  if (tiers.length === 0) return result;
+
   const kolSettings = await KolSettings.getSettings();
   const minTrustScore = kolSettings.safety.min_kol_trust_score;
-
-  const totalKols = await KolProfile.countDocuments({
-    is_active: true,
-    reputation_score: { $gte: minTrustScore },
-  });
-
-  if (totalKols === 0) {
-    log.info("[KolCrawler] No active KOLs to crawl");
-    return { tasksCreated: 0, handles: [] };
-  }
-
-  const RUNS_PER_DAY = 6;
-  const handlesPerRun = Math.ceil(totalKols / RUNS_PER_DAY);
-
-  const kols = await KolProfile.find({
-    is_active: true,
-    reputation_score: { $gte: minTrustScore },
-  })
-    .sort({ last_crawled_at: 1 })
-    .limit(handlesPerRun);
-
-  log.info(`[KolCrawler] Crawling ${kols.length}/${totalKols} KOLs (concurrency: ${kolSettings.crawl_concurrency})`);
-
-  const limit = pLimit(kolSettings.crawl_concurrency);
-  const allHandles: string[] = [];
-
-  const results = await Promise.allSettled(
-    kols.map((kol) =>
-      limit(async () => {
-        await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
-        return kol.handle;
-      }),
-    ),
-  );
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      allHandles.push(result.value);
-    } else {
-      log.error(`[KolCrawler] Crawl failed: ${result.reason}`);
-    }
-  }
-
-  log.info(`[KolCrawler] Crawled ${allHandles.length} KOLs: ${allHandles.join(", ")}`);
-  return { tasksCreated: allHandles.length, handles: allHandles };
-}
-
-/**
- * Crawl only KOLs whose per-tier interval has elapsed since last_crawled_at.
- * Called every 15 minutes by kolDaemon.
- */
-export async function crawlDueKols(): Promise<ICrawlSpawnResult> {
-  const kolSettings = await KolSettings.getSettings();
-  const intervals: ITierCrawlIntervals = kolSettings.tier_crawl_intervals ?? {
-    S: 30,
-    A: 120,
-    B: 240,
-    C: 480,
-  };
-  const minTrustScore = kolSettings.safety.min_kol_trust_score;
-
   const now = Date.now();
-  const cutoffS = new Date(now - intervals.S * 60_000);
-  const cutoffA = new Date(now - intervals.A * 60_000);
-  const cutoffB = new Date(now - intervals.B * 60_000);
-  const cutoffC = new Date(now - intervals.C * 60_000);
+
+  // Per-tier cutoff (minutes → ms). S uses 2h to match A off-prime cadence.
+  const defaultSinceMs = (tier: "S" | "A" | "B" | "C"): number => {
+    if (tier === "S") return 120 * 60_000;
+    return (kolSettings.tier_batch_intervals[tier] ?? 120) * 60_000;
+  };
 
   const kols = await KolProfile.find({
     is_active: true,
     reputation_score: { $gte: minTrustScore },
-    $or: [
-      { tier: "S", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffS } }] },
-      { tier: "A", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffA } }] },
-      { tier: "B", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffB } }] },
-      { tier: "C", $or: [{ last_crawled_at: null }, { last_crawled_at: { $lte: cutoffC } }] },
-    ],
-  });
+    tier: { $in: tiers },
+    ...(forceAll
+      ? {}
+      : {
+          $or: tiers.map((tier) => ({
+            tier,
+            $or: [
+              { last_crawled_at: null },
+              {
+                last_crawled_at: {
+                  $lte: new Date(now - defaultSinceMs(tier)),
+                },
+              },
+            ],
+          })),
+        }),
+  }).limit(tiers.length * maxPerTier);
 
   if (kols.length === 0) {
-    log.info("[KolCrawler] crawlDueKols — no KOLs due for crawl");
-    return { tasksCreated: 0, handles: [] };
+    log.info(`[KolCrawler] createBatchCrawlTasks — no KOLs due for tiers [${tiers.join(", ")}]`);
+    return result;
   }
 
-  const tierOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3 };
-  kols.sort(
-    (a, b) =>
-      (tierOrder[a.tier] ?? 4) - (tierOrder[b.tier] ?? 4) ||
-      (a.last_crawled_at?.getTime() ?? 0) - (b.last_crawled_at?.getTime() ?? 0),
+  log.info(
+    `[KolCrawler] createBatchCrawlTasks — ${kols.length} KOLs to enqueue for tiers [${tiers.join(", ")}] (concurrency: ${kolSettings.crawl_concurrency})`,
   );
 
-  log.info(`[KolCrawler] crawlDueKols — ${kols.length} KOLs due (concurrency: ${kolSettings.crawl_concurrency})`);
-
   const limit = pLimit(kolSettings.crawl_concurrency);
-  const allHandles: string[] = [];
-  let rateLimitHit = false;
 
-  const results = await Promise.allSettled(
+  await Promise.allSettled(
     kols.map((kol) =>
       limit(async () => {
-        if (rateLimitHit) return null;
-        await kolCrawlerService.crawlKol(kol, { limit: kolSettings.max_posts_per_crawl });
-        return kol.handle;
+        try {
+          const since = kol.last_crawled_at ?? new Date(now - defaultSinceMs(kol.tier as "S" | "A" | "B" | "C"));
+          const sinceISO = since.toISOString();
+          const prompt = buildKolBatchCrawlPrompt(kol.handle, sinceISO);
+
+          const escapedPrompt = prompt.replace(/'/g, "'\\''");
+          const command = `agent --agent ${settings.openClawAgent} --message '${escapedPrompt}'`;
+
+          await Task.create({
+            type: ETaskType.SINGLE_TASK_TRIGGER,
+            agent: settings.openClawAgent,
+            prompt: command,
+            status: ETaskStatus.PENDING,
+            priority: 0,
+            handle_group: kol.handle,
+            payload: {
+              action: "batch_crawl",
+              handles: [kol.handle],
+              sinceByHandle: { [kol.handle]: sinceISO },
+              priority: 0,
+              handle_group: kol.handle,
+            },
+          });
+
+          result.handles.push(kol.handle);
+          result.tasksCreated++;
+        } catch (err) {
+          result.skipped.push(kol.handle);
+          log.error(
+            `[KolCrawler] createBatchCrawlTasks — failed to enqueue @${kol.handle}: ${(err as Error).message}`,
+          );
+        }
       }),
     ),
   );
 
-  for (const result of results) {
-    if (result.status === "fulfilled" && result.value) {
-      allHandles.push(result.value);
-    } else if (result.status === "rejected") {
-      if (result.reason instanceof XRateLimitError) {
-        log.warn("[KolCrawler] Rate limit hit during crawlDueKols, stopping batch");
-        rateLimitHit = true;
-      } else {
-        log.error(`[KolCrawler] Crawl failed: ${result.reason}`);
-      }
-    }
-  }
-
-  log.info(`[KolCrawler] crawlDueKols — crawled ${allHandles.length}: ${allHandles.join(", ")}`);
-  return { tasksCreated: allHandles.length, handles: allHandles };
+  log.info(
+    `[KolCrawler] createBatchCrawlTasks — created ${result.tasksCreated} tasks, skipped ${result.skipped.length}: ${result.handles.join(", ")}`,
+  );
+  return result;
 }
 
 // ── Singleton Export ─────────────────────────────────────────────────────────

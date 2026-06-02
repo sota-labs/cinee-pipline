@@ -1,8 +1,44 @@
 # Project Changelog
 
-**Last Updated:** 2026-05-25
+**Last Updated:** 2026-06-02
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-06-02] - Refactor: Drop X Filtered Stream, Add Prime Window + OpenClaw Batch Schedule
+
+### Removed
+
+- **X Filtered Stream worker** — `src/scripts/kolStreamWorker.ts`, `src/services/kolStreamService.ts`, `src/services/platforms/x/xStreamTypes.ts`. The Pay-Per-Use tier does not include Filtered Stream access (returns 503); Pro tier not justified by post volume.
+- **`crawlDueKols` + `ICrawlSpawnResult`** from `kolCrawlerService.ts` — replaced by `createBatchCrawlTasks` factory.
+- **Script `stream:kol`** from `package.json`.
+- **Stream re-exports** from `xApiClient.ts`.
+
+### Added
+
+- **Prime window** (configurable in `KolSettings.prime_window`, default `09:00-13:00` UTC) — Tier S KOLs are polled via X API every 15 min inside the window.
+- **OpenClaw batch tasks** for all tiers outside the prime window — factory `createBatchCrawlTasks(tiers, options?)` in `kolCrawlerService.ts` creates one Task record per KOL (with `handle_group` and `payload.action === "batch_crawl"`). cinee-worker handles the rest via the existing webhook path.
+- **`kolScheduleService`** — extracted `runPrimePolling` and `runBatchCrawl` for testability. Mutexes (`isPrimePolling`, `isBatchCrawling`) prevent overlapping runs.
+- **Schema additions** to `KolSettings`: `prime_window: { start_hour, end_hour }` and `tier_batch_intervals: { A, B, C }` (in minutes).
+- **Migration script** `migrate:kol-settings-prime-window` — idempotent backfill of new fields.
+- **Tests** in `src/tests/kolScheduleService.test.ts` — 10 tests covering `isWithinPrimeWindow`, KolSettings defaults, `runPrimePolling` (in/out of window), `runBatchCrawl`, mutex behavior.
+
+### Changed
+
+- **`kolDaemon.ts`** — replaced single `executeTierCrawl` cron with 4 jobs (`*/15`, `0 */2`, `0 */3`, `0 */4`); wrapped in `tickPrimePolling` / `tickBatchCrawl` helpers; removed inline mutexes (moved to `kolScheduleService`).
+- **`tier_crawl_intervals.S`** default lowered from 120 → 15 min (used as the prime-window X API poll interval).
+- **`PATCH /api/kol-settings`** — accepts `prime_window` and `tier_batch_intervals` with validation.
+- **Route** exposes the new fields in `GET /api/kol-settings` response.
+
+### Migration
+
+After deploying:
+```bash
+npm run migrate:kol-settings-prime-window
+```
+
+See `docs/notes/prime-window-and-batch-schedule.md` for the full rationale.
 
 ---
 

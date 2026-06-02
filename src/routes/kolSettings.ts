@@ -26,6 +26,8 @@ router.get("/", async (_req: Request, res: Response) => {
         self_reply: settings.self_reply,
         safety: settings.safety,
         tier_crawl_intervals: settings.tier_crawl_intervals,
+        prime_window: settings.prime_window,
+        tier_batch_intervals: settings.tier_batch_intervals,
         updated_at: settings.updated_at,
       },
     });
@@ -197,6 +199,53 @@ router.patch("/", async (req: Request, res: Response) => {
       }
     }
 
+    // Update nested Prime Window
+    if (updates.prime_window) {
+      const pw = updates.prime_window;
+      if (pw.start_hour !== undefined) {
+        const s = Number(pw.start_hour);
+        if (isNaN(s) || s < 0 || s > 23) {
+          return res.status(400).json({ error: "prime_window.start_hour must be 0-23" });
+        }
+        settings.prime_window.start_hour = s;
+      }
+      if (pw.end_hour !== undefined) {
+        const e = Number(pw.end_hour);
+        if (isNaN(e) || e < 1 || e > 24) {
+          return res.status(400).json({ error: "prime_window.end_hour must be 1-24" });
+        }
+        settings.prime_window.end_hour = e;
+      }
+      const { start_hour, end_hour } = settings.prime_window;
+      if (end_hour === start_hour) {
+        return res.status(400).json({ error: "prime_window.end_hour must differ from start_hour (empty window)" });
+      }
+    }
+
+    // Update nested Tier Batch Intervals
+    if (updates.tier_batch_intervals) {
+      const tbi = updates.tier_batch_intervals;
+      const clamp = (val: unknown, min: number): number | null => {
+        const n = Number(val);
+        return isNaN(n) ? null : Math.max(min, n);
+      };
+      if (tbi.A !== undefined) {
+        const v = clamp(tbi.A, 5);
+        if (v === null) return res.status(400).json({ error: "tier_batch_intervals.A must be a number" });
+        settings.tier_batch_intervals.A = v;
+      }
+      if (tbi.B !== undefined) {
+        const v = clamp(tbi.B, 30);
+        if (v === null) return res.status(400).json({ error: "tier_batch_intervals.B must be a number" });
+        settings.tier_batch_intervals.B = v;
+      }
+      if (tbi.C !== undefined) {
+        const v = clamp(tbi.C, 60);
+        if (v === null) return res.status(400).json({ error: "tier_batch_intervals.C must be a number" });
+        settings.tier_batch_intervals.C = v;
+      }
+    }
+
     await settings.save();
 
     log.info("[KolSettingsRoute] Settings updated");
@@ -210,6 +259,8 @@ router.patch("/", async (req: Request, res: Response) => {
         safety: settings.safety,
         self_reply: settings.self_reply,
         tier_crawl_intervals: settings.tier_crawl_intervals,
+        prime_window: settings.prime_window,
+        tier_batch_intervals: settings.tier_batch_intervals,
         updated_at: settings.updated_at,
       },
     });

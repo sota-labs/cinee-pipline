@@ -1,6 +1,6 @@
 # Codebase Summary
 
-**Last Updated:** 2026-05-21
+**Last Updated:** 2026-06-02
 
 ## Directory Structure
 
@@ -22,7 +22,7 @@ src/
 │   └── outputFormat.ts       # Output format instructions
 ├── routes/                   # Express route handlers (11 routes)
 ├── scripts/                  # Cron job and utility scripts
-├── services/                 # Business logic services (11 services)
+├── services/                 # Business logic services (13 services)
 ├── tools/
 │   ├── contentTools.ts       # Content manipulation utilities
 │   ├── memoryTools.ts        # Memory/context management
@@ -53,7 +53,7 @@ src/
 | **PersonaKnowledge**   | CEO persona and knowledge base     | topics, keywords, context                                      |
 | **CurationSource**     | Content sources for research       | url, category, last_crawled                                    |
 
-## Services (12 Total)
+## Services (13 Total)
 
 | Service                      | Responsibility                 | Key Methods                                              |
 | ---------------------------- | ------------------------------ | -------------------------------------------------------- |
@@ -62,6 +62,7 @@ src/
 | **selfReplyService**         | Self-reply generation          | queueSelfReplyGeneration(), processSelfReplyResult()     |
 | **replyEngineService**       | Reply validation & personality | validateReply(), applyPersonality()                      |
 | **kolCrawlerService**        | KOL post crawling              | crawlKolPosts(), updateCrawlCache()                      |
+| **kolScheduleService**       | KOL crawl schedule logic       | runPrimePolling(), runBatchCrawl()                       |
 | **kolAnalyzerService**       | KOL personality analysis       | analyzeKolPersonality(), updateReputation()              |
 | **reputationCheckerService** | Reputation scoring             | calculateReputation(), updateCache()                     |
 | **priorityAccountService**   | Priority account management    | getPriorityAccounts(), updatePriority()                  |
@@ -99,12 +100,15 @@ src/
 | `/api/scheduler`                   | GET    | Get scheduler status                |
 | `/api/status`                      | GET    | Get system status                   |
 
-## Cron Jobs (9 Total)
+## Cron Jobs (12 Total)
 
 | Job                        | Script                     | Schedule       | Purpose                                |
 | -------------------------- | -------------------------- | -------------- | -------------------------------------- |
 | **own-account-seed-posts** | seedOwnAccountPostsCron.ts | On-demand      | Seed own account posts for AI learning |
-| **kol-crawl**              | kolCrawlCron.ts            | Every 30 min   | Crawl posts from tracked KOLs          |
+| **kol-prime-poll**         | kolDaemon.ts               | Every 15 min   | Tier S X-API poll (only in prime_window) |
+| **kol-batch-S-A**          | kolDaemon.ts               | Every 2h       | OpenClaw batch for Tier S (off-prime) + Tier A |
+| **kol-batch-B**            | kolDaemon.ts               | Every 3h       | OpenClaw batch for Tier B |
+| **kol-batch-C**            | kolDaemon.ts               | Every 4h       | OpenClaw batch for Tier C |
 | **kol-analyze**            | kolAnalyzeCron.ts          | Every 60 min   | Analyze KOL personalities              |
 | **kol-afk-reply**          | kolAFKReplyCron.ts         | Every 5 min    | Auto-reply in AFK mode                 |
 | **self-reply**             | selfReplyCron.ts           | Every 2 min    | Process self-reply queue               |
@@ -133,7 +137,6 @@ npm run cron:remove <job-name> # Remove specific job
 npm run own-account:seed-posts # Seed own account posts for learning
 
 # KOL-specific
-npm run kol:crawl             # Run KOL crawl immediately
 npm run kol:analyze           # Run KOL analysis immediately
 npm run kol:daemon            # Start KOL engagement daemon
 ```
