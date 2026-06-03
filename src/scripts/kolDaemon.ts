@@ -23,9 +23,20 @@ import { runPrimePolling, runBatchCrawl } from "../services/kolScheduleService.j
 
 const RUN_NOW = process.argv.includes("--run-now");
 
-// ── Analyze / Reply / Cleanup (unchanged) ────────────────────────────────────
+// ── In-process mutexes ────────────────────────────────────────────────────────
+
+let isAFKRunning = false;
+let isSelfReplyRunning = false;
+let isAnalyzeRunning = false;
+
+// ── Analyze / Reply / Cleanup ─────────────────────────────────────────────────
 
 async function executeAnalyze() {
+  if (isAnalyzeRunning) {
+    log.warn("[KOLDaemon] Analyze already in progress, skipping tick");
+    return;
+  }
+  isAnalyzeRunning = true;
   log.info("[KOLDaemon] Analyze job starting…");
   try {
     const result = await kolAnalyzerService.analyzePendingPosts();
@@ -33,26 +44,42 @@ async function executeAnalyze() {
     log.info(`[KOLDaemon] Analyze done — queued: ${result.queued}, errors: ${result.errors}${sweepNote}`);
   } catch (err: unknown) {
     log.error(`[KOLDaemon] Analyze job crashed: ${(err as Error).message}`);
+  } finally {
+    isAnalyzeRunning = false;
   }
 }
 
 async function executeAFKReplies() {
+  if (isAFKRunning) {
+    log.warn("[KOLDaemon] AFK Reply already in progress, skipping tick");
+    return;
+  }
+  isAFKRunning = true;
   log.info("[KOLDaemon] AFK Reply job starting…");
   try {
     const result = await replyEngineService.runScheduledAFKReplies();
     log.info(`[KOLDaemon] AFK Reply done — processed: ${result.processed}, succeeded: ${result.succeeded}, failed: ${result.failed}`);
   } catch (err: unknown) {
     log.error(`[KOLDaemon] AFK Reply job crashed: ${(err as Error).message}`);
+  } finally {
+    isAFKRunning = false;
   }
 }
 
 async function executeSelfReplies() {
+  if (isSelfReplyRunning) {
+    log.warn("[KOLDaemon] Self-Reply already in progress, skipping tick");
+    return;
+  }
+  isSelfReplyRunning = true;
   log.info("[KOLDaemon] Self-Reply job starting…");
   try {
     const result = await selfReplyService.processAllQueues();
     log.info(`[KOLDaemon] Self-Reply done — processed: ${result.processed}, succeeded: ${result.succeeded}, failed: ${result.failed}`);
   } catch (err: unknown) {
     log.error(`[KOLDaemon] Self-Reply job crashed: ${(err as Error).message}`);
+  } finally {
+    isSelfReplyRunning = false;
   }
 }
 

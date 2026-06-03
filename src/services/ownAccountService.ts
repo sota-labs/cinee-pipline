@@ -45,7 +45,7 @@ class OwnAccountService {
       status: EPostStatus.POSTED,
       platform: "twitter",
       created_at: { $gte: thirtyDaysAgo },
-    }).sort({ created_at: -1 });
+    }).sort({ created_at: -1 }).limit(50).lean();
 
     if (posts.length < MIN_POSTS_REQUIRED) {
       log.info(

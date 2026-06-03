@@ -387,42 +387,21 @@ export class ReputationCheckerService {
     return [];
   }
 
+  // Token-Jaccard similarity: O(n) time, never blocks the event loop.
+  // Strings over 150 chars are truncated to their first 150 chars before tokenising —
+  // long replies share enough vocabulary for duplicate detection without O(n²) cost.
   private similarity(a: string, b: string): number {
-    // Simple Levenshtein-based similarity
-    const longer = a.length > b.length ? a : b;
-    const shorter = a.length > b.length ? b : a;
-
-    if (longer.length === 0) return 1.0;
-
-    const distance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - distance) / longer.length;
-  }
-
-  private levenshteinDistance(a: string, b: string): number {
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
+    const MAX = 150;
+    const ta = a.slice(0, MAX).toLowerCase().split(/\s+/);
+    const tb = b.slice(0, MAX).toLowerCase().split(/\s+/);
+    const setA = new Set(ta);
+    const setB = new Set(tb);
+    let intersection = 0;
+    for (const token of setA) {
+      if (setB.has(token)) intersection++;
     }
-
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1),
-          );
-        }
-      }
-    }
-
-    return matrix[b.length][a.length];
+    const union = setA.size + setB.size - intersection;
+    return union === 0 ? 1.0 : intersection / union;
   }
 }
 

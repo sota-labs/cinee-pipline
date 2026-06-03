@@ -153,11 +153,19 @@ export class SelfReplyService {
     const settings = await KolSettings.getSettings();
     const weights = settings.self_reply.priority_weights;
 
-    // Check reputation for each comment author
-    for (const comment of queue.pending_comments) {
-      if (comment.status !== ECommentStatus.PENDING) continue;
+    // Check reputation for all PENDING comment authors in parallel
+    const pendingComments = queue.pending_comments.filter(
+      (c) => c.status === ECommentStatus.PENDING,
+    );
+    const reputations = await Promise.all(
+      pendingComments.map((c) =>
+        reputationCheckerService.checkReputation(c.author_handle),
+      ),
+    );
 
-      const reputation = await reputationCheckerService.checkReputation(comment.author_handle);
+    for (let i = 0; i < pendingComments.length; i++) {
+      const comment = pendingComments[i];
+      const reputation = reputations[i];
 
       comment.author_reputation = {
         trust_score: reputation.trustScore,
@@ -375,7 +383,7 @@ export class SelfReplyService {
   }>> {
     const queues = await SelfReplyQueue.find({
       queue_status: { $in: [EQueueStatus.ACTIVE, EQueueStatus.PAUSED] },
-    });
+    }).limit(10);
 
     return queues.map((q) => ({
       queueId: String(q._id),

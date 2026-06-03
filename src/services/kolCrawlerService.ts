@@ -490,7 +490,7 @@ export class KolCrawlerService {
       type: ETaskType.CRON_JOB_TRIGGER,
       agent: "openclaw",
       status: { $in: [ETaskStatus.PENDING, ETaskStatus.PROCESSING] },
-    }).lean();
+    }).limit(200).lean();
 
     return tasks.map((t) => {
       const handleMatch = t.prompt.match(/x\.com\/([\w_]+)/);
@@ -514,7 +514,7 @@ export class KolCrawlerService {
     const posts = await KolPost.find({
       kol_id: kolId,
       posted_at: { $gte: thirtyDaysAgo },
-    });
+    }).limit(200).lean();
 
     if (posts.length === 0) return;
 
