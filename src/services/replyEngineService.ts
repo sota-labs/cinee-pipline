@@ -13,7 +13,7 @@ import {
 } from "../db/models/KolReplySuggestion.js";
 import { KolSettings } from "../db/models/KolSettings.js";
 import { buildReplyGenerationPromptWithFewShot } from "../prompts/kolPrompts.js";
-import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
+import { shouldSkipPost, shouldSkipBySemantics } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
@@ -168,6 +168,13 @@ export class ReplyEngineService {
         log.info(`[ReplyEngine] Skipped post ${post._id} — matched AFK skip rule`);
         return null;
       }
+    }
+
+    // Semantic AFK blacklist — skip before spending LLM budget
+    if (shouldSkipBySemantics(post.content)) {
+      await KolPost.findByIdAndUpdate(post._id, { status: EKolPostStatus.SKIPPED });
+      log.info(`[ReplyEngine] Skipped post ${post._id} — matched semantic blacklist`);
+      return null;
     }
 
     // Pre-reply gate: check virality, spam, quality before spending Sonnet budget
