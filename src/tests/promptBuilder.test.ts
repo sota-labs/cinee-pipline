@@ -5,6 +5,8 @@ import {
   buildReplyPrompt,
   buildInteractPrompt,
   buildRewritePrompt,
+  buildReplyPromptWithProfile,
+  type IEffectiveVoiceBlock,
 } from "../prompts/promptBuilder.js";
 import type { RoleConfig } from "../config/settings.js";
 
@@ -96,6 +98,80 @@ describe("buildReplyPrompt", () => {
   it("under 280 chars rule is present", () => {
     const prompt = buildReplyPrompt(mockRole, API_URL);
     expect(prompt).toContain("280 characters");
+  });
+});
+
+describe("buildReplyPromptWithProfile", () => {
+  const fullProfile: IEffectiveVoiceBlock = {
+    writing_style: "punchy and lowercase",
+    slang_words: ["vibe", "fire", "lowkey"],
+    emoji_pattern: "sparingly, mostly 🎬",
+    sentence_structure: "short fragments, 1-2 clauses",
+    engagement_tone: "playful, irreverent",
+    avg_post_length: 42,
+  };
+
+  it("returns identical string when profile is null", () => {
+    const base = buildReplyPrompt(mockRole, API_URL);
+    const withProfile = buildReplyPromptWithProfile(mockRole, API_URL, null);
+    expect(withProfile).toBe(base);
+  });
+
+  it("returns identical string when profile fields are all empty", () => {
+    const empty: IEffectiveVoiceBlock = {
+      writing_style: "",
+      slang_words: [],
+      emoji_pattern: "",
+      sentence_structure: "",
+      engagement_tone: "",
+      avg_post_length: 0,
+    };
+    const base = buildReplyPrompt(mockRole, API_URL);
+    const withEmpty = buildReplyPromptWithProfile(mockRole, API_URL, empty);
+    expect(withEmpty).toBe(base);
+  });
+
+  it("includes LEARNED VOICE block when profile has content", () => {
+    const prompt = buildReplyPromptWithProfile(mockRole, API_URL, fullProfile);
+    expect(prompt).toContain("LEARNED VOICE");
+    expect(prompt).toContain("Writing style: punchy and lowercase");
+    expect(prompt).toContain("Engagement tone: playful, irreverent");
+    expect(prompt).toContain("Target length: ~42 words");
+  });
+
+  it("injects block immediately after 'Writing rules for the reply:'", () => {
+    const prompt = buildReplyPromptWithProfile(mockRole, API_URL, fullProfile);
+    const injectionIdx = prompt.indexOf("Writing rules for the reply:");
+    const blockIdx = prompt.indexOf("LEARNED VOICE");
+    expect(blockIdx).toBeGreaterThan(injectionIdx);
+    const between = prompt.slice(injectionIdx, blockIdx);
+    expect(between.length).toBeLessThan(50);
+  });
+
+  it("only includes non-empty fields in partial profile", () => {
+    const partial: IEffectiveVoiceBlock = {
+      writing_style: "minimal, dry",
+      slang_words: [],
+      emoji_pattern: "",
+      sentence_structure: "",
+      engagement_tone: "",
+      avg_post_length: 0,
+    };
+    const prompt = buildReplyPromptWithProfile(mockRole, API_URL, partial);
+    expect(prompt).toContain("Writing style: minimal, dry");
+    expect(prompt).not.toContain("Emoji usage:");
+    expect(prompt).not.toContain("Voice slang");
+  });
+
+  it("caps slang_words at 10 items", () => {
+    const longSlang: IEffectiveVoiceBlock = {
+      ...fullProfile,
+      slang_words: Array.from({ length: 25 }, (_, i) => `slang${i}`),
+    };
+    const prompt = buildReplyPromptWithProfile(mockRole, API_URL, longSlang);
+    expect(prompt).toContain("slang0");
+    expect(prompt).toContain("slang9");
+    expect(prompt).not.toContain("slang10");
   });
 });
 

@@ -71,7 +71,9 @@ describe("ownAccountService.autoLearnPersonality", () => {
 
   it("returns null and skips when last trigger was < 24h ago", async () => {
     const recent = { ...mockProfile };
-    recent.learned_profile.last_learn_trigger_at = new Date(Date.now() - 60 * 60 * 1000);
+    recent.learned_profile.last_learn_trigger_at = new Date(
+      Date.now() - 60 * 60 * 1000,
+    ) as never;
     mockProfileFindOne.mockResolvedValue(recent);
 
     const result = await ownAccountService.autoLearnPersonality();

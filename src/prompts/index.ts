@@ -7,4 +7,6 @@ export {
   buildReplyPrompt,
   buildInteractPrompt,
   buildRewritePrompt,
+  buildReplyPromptWithProfile,
 } from "./promptBuilder.js";
+export type { IEffectiveVoiceBlock } from "./promptBuilder.js";

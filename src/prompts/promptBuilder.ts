@@ -260,6 +260,52 @@ Process all matching replies sequentially with 5-second gaps. Do not skip any.
 ${OUTPUT_FORMAT_INSTRUCTION}`;
 }
 
+// ── Learned voice injection (Phase 02) ────────────────────────────────────────
+
+export interface IEffectiveVoiceBlock {
+  writing_style: string;
+  slang_words: string[];
+  emoji_pattern: string;
+  sentence_structure: string;
+  engagement_tone: string;
+  avg_post_length: number;
+}
+
+const MAX_SLANG_ITEMS = 10;
+
+function buildLearnedVoiceBlock(ep: IEffectiveVoiceBlock | null): string {
+  if (!ep) return "";
+  const parts: string[] = [];
+  if (ep.writing_style) parts.push(`Writing style: ${ep.writing_style}`);
+  if (ep.sentence_structure) parts.push(`Sentence structure: ${ep.sentence_structure}`);
+  if (ep.engagement_tone) parts.push(`Engagement tone: ${ep.engagement_tone}`);
+  if (ep.avg_post_length > 0) parts.push(`Target length: ~${ep.avg_post_length} words`);
+  if (ep.emoji_pattern) parts.push(`Emoji usage: ${ep.emoji_pattern}`);
+  if (ep.slang_words.length > 0) {
+    parts.push(
+      `Voice slang to consider (pick 0-2 naturally, never force): ${ep.slang_words
+        .slice(0, MAX_SLANG_ITEMS)
+        .join(", ")}`,
+    );
+  }
+  if (parts.length === 0) return "";
+  return "\nLEARNED VOICE (from the CEO's recent posted tweets):\n" + parts.join("\n") + "\n";
+}
+
+export function buildReplyPromptWithProfile(
+  role: RoleConfig,
+  apiUrl: string,
+  effectiveProfile: IEffectiveVoiceBlock | null,
+): string {
+  const base = buildReplyPrompt(role, apiUrl);
+  const block = buildLearnedVoiceBlock(effectiveProfile);
+  if (!block) return base;
+  return base.replace(
+    "Writing rules for the reply:",
+    `Writing rules for the reply:${block}`,
+  );
+}
+
 /**
  * Builds the AUTO_INTERACT_PROMPT — auto-comments on hot posts.
  */

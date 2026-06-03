@@ -2,10 +2,12 @@
 import { log } from "../utils/logger.js";
 import * as dotenv from "dotenv";
 import { getActiveRoleConfig } from "./topicConfigService.js";
+import { ownAccountService } from "./ownAccountService.js";
 import {
   buildResearchPrompt,
   buildDraftPrompt,
   buildReplyPrompt,
+  buildReplyPromptWithProfile,
   buildInteractPrompt,
 } from "../prompts/index.js";
 import {
@@ -29,9 +31,11 @@ interface CronJob {
 
 async function buildCronJobs(): Promise<CronJob[]> {
   const role = await getActiveRoleConfig();
+  const ownProfile = await ownAccountService.getProfile();
+  const effectiveProfile = ownProfile.effective_profile;
   const researchPrompt = buildResearchPrompt(role, API);
   const draftPrompt = buildDraftPrompt(role, API);
-  const replyPrompt = buildReplyPrompt(role, API);
+  const replyPrompt = buildReplyPromptWithProfile(role, API, effectiveProfile);
   const interactPrompt = buildInteractPrompt(role, API);
 
   const topicSuffix = role.name
