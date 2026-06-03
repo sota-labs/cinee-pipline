@@ -21,7 +21,6 @@ cinee-pipeline/
 │   │   ├── connection.ts         # MongoDB connection
 │   │   └── models/
 │   │       ├── CurationSource.ts
-│   │       ├── PersonaKnowledge.ts
 │   │       ├── Post.ts
 │   │       ├── Reply.ts
 │   │       ├── Interaction.ts

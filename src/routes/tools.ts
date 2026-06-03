@@ -5,7 +5,7 @@
  *   /db/replies  — CEO's replies (status: draft | rejected | resolved | replied)
  */
 import { Router, type Request, type Response } from "express";
-import { Post, Reply, PersonaKnowledge, CurationSource, Interaction, SelfReplyQueue } from "../db/index.js";
+import { Post, Reply, CurationSource, Interaction, SelfReplyQueue } from "../db/index.js";
 import { EReplyStatus } from "../db/models/Reply.js";
 import { ECurationStatus } from "../db/models/CurationSource.js";
 import { selfReplyService } from "../services/selfReplyService.js";
@@ -210,32 +210,6 @@ toolsRouter.delete("/db/replies/:id", async (req: Request, res: Response) => {
     const reply = await Reply.findByIdAndDelete(req.params.id as string);
     if (!reply) return res.status(404).json({ success: false, error: "Reply not found" });
     res.json({ success: true });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// ── DB: Persona Knowledge ─────────────────────────────────────────────────────
-
-toolsRouter.post("/db/persona", async (req: Request, res: Response) => {
-  try {
-    const knowledge = await PersonaKnowledge.findOneAndUpdate(
-      { topic: req.body.topic },
-      { $set: req.body },
-      { upsert: true, returnDocument: 'after', runValidators: true }
-    );
-    res.json({ success: true, id: knowledge._id, knowledge });
-  } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message });
-  }
-});
-
-toolsRouter.get("/db/persona", async (req: Request, res: Response) => {
-  try {
-    const { topic } = req.query;
-    const filter = topic ? { topic: new RegExp(topic as string, "i") } : {};
-    const knowledge = await PersonaKnowledge.find(filter).sort({ topic: 1 });
-    res.json({ success: true, knowledge });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
   }

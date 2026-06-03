@@ -13,7 +13,7 @@
 - `src/app.ts` / `src/index.ts`: Express application and server entry points.
 - `src/config/`: Configuration files (`settings.ts` — maps env vars to `RoleConfig` + `Settings`).
 - `src/db/`: MongoDB connection (`connection.ts`) and Mongoose models (`models/`).
-  - Models: `CurationSource`, `PersonaKnowledge`, `Post`, `Reply`, `Interaction`, `PriorityAccount`, `TopicConfig`
+  - Models: `CurationSource`, `Post`, `Reply`, `Interaction`, `PriorityAccount`, `TopicConfig`
 - `src/prompts/`: Dynamic prompt template engine.
   - `humanStyleRules.ts` — human-like writing style rules (mild/moderate/heavy)
   - `promptBuilder.ts` — `buildResearchPrompt`, `buildDraftPrompt`, `buildReplyPrompt`, `buildInteractPrompt`, `buildRewritePrompt`

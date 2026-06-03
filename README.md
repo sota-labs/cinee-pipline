@@ -66,7 +66,6 @@ src/
 │       ├── Post.ts                ← Posts: draft → pending_review → posted
 │       ├── Reply.ts               ← Replies to X mentions
 │       ├── CurationSource.ts      ← AI film sources found for amplification
-│       ├── PersonaKnowledge.ts    ← CEO stances on key topics
 │       ├── PriorityAccount.ts     ← Accounts to watch / engage with
 │       └── TopicConfig.ts         ← Runtime topic configuration records
 ├── middleware/
@@ -405,13 +404,6 @@ curl -X PATCH http://localhost:3000/api/content-review/drafts/DRAFT_ID/schedule
 | Method | Endpoint                     | Description              |
 | ------ | ---------------------------- | ------------------------ |
 | `POST` | `/api/tools/db/interactions` | Record a new interaction |
-
-#### Persona Knowledge
-
-| Method | Endpoint                | Description                  |
-| ------ | ----------------------- | ---------------------------- |
-| `POST` | `/api/tools/db/persona` | Upsert a CEO topic stance    |
-| `GET`  | `/api/tools/db/persona` | List stances — `?topic=defi` |
 
 #### Stats
 

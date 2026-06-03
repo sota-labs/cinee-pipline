@@ -50,7 +50,6 @@ src/
 | **Interaction**        | User interactions & engagement     | type, target_id, metadata                                      |
 | **PriorityAccount**    | High-priority accounts to monitor  | handle, priority_level, last_checked                           |
 | **TopicConfig**        | Dynamic topic/domain configuration | name, role_config, is_active                                   |
-| **PersonaKnowledge**   | CEO persona and knowledge base     | topics, keywords, context                                      |
 | **CurationSource**     | Content sources for research       | url, category, last_crawled                                    |
 
 ## Services (13 Total)

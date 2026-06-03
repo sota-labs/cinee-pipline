@@ -4,7 +4,6 @@ export { Post, EPostStatus } from "./models/Post.js";
 export { Task, ETaskStatus, ETaskType } from "./models/Task.js";
 export type { ITask } from "./models/Task.js";
 export { Reply } from "./models/Reply.js";
-export { PersonaKnowledge } from "./models/PersonaKnowledge.js";
 export { CurationSource, ECurationStatus, ECurationMediaType } from "./models/CurationSource.js";
 export { Interaction } from "./models/Interaction.js";
 export { PriorityAccount, ERelationshipTier } from "./models/PriorityAccount.js";
@@ -31,5 +30,4 @@ export type { ISelfReplyQueue, IPendingComment } from "./models/SelfReplyQueue.j
 export type { IKolSettings, IAFKSettings, IManualSettings, ISelfReplySettings, ISafetySettings, ITierCrawlIntervals } from "./models/KolSettings.js";
 export { EReplyStatus as ReplyStatus, EReplyTone as ReplyTone, EReplyPlatform as ReplyPlatform } from "./models/Reply.js";
 export type { IReply } from "./models/Reply.js";
-export type { IPersonaKnowledge } from "./models/PersonaKnowledge.js";
 export type { ITopicConfig } from "./models/TopicConfig.js";

@@ -50,7 +50,6 @@ The cinee-pipeline is a CEO automation system built on TypeScript/Node.js that l
 | Model | Purpose | Location |
 |-------|---------|----------|
 | `CurationSource` | Content sources for research | `src/db/models/` |
-| `PersonaKnowledge` | CEO persona and knowledge base | `src/db/models/` |
 | `Post` | Published posts/tweets | `src/db/models/` |
 | `Reply` | Replies to posts | `src/db/models/` |
 | `Interaction` | User interactions and engagement | `src/db/models/` |
