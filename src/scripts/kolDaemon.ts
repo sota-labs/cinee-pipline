@@ -18,6 +18,7 @@ import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { kolAnalyzerService } from "../services/kolAnalyzerService.js";
 import { replyEngineService } from "../services/replyEngineService.js";
 import { selfReplyService } from "../services/selfReplyService.js";
+import { ownAccountService } from "../services/ownAccountService.js";
 import { runPrimePolling, runBatchCrawl } from "../services/kolScheduleService.js";
 
 const RUN_NOW = process.argv.includes("--run-now");
@@ -52,6 +53,18 @@ async function executeSelfReplies() {
     log.info(`[KOLDaemon] Self-Reply done — processed: ${result.processed}, succeeded: ${result.succeeded}, failed: ${result.failed}`);
   } catch (err: unknown) {
     log.error(`[KOLDaemon] Self-Reply job crashed: ${(err as Error).message}`);
+  }
+}
+
+async function executeAutoLearnPersonality() {
+  log.info("[KOLDaemon] Auto-learn personality tick…");
+  try {
+    const taskId = await ownAccountService.autoLearnPersonality();
+    if (taskId) {
+      log.info(`[KOLDaemon] Auto-learn queued task: ${taskId}`);
+    }
+  } catch (err: unknown) {
+    log.error(`[KOLDaemon] Auto-learn crashed: ${(err as Error).message}`);
   }
 }
 
@@ -121,6 +134,7 @@ async function startDaemon() {
     await executeAnalyze();
     await executeAFKReplies();
     await executeSelfReplies();
+    await executeAutoLearnPersonality();
   }
 
   // Schedule jobs
@@ -133,6 +147,7 @@ async function startDaemon() {
   cron.schedule("*/10 * * * *", executeAutoReject);
   cron.schedule("*/2 * * * *", executeSelfReplies);
   cron.schedule("0 */2 * * *", executeSessionCleanup);
+  cron.schedule("0 */6 * * *", executeAutoLearnPersonality);
 
   log.info("[KOLDaemon] Daemon ready — schedules applied.");
 }

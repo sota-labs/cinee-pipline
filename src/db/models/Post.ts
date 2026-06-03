@@ -1,5 +1,6 @@
 /** Post — a piece of content authored by the CEO (includes draft/review lifecycle). */
 import { Schema, model, Document } from "mongoose";
+import { log } from "../../utils/logger.js";
 
 export enum EPostStatus {
   DRAFT = "draft",
@@ -54,6 +55,7 @@ export interface IPost extends Document {
   curation_source_id?: string;
   edit_history: IEditEntry[];
   post_url?: string;
+  learning_eligible_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -119,15 +121,50 @@ const postSchema = new Schema<IPost>(
     curation_source_id: { type: String, default: null },
     edit_history: { type: [editEntrySchema], default: [] },
     post_url: { type: String, default: "" },
+    learning_eligible_at: { type: Date, default: null },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
   },
 );
 
+const LEARNING_ELIGIBILITY_DELAY_MS = 24 * 60 * 60 * 1000;
+
 postSchema.index({ created_at: -1 });
 postSchema.index({ status: 1, scheduled_at: 1 });
 postSchema.index({ content_type: 1, created_at: -1 });
 postSchema.index({ raw_content: "text" });
+postSchema.index({ status: 1, learning_eligible_at: 1 });
+
+postSchema.post("save", async function (doc) {
+  if (
+    doc.status === EPostStatus.POSTED &&
+    !doc.learning_eligible_at
+  ) {
+    const eligibleAt = new Date(Date.now() + LEARNING_ELIGIBILITY_DELAY_MS);
+    Post.updateOne(
+      { _id: doc._id },
+      { $set: { learning_eligible_at: eligibleAt } },
+    ).catch((e: unknown) =>
+      log.error(`[Post] Failed to stamp learning_eligible_at: ${(e as Error).message}`),
+    );
+  }
+});
+
+postSchema.post("findOneAndUpdate", async function (doc) {
+  if (
+    doc &&
+    doc.status === EPostStatus.POSTED &&
+    !doc.learning_eligible_at
+  ) {
+    const eligibleAt = new Date(Date.now() + LEARNING_ELIGIBILITY_DELAY_MS);
+    Post.updateOne(
+      { _id: doc._id },
+      { $set: { learning_eligible_at: eligibleAt } },
+    ).catch((e: unknown) =>
+      log.error(`[Post] Failed to stamp learning_eligible_at: ${(e as Error).message}`),
+    );
+  }
+});
 
 export const Post = model<IPost>("Post", postSchema);

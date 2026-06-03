@@ -34,6 +34,7 @@ export interface IOwnAccountLearnedProfile {
   engagement_tone: string;
   avg_post_length: number;
   last_learned_at: Date | null;
+  last_learn_trigger_at: Date | null;
   posts_analyzed: number;
   learning_confidence: number;
 }
@@ -47,6 +48,7 @@ const learnedProfileSchema = new Schema<IOwnAccountLearnedProfile>(
     engagement_tone: { type: String, default: "" },
     avg_post_length: { type: Number, default: 0 },
     last_learned_at: { type: Date, default: null },
+    last_learn_trigger_at: { type: Date, default: null },
     posts_analyzed: { type: Number, default: 0 },
     learning_confidence: { type: Number, default: 0, min: 0, max: 100 },
   },

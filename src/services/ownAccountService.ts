@@ -14,6 +14,7 @@ import { buildOwnAccountLearningPrompt } from "../prompts/ownAccountPrompts.js";
 
 const MIN_POSTS_REQUIRED = 1;
 const CONFIDENCE_THRESHOLD = 60;
+const LEARNING_ELIGIBILITY_DELAY_MS = 24 * 60 * 60 * 1000;
 
 class OwnAccountService {
   async getProfile(): Promise<IOwnAccountProfile> {
@@ -74,6 +75,50 @@ class OwnAccountService {
     return String(task._id);
   }
 
+  async markPostEligibleForLearning(postId: string): Promise<void> {
+    const post = await Post.findById(postId).select(
+      "status learning_eligible_at",
+    );
+    if (!post || post.status !== EPostStatus.POSTED) return;
+    if (post.learning_eligible_at) return;
+    const eligibleAt = new Date(Date.now() + LEARNING_ELIGIBILITY_DELAY_MS);
+    await Post.updateOne(
+      { _id: postId },
+      { $set: { learning_eligible_at: eligibleAt } },
+    );
+  }
+
+  async autoLearnPersonality(): Promise<string | null> {
+    const profile = await this.getProfile();
+    const last = profile.learned_profile.last_learn_trigger_at;
+    if (last && Date.now() - last.getTime() < LEARNING_ELIGIBILITY_DELAY_MS) {
+      log.info(
+        `[OwnAccount] Auto-learn skipped — last trigger ${Math.round((Date.now() - last.getTime()) / 3600000)}h ago (< 24h)`,
+      );
+      return null;
+    }
+
+    const eligiblePost = await Post.findOne({
+      status: EPostStatus.POSTED,
+      learning_eligible_at: { $lte: new Date(), $ne: null },
+    })
+      .select("_id")
+      .lean();
+    if (!eligiblePost) {
+      log.info(
+        "[OwnAccount] Auto-learn skipped — no eligible POSTED posts past 24h",
+      );
+      return null;
+    }
+
+    const taskId = await this.learnPersonality();
+    if (taskId) {
+      profile.learned_profile.last_learn_trigger_at = new Date();
+      await profile.save();
+    }
+    return taskId;
+  }
+
   async applyLearnedProfile(rawResult: string): Promise<boolean> {
     const profile = await this.getProfile();
 
@@ -111,6 +156,7 @@ class OwnAccountService {
       avg_post_length:
         typeof data.avg_post_length === "number" ? data.avg_post_length : 0,
       last_learned_at: new Date(),
+      last_learn_trigger_at: profile.learned_profile.last_learn_trigger_at,
       posts_analyzed: (profile.learned_profile.posts_analyzed ?? 0) + 1,
       learning_confidence: confidence,
     };
