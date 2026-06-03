@@ -96,7 +96,10 @@ export interface IRunBatchCrawlResult {
   busy: boolean;
 }
 
-/** Create OpenClaw batch Tasks for the given tiers. Skips when the same tier group is already running. */
+/** Create OpenClaw batch Tasks for the given tiers. Skips when the same tier group is already running.
+ *  Tier S is skipped when the current time is within the prime window (X API polling covers it).
+ *  Mutex is keyed on the original `tiers` argument so callers with mixed arrays (e.g. ["S","A"])
+ *  always acquire/release the same key regardless of prime-window filtering. */
 export async function runBatchCrawl(
   tiers: Array<"S" | "A" | "B" | "C">,
 ): Promise<IRunBatchCrawlResult> {
@@ -105,9 +108,22 @@ export async function runBatchCrawl(
     log.warn(`[KolSchedule] Batch crawl [${tiers.join(",")}] skipped — another batch is in progress`);
     return { created: 0, skipped: 0, busy: true };
   }
+
+  let effectiveTiers = tiers;
+  if (tiers.includes("S")) {
+    const settings = await KolSettings.getSettings();
+    if (isWithinPrimeWindow(settings.prime_window)) {
+      effectiveTiers = tiers.filter((t) => t !== "S");
+      log.debug("[KolSchedule] Batch crawl — Tier S skipped (within prime window)");
+      if (effectiveTiers.length === 0) {
+        return { created: 0, skipped: 0, busy: false };
+      }
+    }
+  }
+
   activeBatchGroups.add(groupKey);
   try {
-    const result = await createBatchCrawlTasks(tiers);
+    const result = await createBatchCrawlTasks(effectiveTiers);
     return { created: result.tasksCreated, skipped: result.skipped.length, busy: false };
   } finally {
     activeBatchGroups.delete(groupKey);

@@ -1,6 +1,6 @@
 # Development Roadmap
 
-**Last Updated:** 2026-05-25
+**Last Updated:** 2026-06-03
 
 ## Overview
 

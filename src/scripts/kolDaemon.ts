@@ -28,6 +28,7 @@ const RUN_NOW = process.argv.includes("--run-now");
 let isAFKRunning = false;
 let isSelfReplyRunning = false;
 let isAnalyzeRunning = false;
+let isAutoRejectRunning = false;
 
 // ── Analyze / Reply / Cleanup ─────────────────────────────────────────────────
 
@@ -96,6 +97,11 @@ async function executeAutoLearnPersonality() {
 }
 
 async function executeAutoReject() {
+  if (isAutoRejectRunning) {
+    log.warn("[KOLDaemon] Auto-Reject already in progress, skipping tick");
+    return;
+  }
+  isAutoRejectRunning = true;
   log.info("[KOLDaemon] Auto-Reject job starting…");
   try {
     const result = await replyEngineService.runAutoRejectExpired();
@@ -104,6 +110,8 @@ async function executeAutoReject() {
     }
   } catch (err: unknown) {
     log.error(`[KOLDaemon] Auto-Reject job crashed: ${(err as Error).message}`);
+  } finally {
+    isAutoRejectRunning = false;
   }
 }
 
@@ -166,7 +174,8 @@ async function startDaemon() {
 
   // Schedule jobs
   cron.schedule("*/15 * * * *", tickPrimePolling);
-  cron.schedule("0 */2 * * *", () => tickBatchCrawl(["S", "A"]));
+  cron.schedule("0 */1 * * *", () => tickBatchCrawl(["S"]));
+  cron.schedule("0 */2 * * *", () => tickBatchCrawl(["A"]));
   cron.schedule("0 */3 * * *", () => tickBatchCrawl(["B"]));
   cron.schedule("0 */4 * * *", () => tickBatchCrawl(["C"]));
   cron.schedule("*/1 * * * *", executeAnalyze);

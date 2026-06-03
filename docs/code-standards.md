@@ -1,6 +1,6 @@
 # Code Standards & Codebase Structure
 
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-06-03
 
 ## Overview
 
@@ -397,7 +397,7 @@ router.get('/api/account/personality', async (req, res) => {
 - **Server-local time** — cron schedules and `prime_window` hours are interpreted in the server's local timezone. Production runs UTC. Configure `prime_window` in UTC hours (e.g. `02:00-06:00` for `09:00-13:00` ICT).
 - **Extract testable functions** — wrap `cron.schedule("…", handler)` around an exported function in a dedicated service (e.g. `kolScheduleService.runPrimePolling`). The cron script becomes a thin wrapper.
 - **Use mutexes** — handlers that may overlap (a 2h and 3h cron firing at the same minute) need a `let isXxxRunning = false` guard that early-returns with a warn.
-- **The prime-window pattern** — Tier S uses X API polling during a configurable 4h "prime window" (default 09:00-13:00 UTC) for low latency, and falls back to OpenClaw batch tasks the rest of the day. See `docs/notes/prime-window-and-batch-schedule.md`.
+- **The prime-window pattern** — Tier S uses X API polling during a configurable 4h "prime window" (default 09:00-13:00 UTC) for low latency, and has a dedicated 1h OpenClaw batch cron off-prime (`0 */1 * * *`) that auto-skips when the prime window is active. Tier A runs a separate 2h batch cron. See `docs/notes/prime-window-and-batch-schedule.md`.
 - **Multi-instance deployments** — in-process mutexes don't protect against double-execution across instances. Use a Redis lock for cross-process safety (out of scope; follow-up).
 
 ---

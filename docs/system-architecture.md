@@ -1,6 +1,6 @@
 # System Architecture
 
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-06-03
 
 ## Overview
 
@@ -309,14 +309,16 @@ KOL crawling uses a hybrid schedule (server-local time, default UTC). See
 | Cron | Function | Tiers | Path |
 |------|----------|-------|------|
 | `*/15 * * * *` | `runPrimePolling` (in `kolScheduleService`) | S | X API poll (only inside `prime_window`) |
-| `0 */2 * * *` | `runBatchCrawl(["S","A"])` | S off-prime, A | OpenClaw batch task |
+| `0 */1 * * *` | `runBatchCrawl(["S"])` | S (off-prime only — skips during prime window) | OpenClaw batch task |
+| `0 */2 * * *` | `runBatchCrawl(["A"])` | A | OpenClaw batch task |
 | `0 */3 * * *` | `runBatchCrawl(["B"])` | B | OpenClaw batch task |
 | `0 */4 * * *` | `runBatchCrawl(["C"])` | C | OpenClaw batch task |
 
 ```
-1. KOL Crawl (continuous; 4 jobs inside kolDaemon)
+1. KOL Crawl (continuous; 5 jobs inside kolDaemon)
    └─> Tier S (prime window only): X API direct polling every 15 min
-   └─> Tier S (off-prime) + Tier A: OpenClaw batch every 2h
+   └─> Tier S (off-prime): OpenClaw batch every 1h (skips if prime window active)
+   └─> Tier A: OpenClaw batch every 2h
    └─> Tier B: OpenClaw batch every 3h
    └─> Tier C: OpenClaw batch every 4h
    └─> All paths write to KolPost collection (deduped by post_url)

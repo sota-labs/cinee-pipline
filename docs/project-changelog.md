@@ -1,8 +1,28 @@
 # Project Changelog
 
-**Last Updated:** 2026-06-02
+**Last Updated:** 2026-06-03
 
 All notable changes to the cinee-pipeline project are documented here.
+
+---
+
+## [2026-06-03] - Tier S Batch Crawl: Split to 1h Cron, Skip During Prime Window
+
+### Changed
+
+- **KOL Daemon cron split** (`src/scripts/kolDaemon.ts`)
+  - Tier S batch crawl separated from Tier A into its own `0 */1 * * *` cron (every 1h)
+  - Tier A remains on `0 */2 * * *` (every 2h)
+  - Added `isAutoRejectRunning` mutex guard to `executeAutoReject` (runs every 10min, was unguarded)
+  - Fixed `executeSessionCleanup` task fields: `agent: "" → "system"`, `prompt: "" → "session_cleanup"`
+
+- **`runBatchCrawl` prime window gate** (`src/services/kolScheduleService.ts`)
+  - Tier S is now skipped when `isWithinPrimeWindow()` is true — X API prime polling already covers it
+  - Mutex keyed on original `tiers` argument (before S is filtered out) for correct lock semantics
+
+- **Tier S batch cutoff** (`src/services/kolCrawlerService.ts`)
+  - `createBatchCrawlTasks` Tier S cutoff changed from 120min → 60min to match the new 1h cron
+  - `updateKolStats` now sorts posts by `posted_at DESC` before applying `limit(200)`, ensuring averages reflect the 200 most recent posts
 
 ---
 

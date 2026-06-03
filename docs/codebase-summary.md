@@ -1,6 +1,6 @@
 # Codebase Summary
 
-**Last Updated:** 2026-06-02
+**Last Updated:** 2026-06-03
 
 ## Directory Structure
 
@@ -105,7 +105,8 @@ src/
 | -------------------------- | -------------------------- | -------------- | -------------------------------------- |
 | **own-account-seed-posts** | seedOwnAccountPostsCron.ts | On-demand      | Seed own account posts for AI learning |
 | **kol-prime-poll**         | kolDaemon.ts               | Every 15 min   | Tier S X-API poll (only in prime_window) |
-| **kol-batch-S-A**          | kolDaemon.ts               | Every 2h       | OpenClaw batch for Tier S (off-prime) + Tier A |
+| **kol-batch-S**            | kolDaemon.ts               | Every 1h (off-prime) | OpenClaw batch for Tier S (skips during prime window) |
+| **kol-batch-A**            | kolDaemon.ts               | Every 2h       | OpenClaw batch for Tier A |
 | **kol-batch-B**            | kolDaemon.ts               | Every 3h       | OpenClaw batch for Tier B |
 | **kol-batch-C**            | kolDaemon.ts               | Every 4h       | OpenClaw batch for Tier C |
 | **kol-analyze**            | kolAnalyzeCron.ts          | Every 60 min   | Analyze KOL personalities              |

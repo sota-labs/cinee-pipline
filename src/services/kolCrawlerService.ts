@@ -514,7 +514,7 @@ export class KolCrawlerService {
     const posts = await KolPost.find({
       kol_id: kolId,
       posted_at: { $gte: thirtyDaysAgo },
-    }).limit(200).lean();
+    }).sort({ posted_at: -1 }).limit(200).lean();
 
     if (posts.length === 0) return;
 
@@ -596,9 +596,9 @@ export async function createBatchCrawlTasks(
   const minTrustScore = kolSettings.safety.min_kol_trust_score;
   const now = Date.now();
 
-  // Per-tier cutoff (minutes → ms). S uses 2h to match A off-prime cadence.
+  // Per-tier cutoff (minutes → ms). S uses 1h to match its off-prime batch cron.
   const defaultSinceMs = (tier: "S" | "A" | "B" | "C"): number => {
-    if (tier === "S") return 120 * 60_000;
+    if (tier === "S") return 60 * 60_000;
     return (kolSettings.tier_batch_intervals[tier] ?? 120) * 60_000;
   };
 
