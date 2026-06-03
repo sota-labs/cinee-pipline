@@ -15,7 +15,8 @@ import { XRateLimitError } from "./platforms/x/xApiClient.js";
 // ── Mutexes (in-process only) ───────────────────────────────────────────────
 
 let isPrimePolling = false;
-let isBatchCrawling = false;
+// Keyed by sorted tier string (e.g. "A,S", "B") so different tier groups don't block each other
+const activeBatchGroups = new Set<string>();
 
 // ── Prime Polling (Tier S via X API) ────────────────────────────────────────
 
@@ -95,20 +96,21 @@ export interface IRunBatchCrawlResult {
   busy: boolean;
 }
 
-/** Create OpenClaw batch Tasks for the given tiers. Skips when another batch is running. */
+/** Create OpenClaw batch Tasks for the given tiers. Skips when the same tier group is already running. */
 export async function runBatchCrawl(
   tiers: Array<"S" | "A" | "B" | "C">,
 ): Promise<IRunBatchCrawlResult> {
-  if (isBatchCrawling) {
+  const groupKey = [...tiers].sort().join(",");
+  if (activeBatchGroups.has(groupKey)) {
     log.warn(`[KolSchedule] Batch crawl [${tiers.join(",")}] skipped — another batch is in progress`);
     return { created: 0, skipped: 0, busy: true };
   }
-  isBatchCrawling = true;
+  activeBatchGroups.add(groupKey);
   try {
     const result = await createBatchCrawlTasks(tiers);
     return { created: result.tasksCreated, skipped: result.skipped.length, busy: false };
   } finally {
-    isBatchCrawling = false;
+    activeBatchGroups.delete(groupKey);
   }
 }
 
@@ -117,5 +119,5 @@ export async function runBatchCrawl(
 /** Reset mutexes — test-only. */
 export function _resetMutexesForTests(): void {
   isPrimePolling = false;
-  isBatchCrawling = false;
+  activeBatchGroups.clear();
 }

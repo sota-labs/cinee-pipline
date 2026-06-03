@@ -93,6 +93,12 @@ export function parseBatchCrawlResult(raw: string): IBatchKolResult[] {
   }
 
   const obj = parsed as Record<string, unknown>;
+
+  // Accept single-handle format: {handle, posts} → normalize to [{handle, posts}]
+  if (!Array.isArray(obj.results) && typeof obj.handle === "string" && Array.isArray(obj.posts)) {
+    return [{ handle: obj.handle, posts: (obj.posts as Array<Record<string, unknown>>).map(normalizePost).filter((p) => p.content && p.post_url) }];
+  }
+
   if (!obj || !Array.isArray(obj.results)) {
     throw new Error(
       `[KolCrawlParser] Expected {results: [...]}, got: ${JSON.stringify(parsed).slice(0, 200)}`

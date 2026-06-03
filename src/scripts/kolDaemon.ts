@@ -85,8 +85,8 @@ async function executeSessionCleanup() {
     const sessionDir = `${process.env.HOME}/.openclaw/agents/main/sessions`;
     await Task.create({
       type: ETaskType.SHELL_EXEC,
-      agent: "",
-      prompt: "",
+      agent: "system",
+      prompt: "session_cleanup",
       status: ETaskStatus.PENDING,
       priority: 0,
       payload: {

@@ -554,7 +554,7 @@ function buildKolBatchCrawlPrompt(handle: string, sinceISO: string): string {
    b. Collect all items from result.posts.
    c. If result.shouldStop === true, STOP — do not scroll further.
    d. Otherwise scroll down (2s), then repeat.
-3. Return JSON: {"handle": "${handle}", "posts": <collected posts array>}
+3. Return JSON: {"results": [{"handle": "${handle}", "posts": <collected posts array>}]}
 
 TWEET_SCRIPT (copy verbatim into page.evaluate — do NOT pass any arguments):
 \`\`\`
