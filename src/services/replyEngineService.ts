@@ -12,12 +12,15 @@ import {
   type ISuggestion,
 } from "../db/models/KolReplySuggestion.js";
 import { KolSettings } from "../db/models/KolSettings.js";
-import { buildReplyGenerationPrompt } from "../prompts/kolPrompts.js";
+import { buildReplyGenerationPromptWithFewShot } from "../prompts/kolPrompts.js";
 import { shouldSkipPost } from "../utils/kolPostSkipRules.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { ownAccountService } from "./ownAccountService.js";
 import { tierToPriority, tierToPipelinePriority } from "../utils/taskPriority.js";
 import { buildAgentCommand, generateTaskId } from "../utils/agentCommand.js";
+import { logReply, recordDecision, EEvalLogSource } from "./replyEvalService.js";
+import { findFewShotExamples } from "./replyMemoryService.js";
+import { EReplyPlatform } from "../db/models/Reply.js";
 import type { Types } from "mongoose";
 
 export interface IGenerateSuggestionsResult {
@@ -189,7 +192,20 @@ export class ReplyEngineService {
       ? ethan.slang_words.join(", ")
       : appSettings.role.authorSlangReference;
 
-    const prompt = buildReplyGenerationPrompt({
+    // Retrieve few-shot examples from past POSTED replies (BM25 over reply_content)
+    let fewShot: Awaited<ReturnType<typeof findFewShotExamples>> = [];
+    try {
+      fewShot = await findFewShotExamples({
+        contextText: post.content + " " + (post.analysis?.summary ?? ""),
+        platform: EReplyPlatform.X,
+        authorHandle: kol.handle,
+        tone: post.engagement_pattern?.dominant_tone,
+      });
+    } catch (e: unknown) {
+      log.warn(`[ReplyEngine] Few-shot retrieval failed: ${(e as Error).message}`);
+    }
+
+    const prompt = buildReplyGenerationPromptWithFewShot({
       handle: kol.handle,
       postSummary: post.analysis?.summary ?? "",
       trendingTopics: post.analysis?.trending_topics ?? [],
@@ -205,6 +221,7 @@ export class ReplyEngineService {
       authorVoiceStyle,
       authorSlangReference,
       authorStyleFormulas: appSettings.role.authorStyleFormulas,
+      fewShot,
     });
 
     // Get mode from already-fetched settings
@@ -295,6 +312,9 @@ export class ReplyEngineService {
         `[ReplyEngine] Processed ${suggestion.suggestions.length} suggestions for ${suggestionId}`,
       );
 
+      // Log prompt + output for KPI measurement (Phase 3 eval log)
+      await this.logSuggestionGeneration(suggestion);
+
       // Route based on current global mode, not the stale mode stored on suggestion
       const currentSettings = await KolSettings.getSettings();
       if (currentSettings.default_mode === EReplyMode.AFK) {
@@ -314,6 +334,72 @@ export class ReplyEngineService {
       suggestion.error_message = `Parse error: ${(error as Error).message}`;
       await suggestion.save();
       return false;
+    }
+  }
+
+  /**
+   * Rebuild the generation prompt and log the AI output for KPI tracking.
+   * Called from processGeneratedSuggestions after a successful AI result.
+   */
+  private async logSuggestionGeneration(
+    suggestion: IKolReplySuggestion,
+  ): Promise<void> {
+    try {
+      const post = await KolPost.findById(suggestion.kol_post_id);
+      if (!post) return;
+      const kol = await KolProfile.findById(post.kol_id);
+      if (!kol) return;
+
+      const ownProfile = await ownAccountService.getProfile();
+      const ethan = ownProfile.effective_profile;
+      const authorVoiceStyle = ethan.writing_style || appSettings.role.authorVoiceStyle;
+      const authorSlangReference = ethan.slang_words.length > 0
+        ? ethan.slang_words.join(", ")
+        : appSettings.role.authorSlangReference;
+
+      let fewShot: Awaited<ReturnType<typeof findFewShotExamples>> = [];
+      try {
+        fewShot = await findFewShotExamples({
+          contextText: post.content + " " + (post.analysis?.summary ?? ""),
+          platform: EReplyPlatform.X,
+          authorHandle: kol.handle,
+          tone: post.engagement_pattern?.dominant_tone,
+        });
+      } catch (e: unknown) {
+        log.warn(`[ReplyEngine] Few-shot retrieval (eval log) failed: ${(e as Error).message}`);
+      }
+
+      const prompt = buildReplyGenerationPromptWithFewShot({
+        handle: kol.handle,
+        postSummary: post.analysis?.summary ?? "",
+        trendingTopics: post.analysis?.trending_topics ?? [],
+        topComments: (post.top_comments ?? []).slice(0, 5).map((c) => ({
+          content: c.content,
+          author_handle: c.author_handle,
+          sentiment: c.sentiment ?? "neutral",
+        })),
+        postContent: post.content,
+        dominantTone: post.engagement_pattern?.dominant_tone ?? "neutral",
+        commonPhrases: post.engagement_pattern?.common_phrases ?? [],
+        emojiTrend: post.engagement_pattern?.emoji_trend ?? [],
+        authorVoiceStyle,
+        authorSlangReference,
+        authorStyleFormulas: appSettings.role.authorStyleFormulas,
+        fewShot,
+      });
+
+      const topSuggestion = suggestion.suggestions[0];
+      await logReply({
+        source: EEvalLogSource.KOL_REPLY,
+        suggestion_id: String(suggestion._id),
+        parent_post_id: String(post._id),
+        prompt,
+        outputText: topSuggestion?.content ?? "",
+        toneUsed: topSuggestion?.tone ?? "neutral",
+        model: appSettings.openClawReplyModel,
+      });
+    } catch (e: unknown) {
+      log.error(`[ReplyEngine] Failed to log eval entry: ${(e as Error).message}`);
     }
   }
 
@@ -491,6 +577,18 @@ export class ReplyEngineService {
           replied_comment_id: parsed.comment_id,
         });
 
+        // Record eval decision — AFK auto-sent
+        if (suggestion.mode === EReplyMode.AFK) {
+          const sentContent = suggestion.admin_edited_content
+            ?? suggestion.suggestions.find((s) => s.id === suggestion.selected_suggestion_id)?.content
+            ?? "";
+          await recordDecision({
+            suggestion_id: String(suggestion._id),
+            output_text: sentContent,
+            decision: "auto_afk",
+          });
+        }
+
         log.info(`[ReplyEngine] Reply executed successfully: ${parsed.comment_id}`);
         return { success: true, commentId: parsed.comment_id };
       } else {
@@ -544,6 +642,14 @@ export class ReplyEngineService {
     suggestion.admin_decided_at = new Date();
     await suggestion.save();
 
+    // Record eval decision — admin approved or edited
+    await recordDecision({
+      suggestion_id: String(suggestion._id),
+      output_text: selected.content,
+      decision: editedContent ? "edited" : "approved",
+      edited_text: editedContent || undefined,
+    });
+
     log.info(`[ReplyEngine] Suggestion ${suggestionId} approved by admin`);
 
     // Execute immediately
@@ -561,6 +667,13 @@ export class ReplyEngineService {
     suggestion.admin_decided_at = new Date();
     suggestion.execution_status = EReplyExecutionStatus.FAILED;
     await suggestion.save();
+
+    // Record eval decision — admin rejected
+    await recordDecision({
+      suggestion_id: String(suggestion._id),
+      output_text: "",
+      decision: "rejected",
+    });
 
     log.info(`[ReplyEngine] Suggestion ${suggestionId} rejected by admin`);
     return true;
@@ -623,6 +736,13 @@ export class ReplyEngineService {
       suggestion.execution_status = EReplyExecutionStatus.FAILED;
       suggestion.error_message = "Auto-rejected: no response within timeout";
       await suggestion.save();
+
+      // Record eval decision — auto-rejected by timeout
+      await recordDecision({
+        suggestion_id: String(suggestion._id),
+        output_text: "",
+        decision: "rejected",
+      });
     }
 
     if (expired.length > 0) {

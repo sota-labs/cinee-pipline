@@ -9,6 +9,7 @@ import { priorityAccountsRouter } from "./routes/priorityAccounts.js";
 import { topicConfigRouter } from "./routes/topicConfig.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { accountRouter } from "./routes/account.js";
+import { replyEvalRouter } from "./routes/replyEval.js";
 import kolsRouter from "./routes/kols.js";
 import kolPostsRouter from "./routes/kolPosts.js";
 import kolSettingsRouter from "./routes/kolSettings.js";
@@ -33,6 +34,7 @@ app.use("/api/account", accountRouter);
 app.use("/api/kols", kolsRouter);
 app.use("/api/kol-posts", kolPostsRouter);
 app.use("/api/kol-settings", kolSettingsRouter);
+app.use("/api/eval", replyEvalRouter);
 
 app.get("/", (_req, res) => {
   res.json({

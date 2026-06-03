@@ -16,6 +16,7 @@ export { KolReplySuggestion, EReplyMode, EReplyExecutionStatus, EAdminDecision }
 export { KolReputationCache, EReputationRecommendation } from "./models/KolReputationCache.js";
 export { SelfReplyQueue, EQueueStatus, ECommentStatus } from "./models/SelfReplyQueue.js";
 export { KolSettings } from "./models/KolSettings.js";
+export { ReplyEvalLog, EEvalLogSource } from "./models/ReplyEvalLog.js";
 
 // Types
 export type { ICurationSource } from "./models/CurationSource.js";
@@ -28,6 +29,7 @@ export type { IKolReplySuggestion, ISuggestion } from "./models/KolReplySuggesti
 export type { IKolReputationCache, IReputationMetrics } from "./models/KolReputationCache.js";
 export type { ISelfReplyQueue, IPendingComment } from "./models/SelfReplyQueue.js";
 export type { IKolSettings, IAFKSettings, IManualSettings, ISelfReplySettings, ISafetySettings, ITierCrawlIntervals } from "./models/KolSettings.js";
+export type { IReplyEvalLog } from "./models/ReplyEvalLog.js";
 export { EReplyStatus as ReplyStatus, EReplyTone as ReplyTone, EReplyPlatform as ReplyPlatform } from "./models/Reply.js";
 export type { IReply } from "./models/Reply.js";
 export type { ITopicConfig } from "./models/TopicConfig.js";

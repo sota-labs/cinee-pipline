@@ -6,7 +6,10 @@ import { OwnAccountProfile } from "../db/models/OwnAccountProfile.js";
 import { Post } from "../db/models/Post.js";
 import { Task, ETaskType, ETaskStatus } from "../db/models/Task.js";
 import { reputationCheckerService } from "./reputationCheckerService.js";
-import { buildSelfReplyPrompt, buildExecuteReplyPrompt } from "../prompts/kolPrompts.js";
+import { logReply, recordDecision, EEvalLogSource } from "./replyEvalService.js";
+import { findFewShotExamples } from "./replyMemoryService.js";
+import { EReplyPlatform } from "../db/models/Reply.js";
+import { buildSelfReplyPromptWithFewShot, buildExecuteReplyPrompt } from "../prompts/kolPrompts.js";
 import { settings } from "../config/settings.js";
 import type { IPendingComment } from "../db/models/SelfReplyQueue.js";
 import type { Types } from "mongoose";
@@ -287,6 +290,14 @@ export class SelfReplyService {
     }
 
     await queue.save();
+
+    // Record eval decision — self-reply sent (auto or manual confirmed)
+    await recordDecision({
+      self_reply_queue_id: String(queue._id),
+      output_text: comment.reply_content ?? "",
+      decision: "auto_afk",
+    });
+
     log.info(`[SelfReply] Comment ${commentId} marked SENT in queue ${queueId}`);
   }
 
@@ -299,6 +310,14 @@ export class SelfReplyService {
 
     comment.status = ECommentStatus.FAILED;
     await queue.save();
+
+    // Record eval decision — self-reply execution failed
+    await recordDecision({
+      self_reply_queue_id: String(queue._id),
+      output_text: comment.reply_content ?? "",
+      decision: "rejected",
+    });
+
     log.error(`[SelfReply] Comment ${commentId} FAILED in queue ${queueId}: ${errorLog}`);
   }
 
@@ -419,7 +438,19 @@ export class SelfReplyService {
     const post = await Post.findById(queue.our_post_id);
     const originalPostContent = post?.raw_content ?? "";
 
-    const prompt = buildSelfReplyPrompt({
+    // Retrieve few-shot examples from past POSTED replies
+    let fewShot: Awaited<ReturnType<typeof findFewShotExamples>> = [];
+    try {
+      fewShot = await findFewShotExamples({
+        contextText: originalPostContent + " " + comment.content,
+        platform: EReplyPlatform.X,
+        authorHandle: comment.author_handle,
+      });
+    } catch (e: unknown) {
+      log.warn(`[SelfReply] Few-shot retrieval failed: ${(e as Error).message}`);
+    }
+
+    const prompt = buildSelfReplyPromptWithFewShot({
       originalPostContent,
       commentAuthor: comment.author_handle,
       commentContent: comment.content,
@@ -427,6 +458,7 @@ export class SelfReplyService {
       authorTrustScore: comment.author_trust_score,
       interactionCount: 0,
       yourStyle: writingStyle,
+      fewShot,
     });
 
     const escapedPrompt = prompt.replace(/'/g, "'\\''");
@@ -472,6 +504,9 @@ export class SelfReplyService {
       return;
     }
 
+    // Log prompt + output for KPI measurement (Phase 3 eval log)
+    await this.logSelfReplyGeneration(queueId, commentId, replyContent);
+
     const kolSettings = await KolSettings.getSettings();
     const mode = kolSettings.default_mode;
 
@@ -484,6 +519,63 @@ export class SelfReplyService {
       }
     } else {
       await this.storeForManualReview(queueId, commentId, replyContent);
+    }
+  }
+
+  /**
+   * Rebuild the self-reply prompt and log the AI output for KPI tracking.
+   * Called from processSelfReplyResult after a successful AI result.
+   */
+  private async logSelfReplyGeneration(
+    queueId: string,
+    commentId: string,
+    replyContent: string,
+  ): Promise<void> {
+    try {
+      const queue = await SelfReplyQueue.findById(queueId);
+      if (!queue) return;
+      const comment = queue.pending_comments.find((c) => c.comment_id === commentId);
+      if (!comment) return;
+
+      const profile = await OwnAccountProfile.findOne({ _key: "own_account" });
+      const writingStyle = profile?.effective_profile?.writing_style ?? "conversational and direct";
+
+      const post = await Post.findById(queue.our_post_id);
+      const originalPostContent = post?.raw_content ?? "";
+
+      let fewShot: Awaited<ReturnType<typeof findFewShotExamples>> = [];
+      try {
+        fewShot = await findFewShotExamples({
+          contextText: originalPostContent + " " + comment.content,
+          platform: EReplyPlatform.X,
+          authorHandle: comment.author_handle,
+        });
+      } catch (e: unknown) {
+        log.warn(`[SelfReply] Few-shot retrieval (eval log) failed: ${(e as Error).message}`);
+      }
+
+      const prompt = buildSelfReplyPromptWithFewShot({
+        originalPostContent,
+        commentAuthor: comment.author_handle,
+        commentContent: comment.content,
+        commentLikes: comment.likes,
+        authorTrustScore: comment.author_trust_score,
+        interactionCount: 0,
+        yourStyle: writingStyle,
+        fewShot,
+      });
+
+      await logReply({
+        source: EEvalLogSource.SELF_REPLY,
+        self_reply_queue_id: String(queue._id),
+        parent_post_id: String(queue.our_post_id),
+        prompt,
+        outputText: replyContent,
+        toneUsed: "neutral",
+        model: settings.openClawReplyModel,
+      });
+    } catch (e: unknown) {
+      log.error(`[SelfReply] Failed to log eval entry: ${(e as Error).message}`);
     }
   }
 
