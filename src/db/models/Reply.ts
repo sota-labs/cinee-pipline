@@ -70,5 +70,6 @@ replySchema.index({ platform: 1 });
 replySchema.index({ url: 1 }, { unique: true });
 replySchema.index({ author_handle: 1 }, { sparse: true });
 replySchema.index({ parent_post_url: 1 }, { sparse: true });
+replySchema.index({ reply_content: "text" });
 
 export const Reply = model<IReply>("Reply", replySchema);

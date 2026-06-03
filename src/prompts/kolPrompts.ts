@@ -316,6 +316,54 @@ export function buildSelfReplyPrompt(params: {
     .replace("{{your_style}}", params.yourStyle);
 }
 
+function buildFewShotBlock(
+  fewShot: Array<{ reply_text: string; tone: string }>,
+): string {
+  return (
+    "\nPAST REPLIES (your style — match this register and cadence):\n" +
+    fewShot
+      .map((ex, i) => `  ${i + 1}. [${ex.tone}] "${ex.reply_text}"`)
+      .join("\n") +
+    "\n"
+  );
+}
+
+export function buildReplyGenerationPromptWithFewShot(params: {
+  handle: string;
+  postSummary: string;
+  trendingTopics: string[];
+  topComments: Array<{ content: string; author_handle: string; sentiment: string }>;
+  postContent: string;
+  dominantTone: string;
+  commonPhrases: string[];
+  emojiTrend: string[];
+  authorVoiceStyle?: string;
+  authorSlangReference?: string;
+  authorStyleFormulas?: string;
+  fewShot?: Array<{ reply_text: string; tone: string }>;
+}): string {
+  const base = buildReplyGenerationPrompt(params);
+  if (!params.fewShot || params.fewShot.length === 0) return base;
+  const block = buildFewShotBlock(params.fewShot);
+  return base.replace("KOL CONTEXT", `${block}\nKOL CONTEXT`);
+}
+
+export function buildSelfReplyPromptWithFewShot(params: {
+  originalPostContent: string;
+  commentAuthor: string;
+  commentContent: string;
+  commentLikes: number;
+  authorTrustScore: number;
+  interactionCount: number;
+  yourStyle: string;
+  fewShot?: Array<{ reply_text: string; tone: string }>;
+}): string {
+  const base = buildSelfReplyPrompt(params);
+  if (!params.fewShot || params.fewShot.length === 0) return base;
+  const block = buildFewShotBlock(params.fewShot);
+  return base.replace("REPLY GUIDELINES:", `${block}\nREPLY GUIDELINES:`);
+}
+
 // ── Self-Reply Execution ──────────────────────────────────────────────────────
 
 const EXECUTE_SELF_REPLY_PROMPT = `You are an AI Agent with browser access. Post a reply to a comment on X.
